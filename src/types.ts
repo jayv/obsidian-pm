@@ -117,8 +117,8 @@ export interface PMSettings {
   defaultView: ViewMode
   ganttGranularity: GanttGranularity
   ganttWeekLabel: GanttWeekLabel
-  /** Highlight overlapping tasks that share an assignee in the Gantt. */
-  ganttShowConflicts: boolean
+  /** When set, the Gantt shows only rows that have a resource conflict. */
+  ganttConflictsOnly: boolean
   statuses: StatusConfig[]
   priorities: PriorityConfig[]
   globalTeamMembers: string[]
@@ -156,7 +156,7 @@ export const DEFAULT_SETTINGS: PMSettings = {
   defaultView: 'table',
   ganttGranularity: 'week',
   ganttWeekLabel: 'weekNumber',
-  ganttShowConflicts: false,
+  ganttConflictsOnly: false,
   statuses: DEFAULT_STATUSES,
   priorities: DEFAULT_PRIORITIES,
   globalTeamMembers: [],

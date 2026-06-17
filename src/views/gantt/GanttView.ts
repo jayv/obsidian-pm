@@ -43,7 +43,7 @@ export class GanttView implements SubView {
   private labelWidth: number = LABEL_WIDTH
   private zoom = 1
   private zoomRaf: number | null = null
-  private showConflicts: boolean
+  private conflictsOnly: boolean
   private conflicts: Map<string, TaskConflicts> | null = null
 
   getLabelWidth(): number {
@@ -63,7 +63,7 @@ export class GanttView implements SubView {
     private filter: FilterState
   ) {
     this.granularity = plugin.settings.ganttGranularity
-    this.showConflicts = plugin.settings.ganttShowConflicts
+    this.conflictsOnly = plugin.settings.ganttConflictsOnly
   }
 
   destroy(): void {
@@ -98,13 +98,17 @@ export class GanttView implements SubView {
     this.container.addClass('pm-gantt-view')
 
     const activeTasks = this.getVisibleTasks()
-    this.flatTasks = flattenTasks(activeTasks).filter((f) => f.visible || f.depth === 0)
     this.cfg = buildTimelineConfig(activeTasks, this.granularity, this.zoom)
-    // Read the setting each render so the header toggle takes effect.
-    this.showConflicts = this.plugin.settings.ganttShowConflicts
-    this.conflicts = this.showConflicts
-      ? computeResourceConflicts(this.flatTasks, this.plugin.settings.statuses).byTask
-      : null
+
+    // Conflicts are always highlighted. Compute over the full visible set first,
+    // then — when the toggle is on — keep only rows that have a conflict.
+    let flat = flattenTasks(activeTasks).filter((f) => f.visible || f.depth === 0)
+    this.conflicts = computeResourceConflicts(flat, this.plugin.settings.statuses).byTask
+    this.conflictsOnly = this.plugin.settings.ganttConflictsOnly
+    if (this.conflictsOnly && this.conflicts.size > 0) {
+      flat = flat.filter((f) => this.conflicts?.has(f.task.id))
+    }
+    this.flatTasks = flat
 
     this.renderGranularityControls()
     this.renderGantt()
@@ -327,19 +331,13 @@ export class GanttView implements SubView {
     const barsGroup = svgEl('g', { class: 'pm-gantt-bars' })
     this.svgEl.appendChild(barsGroup)
 
+    // Iterate the resolved row model so the conflicts-only filter applies and
+    // row indexes line up with dependency arrows / grid (both use flatTasks).
     const labelCtx = { plugin: this.plugin, project: this.project, onRefresh: this.onRefresh }
-    let rowIndex = 0
-    const renderFlatList = (tasks: Task[], depth: number) => {
-      for (const task of tasks) {
-        renderTaskLabel(leftBody, task, depth, rowIndex, labelCtx)
-        renderTaskBar(barsGroup, task, rowIndex, depth, ctx)
-        rowIndex++
-        if (!task.collapsed && task.subtasks.length) {
-          renderFlatList(task.subtasks, depth + 1)
-        }
-      }
-    }
-    renderFlatList(this.getVisibleTasks(), 0)
+    this.flatTasks.forEach((f, rowIndex) => {
+      renderTaskLabel(leftBody, f.task, f.depth, rowIndex, labelCtx)
+      renderTaskBar(barsGroup, f.task, rowIndex, f.depth, ctx)
+    })
   }
 
   private makeRendererContext(): RendererContext {

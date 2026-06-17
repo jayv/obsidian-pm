@@ -41,7 +41,7 @@ export class PrimaryRow {
   }
 
   /** Update the resource-conflict indicator: red "N conflicts" (clickable to
-   *  toggle the overlay) or a disabled "no conflicts". */
+   *  filter the Gantt to conflicting rows) or a disabled "no conflicts". */
   setConflicts(count: number, active: boolean): void {
     const el = this.conflictEl
     if (!el) return
@@ -53,7 +53,7 @@ export class PrimaryRow {
     el.setAttribute(
       'aria-label',
       has
-        ? `${count} resource conflict${count === 1 ? '' : 's'} — click to toggle highlighting`
+        ? `${count} resource conflict${count === 1 ? '' : 's'} — click to show only conflicting tasks`
         : 'No resource conflicts'
     )
   }

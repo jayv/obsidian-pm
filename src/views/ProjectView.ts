@@ -202,20 +202,20 @@ export class ProjectView extends ItemView {
   }
 
   private handleToggleConflicts(): void {
-    this.plugin.settings.ganttShowConflicts = !this.plugin.settings.ganttShowConflicts
+    this.plugin.settings.ganttConflictsOnly = !this.plugin.settings.ganttConflictsOnly
     void this.plugin.saveSettings()
     this.subview?.refresh?.()
     this.updateConflictIndicator()
   }
 
-  /** Refresh the header's conflict indicator (project-wide count + on/off state). */
+  /** Refresh the header's conflict indicator (project-wide count + filter state). */
   private updateConflictIndicator(): void {
     if (!this.header || !this.project) return
     const count =
       this.currentView === 'gantt'
         ? computeResourceConflicts(flattenTasks(this.project.tasks), this.plugin.settings.statuses).count
         : 0
-    this.header.setConflicts(count, this.plugin.settings.ganttShowConflicts)
+    this.header.setConflicts(count, this.plugin.settings.ganttConflictsOnly)
   }
 
   private handleFilterMutation(): void {
