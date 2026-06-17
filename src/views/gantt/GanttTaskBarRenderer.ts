@@ -18,6 +18,9 @@ import { attachDragHandle, attachBarMove } from './GanttDragHandler'
 import { handleLinkDotClick } from './GanttLinkHandler'
 import type { RendererContext } from './GanttRenderer'
 
+// Milestones use a fixed pastel green so they stand out from status-colored bars
+const MILESTONE_COLOR = '#8fd9ad'
+
 // ─── Task bars ─────────────────────────────────────────────────────────────
 
 export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: number, ctx: RendererContext): void {
@@ -47,7 +50,7 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
 
   // Milestone → render diamond
   if (task.type === 'milestone') {
-    renderMilestoneDiamond(g, task, row, color, ctx)
+    renderMilestoneDiamond(g, task, row, ctx)
     return
   }
 
@@ -297,7 +300,7 @@ function renderEmptyRowClickTarget(g: SVGGElement, task: Task, row: number, ctx:
 
 // ─── Milestone diamond ────────────────────────────────────────────────────
 
-function renderMilestoneDiamond(g: SVGGElement, task: Task, row: number, color: string, ctx: RendererContext): void {
+function renderMilestoneDiamond(g: SVGGElement, task: Task, row: number, ctx: RendererContext): void {
   const date = parsePlainDate(task.due) ?? parsePlainDate(task.start)
   if (!date) return
 
@@ -308,10 +311,11 @@ function renderMilestoneDiamond(g: SVGGElement, task: Task, row: number, color: 
   const pts = `${cx},${cy - size} ${cx + size},${cy} ${cx},${cy + size} ${cx - size},${cy}`
   const diamond = svgEl('polygon', {
     points: pts,
-    fill: color,
-    opacity: 0.8,
+    fill: MILESTONE_COLOR,
+    opacity: 0.9,
     class: 'pm-gantt-milestone',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    'data-task-id': task.id
   })
   g.appendChild(diamond)
 
@@ -336,31 +340,48 @@ export function renderMilestoneLabels(ctx: RendererContext): void {
     const date = parsePlainDate(task.due) ?? parsePlainDate(task.start)
     if (!date) continue
     const x = dateToX(ctx.cfg, date) + ctx.cfg.dayWidth / 2
-    const statusConfig = getStatusConfig(ctx.plugin.settings.statuses, task.status)
-    const color = statusConfig?.color ?? getComputedStyle(ctx.svgEl).getPropertyValue('--interactive-accent').trim()
 
+    // Pill geometry — sized from an estimate of the text width (SVG can't
+    // measure text before it is laid out, so approximate by character count).
+    const cy = 12
+    const pillH = 18
+    const pillW = task.title.length * 6.2 + 18
+
+    // Dashed connector runs from the bottom of the pill down through the chart,
+    // so each milestone reads as one unit (pill + line) like the today marker.
     const totalH = HEADER_HEIGHT + ctx.flatTasks.filter((f) => f.visible || f.depth === 0).length * ROW_HEIGHT
     labelsG.appendChild(
       svgEl('line', {
         x1: x,
-        y1: HEADER_HEIGHT,
+        y1: cy + pillH / 2,
         x2: x,
         y2: totalH,
-        stroke: color,
-        'stroke-width': 1,
+        stroke: MILESTONE_COLOR,
+        'stroke-width': 1.5,
         'stroke-dasharray': '4 4',
-        opacity: 0.4
+        opacity: 0.6
       })
     )
 
+    const pill = svgEl('rect', {
+      x: x - pillW / 2,
+      y: cy - pillH / 2,
+      width: pillW,
+      height: pillH,
+      rx: pillH / 2,
+      ry: pillH / 2,
+      fill: MILESTONE_COLOR,
+      class: 'pm-gantt-milestone-pill'
+    })
+    labelsG.appendChild(pill)
+
     const label = svgEl('text', {
       x,
-      y: 14,
+      y: cy,
       'text-anchor': 'middle',
-      class: 'pm-gantt-milestone-label',
-      fill: color
+      class: 'pm-gantt-milestone-label'
     })
-    label.textContent = task.title.length > 16 ? task.title.slice(0, 14) + '\u2026' : task.title
+    label.textContent = task.title
     labelsG.appendChild(label)
   }
 

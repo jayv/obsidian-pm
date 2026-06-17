@@ -248,10 +248,16 @@
 .pm-gantt-milestone:hover {
   filter: brightness(1.2);
 }
+.pm-gantt-milestone-pill {
+  opacity: 0.95;
+}
 .pm-gantt-milestone-label {
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  fill: #0b3d24;
+  dominant-baseline: central;
+  pointer-events: none;
 }
 
 .pm-gantt-bar-icon {
