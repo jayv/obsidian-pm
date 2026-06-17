@@ -201,6 +201,20 @@
 .pm-table-cell-assignees {
   min-width: 80px;
 }
+.pm-assignees-editable {
+  cursor: pointer;
+}
+/* Empty assignees: a faint "+" that surfaces on row hover so the cell reads as editable */
+.pm-assignees-empty {
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.pm-table-row:hover .pm-assignees-empty {
+  opacity: 1;
+}
 
 .pm-task-title-text {
   cursor: pointer;

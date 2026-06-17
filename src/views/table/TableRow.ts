@@ -1,11 +1,11 @@
 import { Menu } from 'obsidian'
 import { getStatusConfig, isTaskOverdue, isTerminalStatus, safeAsync, stringifyCustomValue } from '../../utils'
-import { totalLoggedHours } from '../../store/TaskTreeOps'
+import { collectAllAssignees, totalLoggedHours } from '../../store/TaskTreeOps'
 import { today, parsePlainDate } from '../../dates'
 import type { Task } from '../../types'
 import { updateSelectCheckboxes, getVisibleTaskIds } from './TableRenderer'
 import type { TableContext, TableState } from './TableRenderer'
-import { openTaskModal } from '../../ui/ModalFactory'
+import { openTaskModal, promptText } from '../../ui/ModalFactory'
 import { buildTaskContextMenu } from '../../ui/TaskContextMenu'
 import { TaskRow } from '../../ui/composites/TaskRow'
 import { ActionsCell } from '../../ui/composites/cells/ActionsCell'
@@ -117,7 +117,19 @@ export function renderTaskRow(tbody: HTMLElement, task: Task, depth: number, ctx
     })
   })
 
-  new AssigneesCell(row, task.assignees)
+  new AssigneesCell(row, {
+    task,
+    candidates: () =>
+      collectAllAssignees(ctx.project.tasks, [
+        ...ctx.project.teamMembers,
+        ...ctx.plugin.settings.globalTeamMembers
+      ]),
+    onChange: safeAsync(async (assignees) => {
+      await ctx.plugin.store.updateTask(ctx.project, task.id, { assignees })
+      await ctx.onRefresh()
+    }),
+    promptNewName: () => promptText(ctx.plugin.app, 'Add assignee', 'Name…')
+  })
 
   const due = parsePlainDate(task.due)
   const overdue = isTaskOverdue(task, ctx.plugin.settings.statuses)
