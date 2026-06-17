@@ -437,23 +437,48 @@ export function renderDependencyArrows(ctx: RendererContext): void {
 
   const arrowGroup = svgEl('g', { class: 'pm-gantt-arrows' })
 
+  const byId = new Map<string, Task>()
+  for (const { task } of ctx.flatTasks) byId.set(task.id, task)
+
+  const rowCenter = (row: number): number => HEADER_HEIGHT + row * ROW_HEIGHT + ROW_HEIGHT / 2
+
+  // A milestone is a point (its diamond centre); a task attaches at its start
+  // for an incoming arrow and just past its due for an outgoing one. Milestones
+  // keep their date in `due`, so never read `start` for them (it defaults to today).
+  const milestoneDate = (t: Task) => parsePlainDate(t.due) ?? parsePlainDate(t.start)
+  const anchorIn = (t: Task): number | null => {
+    if (t.type === 'milestone') {
+      const d = milestoneDate(t)
+      return d ? dateToX(ctx.cfg, d) + ctx.cfg.dayWidth / 2 : null
+    }
+    const s = parsePlainDate(t.start) ?? parsePlainDate(t.due)
+    return s ? dateToX(ctx.cfg, s) : null
+  }
+  const anchorOut = (t: Task): number | null => {
+    if (t.type === 'milestone') {
+      const d = milestoneDate(t)
+      return d ? dateToX(ctx.cfg, d) + ctx.cfg.dayWidth / 2 : null
+    }
+    const due = parsePlainDate(t.due) ?? parsePlainDate(t.start)
+    return due ? dateToX(ctx.cfg, due.add({ days: 1 })) : null
+  }
+
   for (const { task } of ctx.flatTasks) {
     if (!task.dependencies?.length) continue
     const toRow = indexMap.get(task.id)
     if (toRow === undefined) continue
-    const toY = HEADER_HEIGHT + toRow * ROW_HEIGHT + ROW_HEIGHT / 2
-    const taskStart = parsePlainDate(task.start)
-    if (!taskStart) continue
-    const toX = dateToX(ctx.cfg, taskStart)
+    const toX = anchorIn(task)
+    if (toX === null) continue
+    const toY = rowCenter(toRow)
 
     for (const depId of task.dependencies) {
       const fromRow = indexMap.get(depId)
       if (fromRow === undefined) continue
-      const depTask = ctx.flatTasks.find((f) => f.task.id === depId)?.task
-      const depDue = depTask ? parsePlainDate(depTask.due) : null
-      if (!depDue) continue
-      const fromX = dateToX(ctx.cfg, depDue.add({ days: 1 }))
-      const fromY = HEADER_HEIGHT + fromRow * ROW_HEIGHT + ROW_HEIGHT / 2
+      const depTask = byId.get(depId)
+      if (!depTask) continue
+      const fromX = anchorOut(depTask)
+      if (fromX === null) continue
+      const fromY = rowCenter(fromRow)
 
       const midX = (fromX + toX) / 2
       const d = `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`
