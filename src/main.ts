@@ -1,5 +1,5 @@
 import { MarkdownView, Plugin, Notice } from 'obsidian'
-import { DEFAULT_SETTINGS, PMSettings, Project } from './types'
+import { DEFAULT_SETTINGS, PMSettings, Project, ViewMode } from './types'
 import { flattenTasks, findTask } from './store/TaskTreeOps'
 import { ProjectStore } from './store'
 import { PMSettingTab } from './settings'
@@ -121,6 +121,28 @@ export default class PMPlugin extends Plugin {
         void this.importNotes()
       }
     })
+
+    // Switch the active project view between its sub-views (only when a project
+    // view is focused). Defaults to Alt+1/2/3; users can rebind in Hotkeys.
+    const viewHotkeys: { id: string; name: string; key: string; mode: ViewMode }[] = [
+      { id: 'view-table', name: 'Switch to Table view', key: '1', mode: 'table' },
+      { id: 'view-gantt', name: 'Switch to Gantt view', key: '2', mode: 'gantt' },
+      { id: 'view-kanban', name: 'Switch to Board view', key: '3', mode: 'kanban' }
+    ]
+    for (const v of viewHotkeys) {
+      this.addCommand({
+        id: v.id,
+        name: v.name,
+        // eslint-disable-next-line obsidianmd/commands/no-default-hotkeys -- deliberate: Alt+1/2/3 quick view switch, only active when a project view is focused
+        hotkeys: [{ modifiers: ['Alt'], key: v.key }],
+        checkCallback: (checking: boolean) => {
+          const view = this.app.workspace.getActiveViewOfType(ProjectView)
+          if (!view) return false
+          if (!checking) view.setView(v.mode)
+          return true
+        }
+      })
+    }
 
     this.addCommand({
       id: 'open-current-as-project',

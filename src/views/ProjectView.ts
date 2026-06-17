@@ -369,6 +369,14 @@ export class ProjectView extends ItemView {
       })
   }
 
+  /** Switch the active sub-view (table/gantt/kanban). Used by the view hotkeys. */
+  setView(mode: ViewMode): void {
+    if (!this.project || this.currentView === mode) return
+    this.currentView = mode
+    this.renderProjectToolbar()
+    this.renderCurrentView()
+  }
+
   private renderCurrentView(): void {
     if (!this.project) return
 
