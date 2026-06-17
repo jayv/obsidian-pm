@@ -319,3 +319,17 @@
   fill: var(--pm-accent);
   opacity: 0.5;
 }
+/* Wide invisible hit area so the thin arrow is easy to click to remove */
+.pm-gantt-arrow-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.pm-gantt-arrow-group:hover .pm-gantt-arrow {
+  stroke: var(--color-red);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+  opacity: 0.9;
+}

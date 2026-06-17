@@ -410,13 +410,53 @@ export function renderDependencyArrows(ctx: RendererContext): void {
       const fromY = HEADER_HEIGHT + fromRow * ROW_HEIGHT + ROW_HEIGHT / 2
 
       const midX = (fromX + toX) / 2
-      arrowGroup.appendChild(
+      const d = `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`
+
+      // One group per arrow: a wide invisible hit path makes the thin arrow
+      // easy to click, and hovering it highlights the visible arrow in red.
+      const arrow = svgEl('g', { class: 'pm-gantt-arrow-group' })
+      arrow.appendChild(
         svgEl('path', {
-          d: `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`,
+          d,
           class: 'pm-gantt-arrow',
           'marker-end': 'url(#pm-arrowhead)'
         })
       )
+      const hit = svgEl('path', { d, class: 'pm-gantt-arrow-hit' })
+      const tt = svgEl('title', {})
+      tt.textContent = 'Click to remove dependency'
+      hit.appendChild(tt)
+
+      const successorId = task.id
+      const depsAtRender = task.dependencies
+      hit.addEventListener(
+        'click',
+        safeAsync(async (e: MouseEvent) => {
+          e.stopPropagation()
+          const next = depsAtRender.filter((dep) => dep !== depId)
+          try {
+            await ctx.plugin.store.updateTask(ctx.project, successorId, { dependencies: next })
+          } catch (err) {
+            new Notice('Failed to remove dependency.')
+            console.error('GanttTaskBarRenderer: remove dependency failed', err)
+            return
+          }
+          ctx.plugin.pushUndo({
+            undo: async () => {
+              await ctx.plugin.store.updateTask(ctx.project, successorId, { dependencies: depsAtRender })
+              await ctx.onRefresh()
+            },
+            redo: async () => {
+              await ctx.plugin.store.updateTask(ctx.project, successorId, { dependencies: next })
+              await ctx.onRefresh()
+            }
+          })
+          new Notice('Dependency removed.')
+          await ctx.onRefresh()
+        })
+      )
+      arrow.appendChild(hit)
+      arrowGroup.appendChild(arrow)
     }
   }
 
