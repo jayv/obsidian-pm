@@ -31,7 +31,7 @@ const MIN_DAYS: Record<GanttGranularity, number> = {
   quarter: 365
 }
 
-export function buildTimelineConfig(tasks: Task[], granularity: GanttGranularity): TimelineCfg {
+export function buildTimelineConfig(tasks: Task[], granularity: GanttGranularity, zoom = 1): TimelineCfg {
   const allTasks = flattenTasks(tasks).map((f) => f.task)
   const dates: Temporal.PlainDate[] = []
 
@@ -65,7 +65,7 @@ export function buildTimelineConfig(tasks: Task[], granularity: GanttGranularity
     startDate = startDate.with({ day: 1 })
   }
 
-  const dayWidth = DAY_WIDTH[granularity]
+  const dayWidth = DAY_WIDTH[granularity] * zoom
   const totalDays = endDate.since(startDate, { largestUnit: 'days' }).days
   return {
     startDate,

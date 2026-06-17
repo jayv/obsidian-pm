@@ -24,6 +24,11 @@ import { Temporal, today } from '../../dates'
 import type { RendererContext } from './GanttRenderer'
 import { renderTaskLabel } from './TaskLabelRenderer'
 
+// Shift+wheel zoom: a multiplier on the granularity's base day width.
+const ZOOM_MIN = 0.3
+const ZOOM_MAX = 5
+const ZOOM_STEP = 1.15
+
 export class GanttView implements SubView {
   private granularity: GanttGranularity
   private scrollEl!: HTMLElement
@@ -33,6 +38,8 @@ export class GanttView implements SubView {
   private drag: DragState = makeDragState()
   private link: LinkState = makeLinkState()
   private labelWidth: number = LABEL_WIDTH
+  private zoom = 1
+  private zoomRaf: number | null = null
 
   getLabelWidth(): number {
     return this.labelWidth
@@ -41,7 +48,7 @@ export class GanttView implements SubView {
     this.labelWidth = w
   }
   private cleanupFns: (() => void)[] = []
-  private pendingScroll: { top: number; anchorDate: Temporal.PlainDate } | null = null
+  private pendingScroll: { top: number; anchorDate: Temporal.PlainDate; offsetX?: number } | null = null
 
   constructor(
     private container: HTMLElement,
@@ -54,6 +61,10 @@ export class GanttView implements SubView {
   }
 
   destroy(): void {
+    if (this.zoomRaf !== null) {
+      window.cancelAnimationFrame(this.zoomRaf)
+      this.zoomRaf = null
+    }
     for (const fn of this.cleanupFns) fn()
     this.cleanupFns = []
   }
@@ -82,7 +93,7 @@ export class GanttView implements SubView {
 
     const activeTasks = this.getVisibleTasks()
     this.flatTasks = flattenTasks(activeTasks).filter((f) => f.visible || f.depth === 0)
-    this.cfg = buildTimelineConfig(activeTasks, this.granularity)
+    this.cfg = buildTimelineConfig(activeTasks, this.granularity, this.zoom)
 
     this.renderGranularityControls()
     this.renderGantt()
@@ -98,6 +109,7 @@ export class GanttView implements SubView {
       if (level === this.granularity) btn.addClass('pm-gantt-zoom-btn--active')
       btn.addEventListener('click', () => {
         this.granularity = level
+        this.zoom = 1
         this.plugin.settings.ganttGranularity = level
         void this.plugin.saveSettings()
         this.render()
@@ -206,6 +218,28 @@ export class GanttView implements SubView {
     renderDependencyArrows(ctx)
     renderMilestoneLabels(ctx)
 
+    // Shift+wheel zooms by stretching the day columns horizontally, keeping the
+    // date under the cursor fixed. Renders are coalesced to one per frame.
+    const onZoomWheel = (e: WheelEvent) => {
+      if (!e.shiftKey) return
+      e.preventDefault()
+      const cursorX = e.clientX - rightPanel.getBoundingClientRect().left
+      const anchorDate = xToDate(this.cfg, rightPanel.scrollLeft + cursorX)
+      const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP
+      const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, this.zoom * factor))
+      if (next === this.zoom) return
+      this.zoom = next
+      this.pendingScroll = { top: rightPanel.scrollTop, anchorDate, offsetX: cursorX }
+      if (this.zoomRaf === null) {
+        this.zoomRaf = window.requestAnimationFrame(() => {
+          this.zoomRaf = null
+          this.render()
+        })
+      }
+    }
+    rightPanel.addEventListener('wheel', onZoomWheel, { passive: false })
+    this.cleanupFns.push(() => rightPanel.removeEventListener('wheel', onZoomWheel))
+
     // Forward wheel events from left panel to the scroll container
     // (left panel has overflow:hidden, so wheel events are swallowed otherwise)
     const onLeftWheel = (e: WheelEvent) => {
@@ -244,7 +278,8 @@ export class GanttView implements SubView {
       syncSpacer()
       if (this.pendingScroll) {
         this.scrollEl.scrollTop = this.pendingScroll.top
-        this.scrollEl.scrollLeft = Math.max(0, dateToX(this.cfg, this.pendingScroll.anchorDate))
+        const offsetX = this.pendingScroll.offsetX ?? 0
+        this.scrollEl.scrollLeft = Math.max(0, dateToX(this.cfg, this.pendingScroll.anchorDate) - offsetX)
         this.pendingScroll = null
       } else {
         this.scrollToToday()
