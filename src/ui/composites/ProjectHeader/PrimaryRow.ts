@@ -20,6 +20,7 @@ export interface PrimaryRowProps {
 export class PrimaryRow {
   el: HTMLElement
   private volatileEl: HTMLElement | null = null
+  private searchInput: HTMLInputElement | null = null
 
   constructor(
     parentEl: HTMLElement,
@@ -48,12 +49,19 @@ export class PrimaryRow {
     this.renderFilterToggle(this.volatileEl)
   }
 
+  /** Focus and select the search box (used by the search-focus hotkey). */
+  focusSearch(): void {
+    this.searchInput?.focus()
+    this.searchInput?.select()
+  }
+
   private renderSearchInput(): void {
     const input = this.el.createEl('input', {
       type: 'text',
       placeholder: 'Search tasks…',
       cls: 'pm-project-header-search'
     })
+    this.searchInput = input
     input.value = this.props.filter.text
     input.addEventListener('input', () => {
       this.props.filter.text = input.value

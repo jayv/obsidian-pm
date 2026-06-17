@@ -369,6 +369,11 @@ export class ProjectView extends ItemView {
       })
   }
 
+  /** Focus the task search box. Used by the search-focus hotkey. */
+  focusSearch(): void {
+    this.header?.focusSearch()
+  }
+
   /** Switch the active sub-view (table/gantt/kanban). Used by the view hotkeys. */
   setView(mode: ViewMode): void {
     if (!this.project || this.currentView === mode) return

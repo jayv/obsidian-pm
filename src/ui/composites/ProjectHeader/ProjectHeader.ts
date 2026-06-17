@@ -48,6 +48,11 @@ export class ProjectHeader {
     this.primaryRow?.setActiveSavedViewId(id)
   }
 
+  /** Focus the task search box. */
+  focusSearch(): void {
+    this.primaryRow?.focusSearch()
+  }
+
   private render(): void {
     this.el.empty()
     this.primaryRow = new PrimaryRow(this.el, {

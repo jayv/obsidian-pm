@@ -123,17 +123,17 @@ export default class PMPlugin extends Plugin {
     })
 
     // Switch the active project view between its sub-views (only when a project
-    // view is focused). Defaults to Alt+1/2/3; users can rebind in Hotkeys.
+    // view is focused). Defaults to Alt+A/S/D; users can rebind in Hotkeys.
     const viewHotkeys: { id: string; name: string; key: string; mode: ViewMode }[] = [
-      { id: 'view-table', name: 'Switch to Table view', key: '1', mode: 'table' },
-      { id: 'view-gantt', name: 'Switch to Gantt view', key: '2', mode: 'gantt' },
-      { id: 'view-kanban', name: 'Switch to Board view', key: '3', mode: 'kanban' }
+      { id: 'view-table', name: 'Switch to Table view', key: 'a', mode: 'table' },
+      { id: 'view-gantt', name: 'Switch to Gantt view', key: 's', mode: 'gantt' },
+      { id: 'view-kanban', name: 'Switch to Board view', key: 'd', mode: 'kanban' }
     ]
     for (const v of viewHotkeys) {
       this.addCommand({
         id: v.id,
         name: v.name,
-        // eslint-disable-next-line obsidianmd/commands/no-default-hotkeys -- deliberate: Alt+1/2/3 quick view switch, only active when a project view is focused
+        // eslint-disable-next-line obsidianmd/commands/no-default-hotkeys -- deliberate: Alt+A/S/D quick view switch, only active when a project view is focused
         hotkeys: [{ modifiers: ['Alt'], key: v.key }],
         checkCallback: (checking: boolean) => {
           const view = this.app.workspace.getActiveViewOfType(ProjectView)
@@ -143,6 +143,19 @@ export default class PMPlugin extends Plugin {
         }
       })
     }
+
+    this.addCommand({
+      id: 'focus-search',
+      name: 'Focus task search',
+      // eslint-disable-next-line obsidianmd/commands/no-default-hotkeys -- deliberate: Alt+F focuses search, only active when a project view is focused
+      hotkeys: [{ modifiers: ['Alt'], key: 'f' }],
+      checkCallback: (checking: boolean) => {
+        const view = this.app.workspace.getActiveViewOfType(ProjectView)
+        if (!view) return false
+        if (!checking) view.focusSearch()
+        return true
+      }
+    })
 
     this.addCommand({
       id: 'open-current-as-project',
