@@ -381,11 +381,16 @@ const HANDLE_W = 8
 function repositionBarChildren(barGroup: SVGGElement, newX: number, newW: number): void {
   const label = barGroup.querySelector('.pm-gantt-bar-label')
   if (label) {
-    label.setAttribute('x', String(newX + 8))
-    if (newW <= 55) {
-      label.setAttribute('visibility', 'hidden')
+    if (label.classList.contains('pm-gantt-bar-label--outside')) {
+      // Outside labels track the right edge and stay visible at any width.
+      label.setAttribute('x', String(newX + newW + 12))
     } else {
-      label.removeAttribute('visibility')
+      label.setAttribute('x', String(newX + 8))
+      if (newW <= 55) {
+        label.setAttribute('visibility', 'hidden')
+      } else {
+        label.removeAttribute('visibility')
+      }
     }
   }
 

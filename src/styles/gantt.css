@@ -286,6 +286,11 @@
   dominant-baseline: central;
   text-shadow: 0 0 3px rgba(0, 0, 0, 0.55);
 }
+/* Label rendered to the right of a short bar — reads on the chart background */
+.pm-gantt-bar-label--outside {
+  fill: var(--text-normal);
+  text-shadow: none;
+}
 
 /* Assignee avatars on the bar */
 .pm-gantt-bar-avatars {

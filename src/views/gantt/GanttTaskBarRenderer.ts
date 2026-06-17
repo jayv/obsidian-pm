@@ -143,15 +143,19 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   // Rendered before the label so the label can reserve room and avoid overlap.
   const avatarZone = renderAssigneeAvatars(barGroup, task, x, width, y, height)
 
-  // Label inside bar
+  // Label: inside the bar when it fits, otherwise to the right of the bar so
+  // short tasks don't clip or hide their title.
+  const labelY = y + height / 2 + 5
   if (width - avatarZone > 55) {
-    const label = svgEl('text', {
-      x: x + 8,
-      y: y + height / 2 + 5,
-      class: 'pm-gantt-bar-label'
-    })
+    const label = svgEl('text', { x: x + 8, y: labelY, class: 'pm-gantt-bar-label' })
     const maxChars = Math.max(4, Math.floor((width - 16 - avatarZone) / 7.5))
     label.textContent = task.title.length > maxChars ? task.title.slice(0, maxChars - 1) + '\u2026' : task.title
+    barGroup.appendChild(label)
+  } else {
+    // Sit clear of the bar's right edge, the recurrence glyph, and the link dot.
+    const lx = x + width + (task.recurrence ? 22 : 12)
+    const label = svgEl('text', { x: lx, y: labelY, class: 'pm-gantt-bar-label pm-gantt-bar-label--outside' })
+    label.textContent = task.title
     barGroup.appendChild(label)
   }
 
