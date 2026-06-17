@@ -164,6 +164,31 @@ export function collectAllTags(tasks: Task[]): string[] {
   return [...set].filter(Boolean).sort()
 }
 
+/**
+ * Earliest start and latest due across all of a task's descendants (any depth).
+ * Each YYYY-MM-DD endpoint — start and due — is considered, so a sub with only
+ * one date still contributes. Returns empty strings when no descendant is dated.
+ * Used to render a parent as a summary bar spanning its subtasks.
+ */
+export function subtaskDateSpan(task: Task): { start: string; due: string } {
+  let start = ''
+  let due = ''
+  const consider = (d: string): void => {
+    if (!d) return
+    if (!start || d < start) start = d
+    if (!due || d > due) due = d
+  }
+  const walk = (list: Task[]): void => {
+    for (const t of list) {
+      consider(t.start)
+      consider(t.due)
+      walk(t.subtasks)
+    }
+  }
+  walk(task.subtasks)
+  return { start, due }
+}
+
 /** Sum all logged hours for a task */
 export function totalLoggedHours(task: Task): number {
   if (!task.timeLogs?.length) return 0

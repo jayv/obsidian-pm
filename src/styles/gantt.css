@@ -269,6 +269,14 @@
 .pm-gantt-bar-progress {
   pointer-events: none;
 }
+/* Summary (parent) bars: thin bar + slanted legs spanning the subtasks */
+.pm-gantt-summary-shape {
+  opacity: 0.9;
+  pointer-events: none;
+}
+.pm-gantt-bar-group:hover .pm-gantt-summary-shape {
+  filter: brightness(1.15);
+}
 .pm-gantt-bar-label {
   font-size: 10px;
   fill: rgba(255, 255, 255, 0.85);

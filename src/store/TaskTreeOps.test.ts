@@ -9,6 +9,7 @@ import {
   findTask,
   flattenTasks,
   moveTaskInTree,
+  subtaskDateSpan,
   totalLoggedHours,
   updateTaskInTree
 } from './TaskTreeOps'
@@ -211,5 +212,48 @@ describe('totalLoggedHours', () => {
       ]
     })
     expect(totalLoggedHours(t)).toBe(5.5)
+  })
+})
+
+describe('subtaskDateSpan', () => {
+  it('returns empty strings when there are no subtasks', () => {
+    expect(subtaskDateSpan(task({ id: 'a', start: '2026-01-01', due: '2026-01-10' }))).toEqual({
+      start: '',
+      due: ''
+    })
+  })
+
+  it('spans the earliest start and latest due across direct subtasks', () => {
+    const parent = task({
+      id: 'a',
+      subtasks: [
+        task({ id: 'a1', start: '2026-03-05', due: '2026-03-08' }),
+        task({ id: 'a2', start: '2026-03-02', due: '2026-03-12' })
+      ]
+    })
+    expect(subtaskDateSpan(parent)).toEqual({ start: '2026-03-02', due: '2026-03-12' })
+  })
+
+  it('rolls up across nested descendants', () => {
+    const parent = task({
+      id: 'a',
+      subtasks: [
+        task({
+          id: 'a1',
+          start: '2026-03-05',
+          due: '2026-03-08',
+          subtasks: [task({ id: 'a1a', start: '', due: '2026-04-01' })]
+        })
+      ]
+    })
+    expect(subtaskDateSpan(parent)).toEqual({ start: '2026-03-05', due: '2026-04-01' })
+  })
+
+  it('ignores undated subtasks and considers single endpoints', () => {
+    const parent = task({
+      id: 'a',
+      subtasks: [task({ id: 'a1', start: '', due: '' }), task({ id: 'a2', start: '2026-03-09', due: '' })]
+    })
+    expect(subtaskDateSpan(parent)).toEqual({ start: '2026-03-09', due: '2026-03-09' })
   })
 })

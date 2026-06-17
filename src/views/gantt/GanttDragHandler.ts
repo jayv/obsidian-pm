@@ -272,6 +272,107 @@ export function attachBarMove(
   }
 }
 
+/**
+ * Drag handler for a parent "summary" bar. The bar's span is derived from its
+ * subtasks, so dragging it doesn't edit the parent's own dates — it slides the
+ * whole subtree by the dragged number of whole days.
+ */
+export function attachSummaryMove(
+  rect: SVGRectElement,
+  barGroup: SVGGElement,
+  task: Task,
+  x: number,
+  cfg: TimelineCfg,
+  drag: DragState,
+  plugin: PMPlugin,
+  project: Project,
+  onRefresh: () => Promise<void>
+): () => void {
+  let activeCleanup: (() => void) | null = null
+
+  rect.addEventListener('mousedown', (e: MouseEvent) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    drag.isDragging = true
+    drag.dragMoved = false
+    drag.dragSide = 'move'
+    drag.dragTask = task
+    drag.dragStartX = e.clientX
+    drag.dragBarEl = rect
+    drag.dragInitialX = x
+
+    const snapPoints = getSnapPoints(cfg)
+    const snapThreshold = cfg.dayWidth * 0.4
+    let lastSnappedX = x
+
+    const onMove = (ev: MouseEvent) => {
+      if (!drag.isDragging) return
+      const dx = ev.clientX - drag.dragStartX
+      if (Math.abs(dx) > 3) drag.dragMoved = true
+      lastSnappedX = Math.max(0, drag.dragInitialX + dx)
+      lastSnappedX = snapX(lastSnappedX, snapPoints, snapThreshold)
+      barGroup.setAttribute('transform', `translate(${lastSnappedX - drag.dragInitialX}, 0)`)
+    }
+
+    const onUp = safeAsync(async () => {
+      activeDocument.removeEventListener('mousemove', onMove)
+      activeDocument.removeEventListener('mouseup', onUp)
+      rect.classList.remove('pm-gantt-bar-grabbing')
+      activeCleanup = null
+      if (!drag.isDragging) return
+      drag.isDragging = false
+      if (!drag.dragMoved) {
+        barGroup.removeAttribute('transform')
+        return
+      }
+
+      const deltaDays = Math.round((lastSnappedX - drag.dragInitialX) / cfg.dayWidth)
+      if (deltaDays === 0) {
+        barGroup.removeAttribute('transform')
+        return
+      }
+
+      const taskId = task.id
+      try {
+        await plugin.store.shiftSubtreeDates(project, taskId, deltaDays)
+      } catch (err) {
+        barGroup.removeAttribute('transform')
+        new Notice('Failed to move subtasks. Please try again.')
+        console.error('GanttDragHandler: summary move failed', err)
+        return
+      }
+      plugin.pushUndo({
+        undo: async () => {
+          await plugin.store.shiftSubtreeDates(project, taskId, -deltaDays)
+          await onRefresh()
+        },
+        redo: async () => {
+          await plugin.store.shiftSubtreeDates(project, taskId, deltaDays)
+          await onRefresh()
+        }
+      })
+      await onRefresh()
+    })
+
+    rect.classList.add('pm-gantt-bar-grabbing')
+    activeDocument.addEventListener('mousemove', onMove)
+    activeDocument.addEventListener('mouseup', onUp)
+    activeCleanup = () => {
+      activeDocument.removeEventListener('mousemove', onMove)
+      activeDocument.removeEventListener('mouseup', onUp)
+    }
+  })
+
+  return () => {
+    if (activeCleanup) {
+      activeCleanup()
+      activeCleanup = null
+      drag.isDragging = false
+      drag.dragBarEl = null
+    }
+  }
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 const HANDLE_W = 8

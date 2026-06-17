@@ -14,8 +14,9 @@ import {
   getSnapPoints,
   snapX
 } from './TimelineConfig'
-import { attachDragHandle, attachBarMove } from './GanttDragHandler'
+import { attachDragHandle, attachBarMove, attachSummaryMove } from './GanttDragHandler'
 import { attachLinkDrag } from './GanttLinkHandler'
+import { subtaskDateSpan } from '../../store/TaskTreeOps'
 import type { RendererContext } from './GanttRenderer'
 
 // Milestones use a fixed pastel green so they stand out from status-colored bars
@@ -24,8 +25,15 @@ const MILESTONE_COLOR = '#8fd9ad'
 // ─── Task bars ─────────────────────────────────────────────────────────────
 
 export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: number, ctx: RendererContext): void {
-  const startDate = parsePlainDate(task.start)
-  const endDate = parsePlainDate(task.due)
+  // A task with dated subtasks renders as a summary bar spanning them; its own
+  // start/due are ignored in favor of the rolled-up span across descendants.
+  const span = task.type !== 'milestone' && task.subtasks.length > 0 ? subtaskDateSpan(task) : { start: '', due: '' }
+  const isSummary = Boolean(span.start || span.due)
+  const startStr = isSummary ? span.start || span.due : task.start
+  const dueStr = isSummary ? span.due || span.start : task.due
+
+  const startDate = parsePlainDate(startStr)
+  const endDate = parsePlainDate(dueStr)
   if (!startDate && !endDate) {
     renderEmptyRowClickTarget(g, task, row, ctx)
     return
@@ -68,7 +76,9 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   const barGroup = svgEl('g', { class: 'pm-gantt-bar-group', 'data-task-id': task.id })
   g.appendChild(barGroup)
 
-  // Main bar — flat fill, no gradient/shadow/sheen
+  // Main bar — flat fill, no gradient/shadow/sheen. A summary bar's rect is an
+  // invisible full-height hit area (drag/click/tooltip); the visible shape is a
+  // thin bar with slanted legs drawn on top below.
   const rect = svgEl('rect', {
     x,
     y,
@@ -77,13 +87,31 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
     rx: BAR_BORDER_RADIUS,
     ry: BAR_BORDER_RADIUS,
     fill: color,
-    opacity: 0.4,
-    class: 'pm-gantt-bar'
+    opacity: isSummary ? 0 : 0.4,
+    class: isSummary ? 'pm-gantt-bar pm-gantt-bar--summary' : 'pm-gantt-bar'
   })
   barGroup.appendChild(rect)
 
-  // Completed portion — solid fill over the faint track so progress reads at a glance
-  if (task.progress > 0) {
+  // Summary bar: a 4px-thick line with downward slanted legs marking start/end.
+  if (isSummary) {
+    const TH = 4 // bar thickness
+    const LEG = 9 // how far the end legs drop
+    const legW = Math.min(6, width / 2)
+    const top = y
+    const points = [
+      `${x},${top}`,
+      `${x + width},${top}`,
+      `${x + width},${top + LEG}`,
+      `${x + width - legW},${top + TH}`,
+      `${x + legW},${top + TH}`,
+      `${x},${top + LEG}`
+    ].join(' ')
+    barGroup.appendChild(svgEl('polygon', { points, fill: color, class: 'pm-gantt-summary-shape' }))
+  }
+
+  // Completed portion — solid fill over the faint track so progress reads at a
+  // glance. Skipped for summary bars, whose span is an aggregate of subtasks.
+  if (task.progress > 0 && !isSummary) {
     const pw = (task.progress / 100) * width
     barGroup.appendChild(
       svgEl('rect', {
@@ -130,39 +158,42 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   // Tooltip
   const ttEl = svgEl('title', {})
   const assigneesStr = task.assignees.length ? `\nAssignees: ${task.assignees.join(', ')}` : ''
-  ttEl.textContent = `${task.title}\n${statusConfig?.label ?? task.status} \u00b7 ${task.priority}\nStart: ${task.start || '\u2014'}  Due: ${task.due || '\u2014'}\nProgress: ${task.progress}%${assigneesStr}`
+  const summaryStr = isSummary ? ' (rolled up from subtasks)' : ''
+  ttEl.textContent = `${task.title}\n${statusConfig?.label ?? task.status} \u00b7 ${task.priority}\nStart: ${startStr || '\u2014'}  Due: ${dueStr || '\u2014'}${summaryStr}\nProgress: ${task.progress}%${assigneesStr}`
   rect.appendChild(ttEl)
 
-  // Drag handles
-  const HANDLE_W = 8
-  for (const side of ['left', 'right'] as const) {
-    const hx = side === 'left' ? x : x + width - HANDLE_W
-    const handle = svgEl('rect', {
-      x: hx,
-      y,
-      width: HANDLE_W,
-      height,
-      rx: 3,
-      ry: 3,
-      class: 'pm-gantt-drag-handle',
-      cursor: 'ew-resize'
-    })
-    const cleanup = attachDragHandle(
-      handle,
-      side,
-      task,
-      rect,
-      barGroup,
-      x,
-      width,
-      ctx.cfg,
-      ctx.drag,
-      ctx.plugin,
-      ctx.project,
-      ctx.onRefresh
-    )
-    ctx.cleanupFns.push(cleanup)
-    barGroup.appendChild(handle)
+  // Drag handles \u2014 resize only applies to leaf bars; a summary span is derived.
+  if (!isSummary) {
+    const HANDLE_W = 8
+    for (const side of ['left', 'right'] as const) {
+      const hx = side === 'left' ? x : x + width - HANDLE_W
+      const handle = svgEl('rect', {
+        x: hx,
+        y,
+        width: HANDLE_W,
+        height,
+        rx: 3,
+        ry: 3,
+        class: 'pm-gantt-drag-handle',
+        cursor: 'ew-resize'
+      })
+      const cleanup = attachDragHandle(
+        handle,
+        side,
+        task,
+        rect,
+        barGroup,
+        x,
+        width,
+        ctx.cfg,
+        ctx.drag,
+        ctx.plugin,
+        ctx.project,
+        ctx.onRefresh
+      )
+      ctx.cleanupFns.push(cleanup)
+      barGroup.appendChild(handle)
+    }
   }
 
   // Link dots (dependency connectors) — positioned outside bar edges.
@@ -183,8 +214,23 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
     barGroup.appendChild(dot)
   }
 
-  // Move whole bar by dragging (only when both dates exist)
-  if (task.start && task.due) {
+  // Move whole bar by dragging. A summary bar slides its whole subtree; a leaf
+  // bar moves its own dates (only when both dates exist).
+  if (isSummary) {
+    const moveCleanup = attachSummaryMove(
+      rect,
+      barGroup,
+      task,
+      x,
+      ctx.cfg,
+      ctx.drag,
+      ctx.plugin,
+      ctx.project,
+      ctx.onRefresh
+    )
+    ctx.cleanupFns.push(moveCleanup)
+    rect.setAttribute('cursor', 'grab')
+  } else if (task.start && task.due) {
     const moveCleanup = attachBarMove(
       rect,
       barGroup,

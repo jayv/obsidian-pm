@@ -5,7 +5,7 @@ import { makeProject, makeTask } from '../types'
 import { today } from '../dates'
 import { isTerminalStatus } from '../utils'
 import { archiveTask as doArchiveTask, unarchiveTask as doUnarchiveTask } from './ArchiveOps'
-import { computeSchedule } from './Scheduler'
+import { addDays, computeSchedule } from './Scheduler'
 import {
   findParentId,
   findTaskById,
@@ -975,6 +975,36 @@ export class ProjectStore {
    * Applies computed date patches and saves.
    * Returns the number of tasks that were adjusted.
    */
+  /**
+   * Shift every dated descendant of a task by `deltaDays` (signed). Used when a
+   * parent summary bar is dragged in the Gantt: the parent's own span is derived
+   * from its subtasks, so moving it just slides the whole subtree. Returns the
+   * number of tasks adjusted.
+   */
+  async shiftSubtreeDates(project: Project, taskId: string, deltaDays: number): Promise<number> {
+    if (deltaDays === 0) return 0
+    const task = findTaskById(project, taskId)
+    if (!task) return 0
+
+    let count = 0
+    const walk = (list: Task[]): void => {
+      for (const sub of list) {
+        const start = sub.start ? addDays(sub.start, deltaDays) : sub.start
+        const due = sub.due ? addDays(sub.due, deltaDays) : sub.due
+        if (start !== sub.start || due !== sub.due) {
+          updateTaskInTree(project.tasks, sub.id, { start, due })
+          this.markDirty(project, [sub.id], 'fm')
+          count++
+        }
+        walk(sub.subtasks)
+      }
+    }
+    walk(task.subtasks)
+    if (count === 0) return 0
+    await this.saveProject(project)
+    return count
+  }
+
   async scheduleAfterChange(project: Project, changedTaskId?: string, statuses: StatusConfig[] = []): Promise<number> {
     const { patches } = computeSchedule(project.tasks, changedTaskId, statuses)
     if (patches.length === 0) return 0
