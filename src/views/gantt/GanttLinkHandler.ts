@@ -66,11 +66,14 @@ export function attachLinkDrag(
     })
     svg.appendChild(ghost)
     dotEl.classList.add('pm-gantt-link-dot--active')
+    // Activates the milestone connector lines as drop targets (CSS-gated) so a
+    // milestone can be linked anywhere along its line, even off-screen.
+    svg.classList.add('pm-gantt-linking')
 
     let targetGroup: Element | null = null
 
     const highlightEl = (group: Element): Element | null =>
-      group.matches('.pm-gantt-bar, .pm-gantt-milestone')
+      group.matches('.pm-gantt-bar, .pm-gantt-milestone, .pm-gantt-milestone-hit')
         ? group
         : group.querySelector('.pm-gantt-bar, .pm-gantt-milestone')
 
@@ -105,6 +108,7 @@ export function attachLinkDrag(
       activeDocument.removeEventListener('keydown', onKey)
       ghost.remove()
       dotEl.classList.remove('pm-gantt-link-dot--active')
+      svg.classList.remove('pm-gantt-linking')
       clearTarget()
       cleanup = null
     }

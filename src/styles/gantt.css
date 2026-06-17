@@ -334,6 +334,18 @@
   pointer-events: none;
 }
 
+/* Milestone connector drop target — only live while dragging a dependency */
+.pm-gantt-milestone-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 10;
+  pointer-events: none;
+}
+.pm-gantt-linking .pm-gantt-milestone-hit {
+  pointer-events: stroke;
+  cursor: crosshair;
+}
+
 /* Today line */
 .pm-gantt-today-line {
   stroke: color-mix(in srgb, var(--color-red) 65%, transparent);

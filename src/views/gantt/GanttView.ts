@@ -2,7 +2,7 @@ import { ButtonComponent } from 'obsidian'
 import type PMPlugin from '../../main'
 import type { Project, Task, GanttGranularity, FilterState } from '../../types'
 import { type FlatTask, flattenTasks } from '../../store/TaskTreeOps'
-import { applyTaskFilterPromote } from '../../store/TaskFilter'
+import { applyTaskFilterPromote, isFilterActive } from '../../store/TaskFilter'
 import { openTaskModal } from '../../ui/ModalFactory'
 import type { SubView } from '../SubView'
 import type { TimelineCfg } from './TimelineConfig'
@@ -106,7 +106,16 @@ export class GanttView implements SubView {
     this.conflicts = computeResourceConflicts(flat, this.plugin.settings.statuses).byTask
     this.conflictsOnly = this.plugin.settings.ganttConflictsOnly
     if (this.conflictsOnly && this.conflicts.size > 0) {
-      flat = flat.filter((f) => this.conflicts?.has(f.task.id))
+      flat = flat.filter((f) => this.conflicts?.has(f.task.id) || f.task.type === 'milestone')
+    }
+    // Milestones are reference markers: keep every dated one visible whenever a
+    // filter is narrowing the view, re-adding any the filters removed.
+    if ((this.conflictsOnly && this.conflicts.size > 0) || isFilterActive(this.filter)) {
+      const present = new Set(flat.map((f) => f.task.id))
+      const extra = flattenTasks(this.project.tasks).filter(
+        (f) => f.task.type === 'milestone' && (f.task.due || f.task.start) && !present.has(f.task.id)
+      )
+      if (extra.length) flat = [...flat, ...extra]
     }
     this.flatTasks = flat
 

@@ -442,6 +442,20 @@ export function renderMilestoneLabels(ctx: RendererContext): void {
       })
     )
 
+    // Wide invisible hit line along the whole connector: while dragging a
+    // dependency it becomes a drop target, so a milestone can be linked even
+    // when its diamond is scrolled out of view. Inert otherwise.
+    linesG.appendChild(
+      svgEl('line', {
+        x1: x,
+        y1: cy + pillH / 2,
+        x2: x,
+        y2: totalH,
+        class: 'pm-gantt-milestone-hit',
+        'data-task-id': task.id
+      })
+    )
+
     const pill = svgEl('rect', {
       x: x - pillW / 2,
       y: cy - pillH / 2,
