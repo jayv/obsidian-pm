@@ -9,6 +9,7 @@ import {
   findTask,
   flattenTasks,
   moveTaskInTree,
+  rollUpParentDates,
   subtaskDateSpan,
   totalLoggedHours,
   updateTaskInTree
@@ -255,5 +256,66 @@ describe('subtaskDateSpan', () => {
       subtasks: [task({ id: 'a1', start: '', due: '' }), task({ id: 'a2', start: '2026-03-09', due: '' })]
     })
     expect(subtaskDateSpan(parent)).toEqual({ start: '2026-03-09', due: '2026-03-09' })
+  })
+})
+
+describe('rollUpParentDates', () => {
+  it('rewrites a parent to span its subtasks and returns its id', () => {
+    const parent = task({
+      id: 'a',
+      start: '2026-01-01',
+      due: '2026-01-02',
+      subtasks: [
+        task({ id: 'a1', start: '2026-03-05', due: '2026-03-08' }),
+        task({ id: 'a2', start: '2026-03-02', due: '2026-03-12' })
+      ]
+    })
+    const changed = rollUpParentDates([parent])
+    expect(changed).toEqual(['a'])
+    expect(parent).toMatchObject({ start: '2026-03-02', due: '2026-03-12' })
+  })
+
+  it('resolves nested parents bottom-up', () => {
+    const root = task({
+      id: 'a',
+      start: '',
+      due: '',
+      subtasks: [
+        task({
+          id: 'a1',
+          start: '',
+          due: '',
+          subtasks: [
+            task({ id: 'a1a', start: '2026-03-05', due: '2026-03-08' }),
+            task({ id: 'a1b', start: '2026-03-10', due: '2026-03-15' })
+          ]
+        })
+      ]
+    })
+    const changed = rollUpParentDates([root])
+    expect(changed.sort()).toEqual(['a', 'a1'])
+    expect(root).toMatchObject({ start: '2026-03-05', due: '2026-03-15' })
+    expect(root.subtasks[0]).toMatchObject({ start: '2026-03-05', due: '2026-03-15' })
+  })
+
+  it('leaves parents with no dated descendants untouched', () => {
+    const parent = task({
+      id: 'a',
+      start: '2026-01-01',
+      due: '2026-01-02',
+      subtasks: [task({ id: 'a1', start: '', due: '' })]
+    })
+    expect(rollUpParentDates([parent])).toEqual([])
+    expect(parent).toMatchObject({ start: '2026-01-01', due: '2026-01-02' })
+  })
+
+  it('returns an empty list when nothing changes', () => {
+    const parent = task({
+      id: 'a',
+      start: '2026-03-02',
+      due: '2026-03-12',
+      subtasks: [task({ id: 'a1', start: '2026-03-02', due: '2026-03-12' })]
+    })
+    expect(rollUpParentDates([parent])).toEqual([])
   })
 })

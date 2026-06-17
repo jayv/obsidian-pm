@@ -189,6 +189,42 @@ export function subtaskDateSpan(task: Task): { start: string; due: string } {
   return { start, due }
 }
 
+/**
+ * Rewrite every parent task's start/due in place to span its dated descendants
+ * (see {@link subtaskDateSpan}), bottom-up so nested parents resolve correctly.
+ * Parents with no dated descendants keep their own dates. Returns the ids of the
+ * tasks whose dates changed, so callers can persist exactly those.
+ */
+export function rollUpParentDates(tasks: Task[]): string[] {
+  const changed: string[] = []
+  const recurse = (task: Task): { start: string; due: string } => {
+    if (task.subtasks.length === 0) return { start: task.start, due: task.due }
+    let lo = ''
+    let hi = ''
+    const consider = (d: string): void => {
+      if (!d) return
+      if (!lo || d < lo) lo = d
+      if (!hi || d > hi) hi = d
+    }
+    for (const sub of task.subtasks) {
+      const r = recurse(sub)
+      consider(r.start)
+      consider(r.due)
+    }
+    if (!lo && !hi) return { start: task.start, due: task.due }
+    const newStart = lo || hi
+    const newDue = hi || lo
+    if (task.start !== newStart || task.due !== newDue) {
+      task.start = newStart
+      task.due = newDue
+      changed.push(task.id)
+    }
+    return { start: newStart, due: newDue }
+  }
+  for (const t of tasks) recurse(t)
+  return changed
+}
+
 /** Sum all logged hours for a task */
 export function totalLoggedHours(task: Task): number {
   if (!task.timeLogs?.length) return 0

@@ -20,6 +20,7 @@ import {
   deleteTaskFromTree,
   flattenTasks,
   moveTaskInTree,
+  rollUpParentDates,
   updateTaskInTree
 } from './TaskTreeOps'
 import { hydrateProjectFromFrontmatter, hydrateTaskFromFile, hydrateTasks } from './YamlHydrator'
@@ -287,6 +288,10 @@ export class ProjectStore {
         this.clearDirty(project)
       }
 
+      // Normalize parent dates in memory so every view is consistent right away;
+      // mark any that shifted dirty so the next save migrates them to disk.
+      this.markDirty(project, rollUpParentDates(project.tasks), 'fm')
+
       this.projectCache.set(file.path, project)
       return project
     } catch (e) {
@@ -468,6 +473,11 @@ export class ProjectStore {
   }
 
   private async doSaveProject(project: Project): Promise<void> {
+    // Roll parent dates up to span their subtasks before snapshotting dirty, so
+    // any parent whose span shifted is written in this same save. Keeps stored
+    // dates consistent with the Gantt's summary bars across every view.
+    this.markDirty(project, rollUpParentDates(project.tasks), 'fm')
+
     // Snapshot the dirty map and drop the live entry up front (before any await),
     // so concurrent markDirty calls land in the next save's map, not this one's.
     const dirty = this.dirtyTasks.get(project.filePath) ?? new Map<string, DirtyKind>()
