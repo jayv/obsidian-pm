@@ -1,6 +1,7 @@
 import type PMPlugin from '../../main'
 import type { Project, Task } from '../../types'
 import { CollapseToggle } from '../../ui/primitives/CollapseToggle'
+import { AvatarStack } from '../../ui/primitives/AvatarStack'
 import { openTaskModal } from '../../ui/ModalFactory'
 import { getStatusConfig, safeAsync } from '../../utils'
 import { ROW_HEIGHT } from './TimelineConfig'
@@ -79,6 +80,12 @@ export function renderTaskLabel(
   titleEl.addEventListener('click', () => {
     openTaskModal(ctx.plugin, ctx.project, { task, onSave: () => ctx.onRefresh() })
   })
+
+  // Assignee avatars (colored initials), matching the bars and table
+  if (task.assignees.length) {
+    const avatars = el.createDiv('pm-gantt-label-avatars')
+    new AvatarStack(avatars).setNames(task.assignees).setMax(3).setSize('sm')
+  }
 
   // Progress %
   if (task.progress > 0) {

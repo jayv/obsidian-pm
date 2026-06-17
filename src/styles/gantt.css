@@ -120,6 +120,10 @@
   color: var(--pm-accent);
 }
 
+.pm-gantt-label-avatars {
+  flex-shrink: 0;
+}
+
 .pm-gantt-label-progress {
   font-size: 11px;
   color: var(--pm-text-muted);
