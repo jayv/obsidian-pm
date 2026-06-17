@@ -196,8 +196,16 @@ function fillTableBody(ctx: TableContext): void {
 const ROW_OVERSCAN = 8
 export const ROW_HEIGHT_ESTIMATE = 36
 
+// Below this row count, render every row once and let the browser scroll
+// natively. Virtualization only pays off for large lists; for small ones the
+// per-scroll tbody rebuild (and the layout reads below) just cause jank.
+const VIRTUALIZE_THRESHOLD = 150
+
 /** Compute the [start, end) slice of visibleRows that should be rendered for the current scroll position. */
 function computeWindow(state: TableState): { start: number; end: number } {
+  if (state.visibleRows.length <= VIRTUALIZE_THRESHOLD) {
+    return { start: 0, end: state.visibleRows.length }
+  }
   const wrapper = state.wrapper
   if (!wrapper) return { start: 0, end: state.visibleRows.length }
   const thead = wrapper.querySelector('thead')
