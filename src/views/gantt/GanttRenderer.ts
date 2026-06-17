@@ -13,6 +13,8 @@ export { renderTaskBar, renderMilestoneLabels, renderDependencyArrows } from './
 
 export interface RendererContext {
   svgEl: SVGSVGElement
+  /** Separate sticky SVG holding the date header (and milestone pills). */
+  headerEl: SVGSVGElement
   cfg: TimelineCfg
   plugin: PMPlugin
   project: Project

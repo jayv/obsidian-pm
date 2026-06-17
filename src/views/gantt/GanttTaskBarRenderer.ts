@@ -379,7 +379,10 @@ export function renderMilestoneLabels(ctx: RendererContext): void {
   const milestones = ctx.flatTasks.filter((f) => f.task.type === 'milestone' && (f.task.due || f.task.start))
   if (!milestones.length) return
 
-  const labelsG = svgEl('g', { class: 'pm-gantt-milestone-labels' })
+  // Lines live in the body (they scroll with the rows); pills live in the sticky
+  // header so they stay visible — and aren't covered by it — while scrolling.
+  const linesG = svgEl('g', { class: 'pm-gantt-milestone-lines' })
+  const pillsG = svgEl('g', { class: 'pm-gantt-milestone-labels' })
 
   for (const { task } of milestones) {
     const date = parsePlainDate(task.due) ?? parsePlainDate(task.start)
@@ -395,7 +398,7 @@ export function renderMilestoneLabels(ctx: RendererContext): void {
     // Dashed connector runs from the bottom of the pill down through the chart,
     // so each milestone reads as one unit (pill + line) like the today marker.
     const totalH = HEADER_HEIGHT + ctx.flatTasks.filter((f) => f.visible || f.depth === 0).length * ROW_HEIGHT
-    labelsG.appendChild(
+    linesG.appendChild(
       svgEl('line', {
         x1: x,
         y1: cy + pillH / 2,
@@ -418,7 +421,7 @@ export function renderMilestoneLabels(ctx: RendererContext): void {
       fill: MILESTONE_COLOR,
       class: 'pm-gantt-milestone-pill'
     })
-    labelsG.appendChild(pill)
+    pillsG.appendChild(pill)
 
     const label = svgEl('text', {
       x,
@@ -427,10 +430,11 @@ export function renderMilestoneLabels(ctx: RendererContext): void {
       class: 'pm-gantt-milestone-label'
     })
     label.textContent = task.title
-    labelsG.appendChild(label)
+    pillsG.appendChild(label)
   }
 
-  ctx.svgEl.appendChild(labelsG)
+  ctx.svgEl.appendChild(linesG)
+  ctx.headerEl.appendChild(pillsG)
 }
 
 // ─── Dependency arrows ─────────────────────────────────────────────────────

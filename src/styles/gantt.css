@@ -158,6 +158,17 @@
 }
 .pm-gantt-svg {
   display: block;
+  position: relative;
+  z-index: 1;
+}
+/* Date header pinned to the top while scrolling vertically; scrolls with the
+   timeline horizontally. Body is pulled up under it via a negative margin. */
+.pm-gantt-header-svg {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
 }
 
 /* SVG elements */

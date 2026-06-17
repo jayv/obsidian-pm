@@ -33,6 +33,7 @@ export class GanttView implements SubView {
   private granularity: GanttGranularity
   private scrollEl!: HTMLElement
   private svgEl!: SVGSVGElement
+  private headerEl!: SVGSVGElement
   private flatTasks: FlatTask[] = []
   private cfg!: TimelineCfg
   private drag: DragState = makeDragState()
@@ -175,11 +176,22 @@ export class GanttView implements SubView {
     const totalRows = this.flatTasks.filter((f) => f.visible || f.depth === 0).length
     const svgHeight = HEADER_HEIGHT + (totalRows + 1) * ROW_HEIGHT // +1 for add-task row
 
+    // Sticky date header: pinned to the top on vertical scroll, scrolls with the
+    // timeline horizontally. The body is pulled up under it by HEADER_HEIGHT so
+    // the row offsets (which still reserve the header band) stay unchanged.
+    this.headerEl = svgEl('svg', {
+      width: this.cfg.totalWidth,
+      height: HEADER_HEIGHT,
+      class: 'pm-gantt-header-svg'
+    })
+    svgContainer.appendChild(this.headerEl)
+
     this.svgEl = svgEl('svg', {
       width: this.cfg.totalWidth,
       height: svgHeight,
       class: 'pm-gantt-svg'
     })
+    this.svgEl.style.marginTop = `-${HEADER_HEIGHT}px`
     svgContainer.appendChild(this.svgEl)
 
     // Escape to cancel linking mode; Ctrl/Cmd+Z to undo, Ctrl/Cmd+Shift+Z
@@ -323,6 +335,7 @@ export class GanttView implements SubView {
   private makeRendererContext(): RendererContext {
     return {
       svgEl: this.svgEl,
+      headerEl: this.headerEl,
       cfg: this.cfg,
       plugin: this.plugin,
       project: this.project,
