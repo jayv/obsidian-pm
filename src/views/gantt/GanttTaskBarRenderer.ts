@@ -15,7 +15,7 @@ import {
   snapX
 } from './TimelineConfig'
 import { attachDragHandle, attachBarMove } from './GanttDragHandler'
-import { handleLinkDotClick } from './GanttLinkHandler'
+import { attachLinkDrag } from './GanttLinkHandler'
 import type { RendererContext } from './GanttRenderer'
 
 // Milestones use a fixed pastel green so they stand out from status-colored bars
@@ -64,8 +64,8 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   const xEnd = Math.min(ctx.cfg.totalWidth, dateToX(ctx.cfg, effectiveEnd))
   const width = Math.max(8, xEnd - x)
 
-  // Group for bar + handles
-  const barGroup = svgEl('g', { class: 'pm-gantt-bar-group' })
+  // Group for bar + handles. data-task-id lets drag-to-link hit-test this bar.
+  const barGroup = svgEl('g', { class: 'pm-gantt-bar-group', 'data-task-id': task.id })
   g.appendChild(barGroup)
 
   // Main bar — flat fill, no gradient/shadow/sheen
@@ -165,8 +165,9 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
     barGroup.appendChild(handle)
   }
 
-  // Link dots (dependency connectors) — positioned outside bar edges
-  const DOT_R = 4
+  // Link dots (dependency connectors) — positioned outside bar edges.
+  // Press a dot and drag onto any task bar to create a dependency.
+  const DOT_R = 5
   const DOT_GAP = 4
   for (const side of ['left', 'right'] as const) {
     const cx = side === 'left' ? x - DOT_GAP - DOT_R : x + width + DOT_GAP + DOT_R
@@ -178,13 +179,7 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
       class: 'pm-gantt-link-dot',
       cursor: 'crosshair'
     })
-    dot.addEventListener('mousedown', (e: MouseEvent) => {
-      e.stopPropagation()
-    })
-    dot.addEventListener('click', (e: MouseEvent) => {
-      e.stopPropagation()
-      handleLinkDotClick(dot, task.id, side, ctx.link, ctx.plugin, ctx.project, ctx.onRefresh)
-    })
+    ctx.cleanupFns.push(attachLinkDrag(dot, task.id, side, ctx))
     barGroup.appendChild(dot)
   }
 

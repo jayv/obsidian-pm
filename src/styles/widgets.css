@@ -239,6 +239,22 @@
   filter: drop-shadow(0 0 3px var(--pm-accent));
 }
 
+/* Ghost connector drawn while dragging a dependency */
+.pm-gantt-link-ghost {
+  stroke: var(--color-red);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* Bar/milestone highlighted as a valid drop target while linking */
+.pm-gantt-link-target {
+  stroke: var(--color-red);
+  stroke-width: 3;
+  opacity: 1;
+}
+
 /* -- Gantt milestone ----------------------------------------------------- */
 .pm-gantt-milestone {
   transition:
