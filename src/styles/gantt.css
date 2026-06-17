@@ -280,6 +280,19 @@
 .pm-gantt-bar-progress {
   pointer-events: none;
 }
+/* Resource-conflict overlay: red diagonal hatch over the overlapping span */
+.pm-gantt-conflict-stripe {
+  stroke: var(--color-red);
+  stroke-width: 2.5;
+  opacity: 0.7;
+}
+.pm-gantt-conflict-hatch {
+  pointer-events: none;
+}
+.pm-gantt-bar-avatar--conflict {
+  stroke: var(--color-red);
+  stroke-width: 2;
+}
 /* Summary (parent) bars: thin bar + slanted legs spanning the subtasks */
 .pm-gantt-summary-shape {
   opacity: 0.9;

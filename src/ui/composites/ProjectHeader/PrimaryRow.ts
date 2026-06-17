@@ -1,5 +1,5 @@
 import { ButtonComponent, Menu } from 'obsidian'
-import type { Project, FilterState, SavedView } from '../../../types'
+import type { Project, FilterState, SavedView, ViewMode } from '../../../types'
 import { Pill } from '../../primitives/Pill'
 import { isFilterActive } from '../../../store/TaskFilter'
 import { safeAsync } from '../../../utils'
@@ -14,6 +14,8 @@ export interface PrimaryRowProps {
   onSavedViewSave: (name: string) => Promise<void>
   onSavedViewUpdate: (id: string) => Promise<void>
   onSavedViewDelete: (id: string) => Promise<void>
+  viewMode: ViewMode
+  onToggleConflicts: () => void
   onToggleFilterRow: () => void
 }
 
@@ -21,6 +23,7 @@ export class PrimaryRow {
   el: HTMLElement
   private volatileEl: HTMLElement | null = null
   private searchInput: HTMLInputElement | null = null
+  private conflictEl: HTMLButtonElement | null = null
 
   constructor(
     parentEl: HTMLElement,
@@ -30,6 +33,29 @@ export class PrimaryRow {
     this.renderSearchInput()
     this.volatileEl = this.el.createDiv('pm-project-header-actions')
     this.renderVolatile()
+    if (props.viewMode === 'gantt') {
+      // eslint-disable-next-line obsidianmd/ui/sentence-case -- intentional lowercase status label
+      this.conflictEl = this.el.createEl('button', { cls: 'pm-conflict-indicator', text: 'no conflicts' })
+      this.conflictEl.addEventListener('click', () => props.onToggleConflicts())
+    }
+  }
+
+  /** Update the resource-conflict indicator: red "N conflicts" (clickable to
+   *  toggle the overlay) or a disabled "no conflicts". */
+  setConflicts(count: number, active: boolean): void {
+    const el = this.conflictEl
+    if (!el) return
+    const has = count > 0
+    el.setText(has ? `${count} conflict${count === 1 ? '' : 's'}` : 'no conflicts')
+    el.toggleClass('pm-conflict-indicator--has', has)
+    el.toggleClass('pm-conflict-indicator--active', has && active)
+    el.disabled = !has
+    el.setAttribute(
+      'aria-label',
+      has
+        ? `${count} resource conflict${count === 1 ? '' : 's'} — click to toggle highlighting`
+        : 'No resource conflicts'
+    )
   }
 
   setActiveSavedViewId(id: string | null): void {

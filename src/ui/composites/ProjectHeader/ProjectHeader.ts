@@ -1,4 +1,4 @@
-import type { Project, FilterState, StatusConfig, PriorityConfig } from '../../../types'
+import type { Project, FilterState, StatusConfig, PriorityConfig, ViewMode } from '../../../types'
 import { isFilterActive } from '../../../store/TaskFilter'
 import { PrimaryRow } from './PrimaryRow'
 import { FilterRow } from './FilterRow'
@@ -15,6 +15,9 @@ export interface ProjectHeaderProps {
   onSavedViewSave: (name: string) => Promise<void>
   onSavedViewUpdate: (id: string) => Promise<void>
   onSavedViewDelete: (id: string) => Promise<void>
+  /** Current view — the conflict indicator only shows for the Gantt. */
+  viewMode: ViewMode
+  onToggleConflicts: () => void
 }
 
 export class ProjectHeader {
@@ -53,6 +56,11 @@ export class ProjectHeader {
     this.primaryRow?.focusSearch()
   }
 
+  /** Update the resource-conflict indicator (Gantt only). */
+  setConflicts(count: number, active: boolean): void {
+    this.primaryRow?.setConflicts(count, active)
+  }
+
   private render(): void {
     this.el.empty()
     this.primaryRow = new PrimaryRow(this.el, {
@@ -65,6 +73,8 @@ export class ProjectHeader {
       onSavedViewSave: this.props.onSavedViewSave,
       onSavedViewUpdate: this.props.onSavedViewUpdate,
       onSavedViewDelete: this.props.onSavedViewDelete,
+      viewMode: this.props.viewMode,
+      onToggleConflicts: this.props.onToggleConflicts,
       onToggleFilterRow: () => {
         this.filterRowExpanded = !this.filterRowExpanded
         this.syncFilterRowVisibility()

@@ -7,6 +7,7 @@ import { svgEl } from '../../utils'
 import { today } from '../../dates'
 import type { DragState } from './GanttDragHandler'
 import type { LinkState } from './GanttLinkHandler'
+import type { TaskConflicts } from './ResourceConflicts'
 
 export { renderTimelineHeader } from './GanttHeaderRenderer'
 export { renderTaskBar, renderMilestoneLabels, renderDependencyArrows } from './GanttTaskBarRenderer'
@@ -21,6 +22,8 @@ export interface RendererContext {
   flatTasks: FlatTask[]
   drag: DragState
   link: LinkState
+  /** Per-task resource-conflict overlays, or null when the toggle is off. */
+  conflicts: Map<string, TaskConflicts> | null
   onRefresh: () => Promise<void>
   cleanupFns: (() => void)[]
 }

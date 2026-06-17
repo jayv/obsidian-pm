@@ -10,6 +10,8 @@ import { KanbanView } from './KanbanView'
 import { openProjectModal, openTaskModal } from '../ui/ModalFactory'
 import { ViewSwitcher } from '../ui/primitives/ViewSwitcher'
 import { ProjectHeader } from '../ui/composites/ProjectHeader'
+import { flattenTasks } from '../store/TaskTreeOps'
+import { computeResourceConflicts } from './gantt/ResourceConflicts'
 
 export const PM_PROJECT_VIEW_TYPE = 'pm-project'
 
@@ -192,8 +194,28 @@ export class ProjectView extends ItemView {
       onSavedViewSelect: (id) => this.handleSavedViewSelect(id),
       onSavedViewSave: (name) => this.handleSavedViewSave(name),
       onSavedViewUpdate: (id) => this.handleSavedViewUpdate(id),
-      onSavedViewDelete: (id) => this.handleSavedViewDelete(id)
+      onSavedViewDelete: (id) => this.handleSavedViewDelete(id),
+      viewMode: this.currentView,
+      onToggleConflicts: () => this.handleToggleConflicts()
     })
+    this.updateConflictIndicator()
+  }
+
+  private handleToggleConflicts(): void {
+    this.plugin.settings.ganttShowConflicts = !this.plugin.settings.ganttShowConflicts
+    void this.plugin.saveSettings()
+    this.subview?.refresh?.()
+    this.updateConflictIndicator()
+  }
+
+  /** Refresh the header's conflict indicator (project-wide count + on/off state). */
+  private updateConflictIndicator(): void {
+    if (!this.header || !this.project) return
+    const count =
+      this.currentView === 'gantt'
+        ? computeResourceConflicts(flattenTasks(this.project.tasks), this.plugin.settings.statuses).count
+        : 0
+    this.header.setConflicts(count, this.plugin.settings.ganttShowConflicts)
   }
 
   private handleFilterMutation(): void {
@@ -323,10 +345,7 @@ export class ProjectView extends ItemView {
         { id: 'kanban', icon: 'layout-dashboard', label: 'Board' }
       ],
       active: this.currentView,
-      onChange: (mode) => {
-        this.currentView = mode
-        this.renderCurrentView()
-      }
+      onChange: (mode) => this.setView(mode)
     })
 
     const right = this.toolbarEl.createDiv('pm-toolbar-right')
@@ -379,6 +398,7 @@ export class ProjectView extends ItemView {
     if (!this.project || this.currentView === mode) return
     this.currentView = mode
     this.renderProjectToolbar()
+    this.renderProjectHeader()
     this.renderCurrentView()
   }
 
@@ -455,5 +475,7 @@ export class ProjectView extends ItemView {
     } else {
       this.renderCurrentView()
     }
+    // An edit may have created or resolved conflicts.
+    this.updateConflictIndicator()
   }
 }

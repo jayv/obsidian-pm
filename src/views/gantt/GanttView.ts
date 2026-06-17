@@ -23,6 +23,8 @@ import { svgEl } from '../../utils'
 import { Temporal, today } from '../../dates'
 import type { RendererContext } from './GanttRenderer'
 import { renderTaskLabel } from './TaskLabelRenderer'
+import { computeResourceConflicts } from './ResourceConflicts'
+import type { TaskConflicts } from './ResourceConflicts'
 
 // Shift+wheel zoom: a multiplier on the granularity's base day width.
 const ZOOM_MIN = 0.3
@@ -41,6 +43,8 @@ export class GanttView implements SubView {
   private labelWidth: number = LABEL_WIDTH
   private zoom = 1
   private zoomRaf: number | null = null
+  private showConflicts: boolean
+  private conflicts: Map<string, TaskConflicts> | null = null
 
   getLabelWidth(): number {
     return this.labelWidth
@@ -59,6 +63,7 @@ export class GanttView implements SubView {
     private filter: FilterState
   ) {
     this.granularity = plugin.settings.ganttGranularity
+    this.showConflicts = plugin.settings.ganttShowConflicts
   }
 
   destroy(): void {
@@ -95,6 +100,11 @@ export class GanttView implements SubView {
     const activeTasks = this.getVisibleTasks()
     this.flatTasks = flattenTasks(activeTasks).filter((f) => f.visible || f.depth === 0)
     this.cfg = buildTimelineConfig(activeTasks, this.granularity, this.zoom)
+    // Read the setting each render so the header toggle takes effect.
+    this.showConflicts = this.plugin.settings.ganttShowConflicts
+    this.conflicts = this.showConflicts
+      ? computeResourceConflicts(this.flatTasks, this.plugin.settings.statuses).byTask
+      : null
 
     this.renderGranularityControls()
     this.renderGantt()
@@ -342,6 +352,7 @@ export class GanttView implements SubView {
       flatTasks: this.flatTasks,
       drag: this.drag,
       link: this.link,
+      conflicts: this.conflicts,
       onRefresh: this.onRefresh,
       cleanupFns: this.cleanupFns
     }

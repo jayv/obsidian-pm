@@ -76,6 +76,9 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   const barGroup = svgEl('g', { class: 'pm-gantt-bar-group', 'data-task-id': task.id })
   g.appendChild(barGroup)
 
+  // Resource-conflict overlay data for this task (null when the toggle is off).
+  const conflict = ctx.conflicts?.get(task.id) ?? null
+
   // Main bar — flat fill, no gradient/shadow/sheen. A summary bar's rect is an
   // invisible full-height hit area (drag/click/tooltip); the visible shape is a
   // thin bar with slanted legs drawn on top below.
@@ -128,6 +131,33 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
     )
   }
 
+  // Resource-conflict hatch: red diagonal stripes over each span where this
+  // task overlaps another task sharing an assignee.
+  if (conflict && conflict.segments.length) {
+    ensureConflictPattern(ctx.svgEl)
+    for (const seg of conflict.segments) {
+      const s = parsePlainDate(seg.start)
+      const e = parsePlainDate(seg.end)
+      if (!s || !e) continue
+      const sx = Math.max(x, dateToX(ctx.cfg, s))
+      const ex = Math.min(x + width, dateToX(ctx.cfg, e.add({ days: 1 })))
+      if (ex <= sx) continue
+      barGroup.appendChild(
+        svgEl('rect', {
+          x: sx,
+          y,
+          width: ex - sx,
+          height,
+          rx: BAR_BORDER_RADIUS,
+          ry: BAR_BORDER_RADIUS,
+          fill: 'url(#pm-conflict-hatch)',
+          class: 'pm-gantt-conflict-hatch',
+          'pointer-events': 'none'
+        })
+      )
+    }
+  }
+
   // Recurrence indicator
   if (task.recurrence) {
     const icon = svgEl('text', {
@@ -141,7 +171,7 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
 
   // Assignee avatars (colored initials) anchored at the right end of the bar.
   // Rendered before the label so the label can reserve room and avoid overlap.
-  const avatarZone = renderAssigneeAvatars(barGroup, task, x, width, y, height)
+  const avatarZone = renderAssigneeAvatars(barGroup, task, x, width, y, height, conflict?.assignees)
 
   // Label: inside the bar when it fits, otherwise to the right of the bar so
   // short tasks don't clip or hide their title.
@@ -163,7 +193,8 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   const ttEl = svgEl('title', {})
   const assigneesStr = task.assignees.length ? `\nAssignees: ${task.assignees.join(', ')}` : ''
   const summaryStr = isSummary ? ' (rolled up from subtasks)' : ''
-  ttEl.textContent = `${task.title}\n${statusConfig?.label ?? task.status} \u00b7 ${task.priority}\nStart: ${startStr || '\u2014'}  Due: ${dueStr || '\u2014'}${summaryStr}\nProgress: ${task.progress}%${assigneesStr}`
+  const conflictStr = conflict?.notes.length ? `\n\u26a0 ${conflict.notes.join('\n\u26a0 ')}` : ''
+  ttEl.textContent = `${task.title}\n${statusConfig?.label ?? task.status} \u00b7 ${task.priority}\nStart: ${startStr || '\u2014'}  Due: ${dueStr || '\u2014'}${summaryStr}\nProgress: ${task.progress}%${assigneesStr}${conflictStr}`
   rect.appendChild(ttEl)
 
   // Drag handles \u2014 resize only applies to leaf bars; a summary span is derived.
@@ -579,7 +610,8 @@ function renderAssigneeAvatars(
   x: number,
   width: number,
   y: number,
-  height: number
+  height: number,
+  conflicted?: Set<string>
 ): number {
   if (!task.assignees.length) return 0
 
@@ -598,11 +630,12 @@ function renderAssigneeAvatars(
   for (let i = slots - 1; i >= 0; i--) {
     const cx = x + width - AVATAR_R - AVATAR_EDGE_GAP - i * AVATAR_STEP
     const isOverflowSlot = overflow > 0 && i === slots - 1
+    const inConflict = !isOverflowSlot && conflicted?.has(task.assignees[i])
     const circle = svgEl('circle', {
       cx,
       cy,
       r: AVATAR_R,
-      class: 'pm-gantt-bar-avatar',
+      class: inConflict ? 'pm-gantt-bar-avatar pm-gantt-bar-avatar--conflict' : 'pm-gantt-bar-avatar',
       fill: isOverflowSlot ? 'var(--background-modifier-border)' : stringToColor(names[i])
     })
     group.appendChild(circle)
@@ -625,6 +658,21 @@ function renderAssigneeAvatars(
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
+
+/** Define the red diagonal hatch pattern once per SVG (idempotent). */
+function ensureConflictPattern(el: SVGSVGElement): void {
+  const defs = getOrCreateDefs(el)
+  if (defs.querySelector('#pm-conflict-hatch')) return
+  const pattern = svgEl('pattern', {
+    id: 'pm-conflict-hatch',
+    width: 7,
+    height: 7,
+    patternUnits: 'userSpaceOnUse',
+    patternTransform: 'rotate(45)'
+  })
+  pattern.appendChild(svgEl('line', { x1: 0, y1: 0, x2: 0, y2: 7, class: 'pm-gantt-conflict-stripe' }))
+  defs.appendChild(pattern)
+}
 
 function getOrCreateDefs(el: SVGSVGElement): SVGDefsElement {
   return (

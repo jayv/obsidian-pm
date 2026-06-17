@@ -120,10 +120,7 @@ export function renderTaskRow(tbody: HTMLElement, task: Task, depth: number, ctx
   new AssigneesCell(row, {
     task,
     candidates: () =>
-      collectAllAssignees(ctx.project.tasks, [
-        ...ctx.project.teamMembers,
-        ...ctx.plugin.settings.globalTeamMembers
-      ]),
+      collectAllAssignees(ctx.project.tasks, [...ctx.project.teamMembers, ...ctx.plugin.settings.globalTeamMembers]),
     onChange: safeAsync(async (assignees) => {
       await ctx.plugin.store.updateTask(ctx.project, task.id, { assignees })
       await ctx.onRefresh()

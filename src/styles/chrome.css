@@ -35,6 +35,36 @@
   flex-wrap: wrap;
 }
 
+/* Resource-conflict indicator (Gantt only): red & clickable when conflicts
+   exist, muted/disabled otherwise. */
+.pm-conflict-indicator {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+  cursor: default;
+}
+.pm-conflict-indicator:disabled {
+  opacity: 0.55;
+}
+.pm-conflict-indicator--has {
+  color: var(--color-red);
+  border-color: color-mix(in srgb, var(--color-red) 45%, transparent);
+  cursor: pointer;
+}
+.pm-conflict-indicator--has:hover {
+  background: color-mix(in srgb, var(--color-red) 12%, transparent);
+}
+.pm-conflict-indicator--active {
+  background: color-mix(in srgb, var(--color-red) 20%, transparent);
+  border-color: var(--color-red);
+  font-weight: 600;
+}
+
 .pm-project-header-saved-views {
   display: flex;
   gap: 4px;
