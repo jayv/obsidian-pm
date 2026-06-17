@@ -210,6 +210,20 @@ export class GanttView implements SubView {
     activeDocument.addEventListener('keydown', onKeyDown)
     this.cleanupFns.push(() => activeDocument.removeEventListener('keydown', onKeyDown))
 
+    // Reflect the Shift key as a class so dependency arrows only highlight and
+    // accept a remove-click while Shift is held (guards against accidents).
+    const syncShift = (e: KeyboardEvent | FocusEvent) => {
+      this.container.toggleClass('pm-gantt--shift', 'shiftKey' in e && e.shiftKey)
+    }
+    activeDocument.addEventListener('keydown', syncShift)
+    activeDocument.addEventListener('keyup', syncShift)
+    activeWindow.addEventListener('blur', syncShift)
+    this.cleanupFns.push(() => {
+      activeDocument.removeEventListener('keydown', syncShift)
+      activeDocument.removeEventListener('keyup', syncShift)
+      activeWindow.removeEventListener('blur', syncShift)
+    })
+
     const ctx = this.makeRendererContext()
     renderTimelineHeader(ctx)
     renderGridLines(ctx, totalRows)

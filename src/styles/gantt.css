@@ -327,20 +327,25 @@
   stroke-width: 1.5;
   stroke-dasharray: 4 3;
   opacity: 0.4;
+  pointer-events: none;
 }
 .pm-gantt-arrowhead {
   fill: var(--pm-accent);
   opacity: 0.5;
 }
-/* Wide invisible hit area so the thin arrow is easy to click to remove */
+/* Wide invisible hit area for removing a dependency. Inert unless Shift is
+   held, so arrows never intercept clicks or highlight by accident. */
 .pm-gantt-arrow-hit {
   fill: none;
   stroke: transparent;
   stroke-width: 12;
+  pointer-events: none;
+}
+.pm-gantt--shift .pm-gantt-arrow-hit {
   pointer-events: stroke;
   cursor: pointer;
 }
-.pm-gantt-arrow-group:hover .pm-gantt-arrow {
+.pm-gantt--shift .pm-gantt-arrow-group:hover .pm-gantt-arrow {
   stroke: var(--color-red);
   stroke-width: 2.5;
   stroke-dasharray: none;

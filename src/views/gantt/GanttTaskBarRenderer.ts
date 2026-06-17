@@ -499,7 +499,7 @@ export function renderDependencyArrows(ctx: RendererContext): void {
       )
       const hit = svgEl('path', { d, class: 'pm-gantt-arrow-hit' })
       const tt = svgEl('title', {})
-      tt.textContent = 'Click to remove dependency'
+      tt.textContent = 'Shift-click to remove dependency'
       hit.appendChild(tt)
 
       const successorId = task.id
@@ -507,6 +507,7 @@ export function renderDependencyArrows(ctx: RendererContext): void {
       hit.addEventListener(
         'click',
         safeAsync(async (e: MouseEvent) => {
+          if (!e.shiftKey) return
           e.stopPropagation()
           const next = depsAtRender.filter((dep) => dep !== depId)
           try {
