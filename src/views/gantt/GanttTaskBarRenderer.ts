@@ -1,7 +1,8 @@
 import { Notice } from 'obsidian'
 import type { Task } from '../../types'
 import { openTaskModal } from '../../ui/ModalFactory'
-import { svgEl, getStatusConfig, safeAsync } from '../../utils'
+import { svgEl, getStatusConfig, safeAsync, stringToColor } from '../../utils'
+import { displayName, initialsFor } from '../../ui/primitives/Avatar'
 import { parsePlainDate } from '../../dates'
 import {
   ROW_HEIGHT,
@@ -107,14 +108,18 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
     barGroup.appendChild(icon)
   }
 
+  // Assignee avatars (colored initials) anchored at the right end of the bar.
+  // Rendered before the label so the label can reserve room and avoid overlap.
+  const avatarZone = renderAssigneeAvatars(barGroup, task, x, width, y, height)
+
   // Label inside bar
-  if (width > 55) {
+  if (width - avatarZone > 55) {
     const label = svgEl('text', {
       x: x + 8,
       y: y + height / 2 + 5,
       class: 'pm-gantt-bar-label'
     })
-    const maxChars = Math.max(4, Math.floor((width - 16) / 7.5))
+    const maxChars = Math.max(4, Math.floor((width - 16 - avatarZone) / 7.5))
     label.textContent = task.title.length > maxChars ? task.title.slice(0, maxChars - 1) + '\u2026' : task.title
     barGroup.appendChild(label)
   }
@@ -418,6 +423,69 @@ export function renderDependencyArrows(ctx: RendererContext): void {
   defs.appendChild(marker)
 
   ctx.svgEl.appendChild(arrowGroup)
+}
+
+// ─── Assignee avatars ──────────────────────────────────────────────────────
+
+const AVATAR_R = 9
+const AVATAR_STEP = 13 // horizontal advance per stacked avatar (overlapping)
+const AVATAR_EDGE_GAP = 3 // gap between rightmost avatar and bar right edge
+const AVATAR_LABEL_GAP = 6 // gap reserved between avatars and the bar label
+
+/**
+ * Render up to a few assignee avatars (colored circle + initials) at the right
+ * end of the bar. Colors and initials match the table/kanban Avatar primitive.
+ * Returns the width (px) consumed at the right edge so the label can avoid it.
+ */
+function renderAssigneeAvatars(
+  barGroup: SVGGElement,
+  task: Task,
+  x: number,
+  width: number,
+  y: number,
+  height: number
+): number {
+  if (!task.assignees.length) return 0
+
+  // How many fit without crowding the bar; cap at 3 then show a "+N" marker.
+  const maxByWidth = Math.max(0, Math.floor((width - 2 * AVATAR_R - AVATAR_EDGE_GAP) / AVATAR_STEP) + 1)
+  if (maxByWidth < 1) return 0
+  const maxShown = Math.min(3, maxByWidth, task.assignees.length)
+
+  const names = task.assignees.map(displayName)
+  const overflow = names.length - maxShown
+  const cy = y + height / 2
+  const group = svgEl('g', { class: 'pm-gantt-bar-avatars' })
+
+  // Render right-to-left so earlier assignees stack on top of later ones.
+  const slots = maxShown
+  for (let i = slots - 1; i >= 0; i--) {
+    const cx = x + width - AVATAR_R - AVATAR_EDGE_GAP - i * AVATAR_STEP
+    const isOverflowSlot = overflow > 0 && i === slots - 1
+    const circle = svgEl('circle', {
+      cx,
+      cy,
+      r: AVATAR_R,
+      class: 'pm-gantt-bar-avatar',
+      fill: isOverflowSlot ? 'var(--background-modifier-border)' : stringToColor(names[i])
+    })
+    group.appendChild(circle)
+
+    const text = svgEl('text', {
+      x: cx,
+      y: cy,
+      class: 'pm-gantt-bar-avatar-text'
+    })
+    text.textContent = isOverflowSlot ? `+${overflow + 1}` : initialsFor(names[i])
+    group.appendChild(text)
+
+    const tt = svgEl('title', {})
+    tt.textContent = isOverflowSlot ? names.slice(maxShown - 1).join(', ') : names[i]
+    circle.appendChild(tt)
+  }
+
+  barGroup.appendChild(group)
+  return 2 * AVATAR_R + AVATAR_EDGE_GAP + (slots - 1) * AVATAR_STEP + AVATAR_LABEL_GAP
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────

@@ -276,6 +276,24 @@
   text-shadow: 0 0 3px rgba(0, 0, 0, 0.55);
 }
 
+/* Assignee avatars on the bar */
+.pm-gantt-bar-avatars {
+  pointer-events: none;
+}
+.pm-gantt-bar-avatar {
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 1;
+}
+.pm-gantt-bar-avatar-text {
+  font-size: 9px;
+  font-weight: 700;
+  fill: #fff;
+  text-anchor: middle;
+  dominant-baseline: central;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
 /* Today line */
 .pm-gantt-today-line {
   stroke: color-mix(in srgb, var(--color-red) 65%, transparent);
