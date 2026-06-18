@@ -158,7 +158,8 @@ export class GanttView implements SubView {
         this.project,
         this.plugin.settings.statuses,
         this.plugin.settings.priorities,
-        this.granularity
+        this.granularity,
+        new Date().toLocaleString()
       )
       // Trigger a save dialog so the user picks where to write the file.
       const blob = new Blob([svg], { type: 'image/svg+xml' })

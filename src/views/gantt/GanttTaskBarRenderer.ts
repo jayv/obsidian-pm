@@ -198,7 +198,7 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
 
   // Label: inside the bar only when the full title fits; otherwise render it in
   // full to the right of the bar. Never truncate with an ellipsis.
-  const labelY = y + height / 2 + 5
+  const labelY = y + height / 2
   const innerChars = Math.floor((width - 16 - avatarZone) / 7.5)
   if (width - avatarZone > 55 && task.title.length <= innerChars) {
     const label = svgEl('text', { x: x + 8, y: labelY, class: 'pm-gantt-bar-label' })

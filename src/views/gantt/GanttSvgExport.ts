@@ -10,14 +10,14 @@ const LABEL_W = 240
 const TOOLBAR_H = 44
 const HEADER_H = 56
 const CHART_TOP = TOOLBAR_H + HEADER_H
-const PILL_CY = TOOLBAR_H + 13 // milestone pill band
+const PILL_CY = TOOLBAR_H + 13
 const ROW_H = 32
 const BAR_PAD = 7
 const RIGHT_PAD = 80
 const AVATAR_R = 8
 const AVATAR_STEP = 13
 const AVATAR_EDGE_GAP = 3
-const DAY_MIN = 16 // min effective day width (px) to show day numbers
+const DAY_MIN = 16
 const MILESTONE_COLOR = '#8fd9ad'
 const ACCENT = '#6c8cd5'
 
@@ -38,22 +38,22 @@ interface RowGeom {
 
 /**
  * Build a self-contained, interactive SVG of the Gantt chart. The embedded
- * script (active when the file is opened in a browser) supports horizontal
- * zoom, assignee filtering, and task-name search; everything is laid out at
- * zoom 1 with base coordinates in data-* attributes that the script rescales.
+ * script (active when opened in a browser) supports horizontal zoom, assignee
+ * filtering, task-name search, collapsible rows, and a light/dark toggle, with
+ * a frozen header and task column.
  */
 export function buildGanttSvg(
   project: Project,
   statuses: StatusConfig[],
   priorities: PriorityConfig[],
-  granularity: GanttGranularity
+  granularity: GanttGranularity,
+  exportedAt: string
 ): string {
   const cfg = buildTimelineConfig(project.tasks, granularity, 1)
   const flat = flattenTasks(project.tasks)
   const BASE_W = cfg.totalWidth
   const dx = (d: Parameters<typeof dateToX>[1]) => dateToX(cfg, d)
 
-  // Resolve geometry + dependency anchors per row.
   const rows: RowGeom[] = flat.map((f) => {
     const task = f.task
     const isMs = task.type === 'milestone'
@@ -64,7 +64,6 @@ export function buildGanttSvg(
     let msX0: number | null = null
     let inX0: number | null = null
     let outX0: number | null = null
-
     if (isMs) {
       const d = due ?? start
       if (d) {
@@ -88,16 +87,15 @@ export function buildGanttSvg(
 
   const anchor = new Map<string, { inX0: number; outX0: number }>()
   for (const r of rows) if (r.inX0 !== null && r.outX0 !== null) anchor.set(r.task.id, { inX0: r.inX0, outX0: r.outX0 })
-
   const rowIndex = new Map<string, number>()
   rows.forEach((r, i) => rowIndex.set(r.task.id, i))
 
-  // ── Header: month band (top) + day numbers (bottom) + weekly gridlines ─────
+  // ── Header bands: weekly lines, day lines, weekend shading, month + day labels
   const gridParts: string[] = []
   const monthParts: string[] = []
   const dayParts: string[] = []
-  const dlineParts: string[] = [] // per-day vertical borders
-  const weekendParts: string[] = [] // weekend column shading
+  const dlineParts: string[] = []
+  const weekendParts: string[] = []
   const showDays = cfg.totalDays <= 1500
   for (let i = 0; i <= cfg.totalDays; i++) {
     const d = cfg.startDate.add({ days: i })
@@ -126,19 +124,18 @@ export function buildGanttSvg(
       }
     }
   }
-
-  // Today marker line (scales with zoom, full chart height).
   const todayX0 = dx(today())
   const todayLine =
     todayX0 >= 0 && todayX0 <= BASE_W
       ? `<line class="todayline" data-x0="${todayX0}" x1="${LABEL_W + todayX0}" y1="${CHART_TOP}" x2="${LABEL_W + todayX0}" y2="${CHART_TOP}"/>`
       : ''
 
-  // ── Rows ──────────────────────────────────────────────────────────────────
-  const rowParts: string[] = []
-  const msPillParts: string[] = [] // header pills (sticky)
-  const msLineParts: string[] = [] // vertical connector lines (chart body)
-  const labelMaxChars = Math.max(6, Math.floor((LABEL_W - 14) / 7))
+  // ── Rows: left labels (frozen column) + body bars ──────────────────────────
+  const leftParts: string[] = []
+  const bodyParts: string[] = []
+  const msPillParts: string[] = []
+  const msLineParts: string[] = []
+  const labelMaxChars = Math.max(6, Math.floor((LABEL_W - 26) / 7))
   rows.forEach((r, i) => {
     const task = r.task
     const lx = 8 + r.depth * 16
@@ -150,41 +147,36 @@ export function buildGanttSvg(
     const barY = BAR_PAD
     const barH = ROW_H - BAR_PAD * 2
     const hasKids = i + 1 < rows.length && rows[i + 1].depth > r.depth
-
     const name = displayName(task.title)
     const labelMax = Math.max(4, labelMaxChars - r.depth * 2)
     const labelText = name.length > labelMax ? name.slice(0, labelMax - 1) + '…' : name
 
-    const parts: string[] = []
-    if (hasKids) {
-      parts.push(`<text class="ctoggle" data-id="${esc(task.id)}" x="${lx}" y="${cy}">▾</text>`)
-    }
-    parts.push(`<text class="rlabel" x="${lx + 14}" y="${cy}">${esc(labelText)}</text>`)
+    // Left (frozen) label + collapse toggle.
+    const lparts: string[] = []
+    if (hasKids) lparts.push(`<text class="ctoggle" data-id="${esc(task.id)}" x="${lx}" y="${cy}">▾</text>`)
+    lparts.push(`<text class="rlabel" x="${lx + 14}" y="${cy}">${esc(labelText)}</text>`)
+    leftParts.push(`<g class="lrow" data-id="${esc(task.id)}" transform="translate(0,${y})">${lparts.join('')}</g>`)
 
+    // Body.
+    const parts: string[] = []
     if (r.msX0 !== null) {
-      // Milestone diamond on its row; pill goes in the sticky header and a
-      // dashed connector line spans the chart (collected below).
       const s = 9
       parts.push(
-        `<g class="ms" data-x0="${r.msX0}" data-ty="${cy}" transform="translate(${LABEL_W + r.msX0},${cy})">` +
-          `<polygon points="0,${-s} ${s},0 0,${s} ${-s},0" fill="${MILESTONE_COLOR}"/></g>`
+        `<g class="ms" data-x0="${r.msX0}" data-ty="${cy}" transform="translate(${LABEL_W + r.msX0},${cy})"><polygon points="0,${-s} ${s},0 0,${s} ${-s},0" fill="${MILESTONE_COLOR}"/></g>`
       )
       msLineParts.push(
         `<line class="msline" data-x0="${r.msX0}" x1="${LABEL_W + r.msX0}" y1="${CHART_TOP}" x2="${LABEL_W + r.msX0}" y2="${CHART_TOP}"/>`
       )
       const pw = name.length * 6.2 + 16
       msPillParts.push(
-        `<g class="mspill" data-x0="${r.msX0}" data-ty="${PILL_CY}" transform="translate(${LABEL_W + r.msX0},${PILL_CY})">` +
-          `<rect x="${-pw / 2}" y="-9" width="${pw}" height="18" rx="9" fill="${MILESTONE_COLOR}" fill-opacity="0.95"/>` +
-          `<text class="mspilltext" x="0" y="0">${esc(name)}</text></g>`
+        `<g class="mspill" data-x0="${r.msX0}" data-ty="${PILL_CY}" transform="translate(${LABEL_W + r.msX0},${PILL_CY})"><rect x="${-pw / 2}" y="-9" width="${pw}" height="18" rx="9" fill="${MILESTONE_COLOR}" fill-opacity="0.95"/><text class="mspilltext" x="0" y="0">${esc(name)}</text></g>`
       )
     } else if (r.barX0 !== null && r.barW0 !== null) {
       const bx = LABEL_W + r.barX0
       const rightX0 = r.barX0 + r.barW0
       if (r.isSummary) {
-        // Summary (parent): thin bar with downward slanted legs at start/end.
         const TH = 4
-        const LEG = 9
+        const LEG = 8
         const legW = Math.min(6, r.barW0 / 2)
         parts.push(
           `<rect class="sbar" data-x0="${r.barX0}" data-w0="${r.barW0}" x="${bx}" y="${barY}" width="${r.barW0}" height="${TH}" fill="${fill}" fill-opacity="0.9"/>`
@@ -197,17 +189,17 @@ export function buildGanttSvg(
         )
       } else {
         parts.push(
-          `<rect class="bar" data-x0="${r.barX0}" data-w0="${r.barW0}" x="${bx}" y="${barY}" width="${r.barW0}" height="${barH}" rx="6" fill="${fill}" fill-opacity="0.4"/>`
+          `<rect class="bar" data-x0="${r.barX0}" data-w0="${r.barW0}" x="${bx}" y="${barY}" width="${r.barW0}" height="${barH}" rx="5" fill="${fill}" fill-opacity="0.4"/>`
         )
         if (task.progress > 0) {
           const pw = (task.progress / 100) * r.barW0
           parts.push(
-            `<rect class="prog" data-x0="${r.barX0}" data-w0="${pw}" x="${bx}" y="${barY}" width="${pw}" height="${barH}" rx="6" fill="${fill}" fill-opacity="0.9"/>`
+            `<rect class="prog" data-x0="${r.barX0}" data-w0="${pw}" x="${bx}" y="${barY}" width="${pw}" height="${barH}" rx="5" fill="${fill}" fill-opacity="0.9"/>`
           )
         }
         if (priority) {
           parts.push(
-            `<rect class="pout" data-x0="${r.barX0}" data-w0="${r.barW0}" x="${bx}" y="${barY}" width="${r.barW0}" height="${barH}" rx="6" fill="none" stroke="${priority}" stroke-width="2"/>`
+            `<rect class="pout" data-x0="${r.barX0}" data-w0="${r.barW0}" x="${bx}" y="${barY}" width="${r.barW0}" height="${barH}" rx="5" fill="none" stroke="${priority}" stroke-width="2"/>`
           )
         }
         if (task.assignees.length) {
@@ -228,14 +220,12 @@ export function buildGanttSvg(
           )
         }
       }
-      // Task name to the right of the bar (full, never truncated).
       parts.push(
         `<text class="blabel" data-x0="${rightX0}" dx="8" x="${LABEL_W + rightX0}" y="${cy}">${esc(name)}</text>`
       )
     }
-
     const msAttr = r.msX0 !== null ? ' data-ms="1"' : ''
-    rowParts.push(
+    bodyParts.push(
       `<g class="row"${msAttr} data-id="${esc(task.id)}" data-depth="${r.depth}" data-title="${esc(name)}" data-assignees="${esc(JSON.stringify(task.assignees.map(displayName)))}" transform="translate(0,${y})">${parts.join('')}</g>`
     )
   })
@@ -258,13 +248,11 @@ export function buildGanttSvg(
       const ty = CHART_TOP + toRow * ROW_H + ROW_H / 2
       const mx = (fx + tx) / 2
       depParts.push(
-        `<g class="dep" data-from="${esc(depId)}" data-to="${esc(succ.id)}" data-fx0="${from.outX0}" data-tx0="${to.inX0}">` +
-          `<path class="depline" d="M ${fx} ${fy} C ${mx} ${fy}, ${mx} ${ty}, ${tx} ${ty}" marker-end="url(#pm-ah)"/></g>`
+        `<g class="dep" data-from="${esc(depId)}" data-to="${esc(succ.id)}" data-fx0="${from.outX0}" data-tx0="${to.inX0}"><path class="depline" d="M ${fx} ${fy} C ${mx} ${fy}, ${mx} ${ty}, ${tx} ${ty}" marker-end="url(#pm-ah)"/></g>`
       )
     }
   }
 
-  // ── Toolbar (HTML via foreignObject) — assignee filter = avatar chips ──────
   const assigneeChips = collectAllAssignees(project.tasks)
     .map((a) => {
       const name = displayName(a)
@@ -274,42 +262,48 @@ export function buildGanttSvg(
 
   const initialH = CHART_TOP + rows.length * ROW_H + 8
   const initialW = LABEL_W + BASE_W + RIGHT_PAD
+  const fillH = initialH - CHART_TOP
 
   const css = `
-    text { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; fill: #d0d0d8; }
-    .bg { fill: #1e1e23; }
-    .panel { fill: #26262d; }
-    .vline { stroke: rgba(255,255,255,0.10); stroke-width: 1; }
-    .dline { stroke: rgba(255,255,255,0.04); stroke-width: 1; }
-    .wkrect { fill: rgba(255,255,255,0.035); }
+    svg { --bg:#1e1e23; --panel:#26262d; --text:#d0d0d8; --muted:#8b909c; --label:#b9bdc7;
+          --grid:rgba(255,255,255,0.10); --gridd:rgba(255,255,255,0.04); --wk:rgba(255,255,255,0.035);
+          --border:#3a3a44; --field:#1e1e23; }
+    svg.light { --bg:#ffffff; --panel:#eef0f4; --text:#2b2b33; --muted:#6b7078; --label:#3c4049;
+          --grid:rgba(0,0,0,0.12); --gridd:rgba(0,0,0,0.05); --wk:rgba(0,0,0,0.04);
+          --border:#d2d4da; --field:#ffffff; }
+    text { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; fill: var(--text); }
+    .bg { fill: var(--bg); }
+    .panel { fill: var(--panel); }
+    .vline { stroke: var(--grid); stroke-width: 1; }
+    .dline { stroke: var(--gridd); stroke-width: 1; }
+    .wkrect { fill: var(--wk); }
     .msline { stroke: ${MILESTONE_COLOR}; stroke-width: 1.5; stroke-dasharray: 4 4; opacity: 0.55; }
     .todayline { stroke: #d86b6b; stroke-width: 1.5; stroke-dasharray: 5 4; opacity: 0.8; }
-    .mspilltext { font-size: 10px; font-weight: 700; fill: #0b3d24; text-anchor: middle; dominant-baseline: central; }
-    .mlabel { font-size: 11px; font-weight: 600; fill: #c2c7d0; }
-    .dlabel { font-size: 9px; fill: #8b909c; text-anchor: middle; }
+    .mlabel { font-size: 11px; font-weight: 600; }
+    .dlabel { font-size: 9px; fill: var(--muted); text-anchor: middle; }
     .rlabel { font-size: 12px; dominant-baseline: middle; }
-    .ctoggle { font-size: 10px; dominant-baseline: middle; fill: #8b909c; cursor: pointer; }
-    .ctoggle:hover { fill: #d0d0d8; }
-    .blabel { font-size: 11px; dominant-baseline: middle; fill: #b9bdc7; }
-    .mslabel { font-size: 11px; font-weight: 600; dominant-baseline: middle; fill: ${MILESTONE_COLOR}; }
-    .hdiv { stroke: #3a3a44; stroke-width: 1; }
+    .blabel { font-size: 11px; dominant-baseline: middle; fill: var(--label); }
+    .ctoggle { font-size: 10px; dominant-baseline: middle; fill: var(--muted); cursor: pointer; }
+    .ctoggle:hover { fill: var(--text); }
+    .mspilltext { font-size: 10px; font-weight: 700; fill: #0b3d24; text-anchor: middle; dominant-baseline: central; }
+    .hdiv, .vdiv { stroke: var(--border); stroke-width: 1; }
     .av { font-size: 9px; font-weight: 700; fill: #fff; text-anchor: middle; dominant-baseline: central; }
     .depline { fill: none; stroke: ${ACCENT}; stroke-width: 1.3; stroke-dasharray: 4 3; opacity: 0.55; }
     .pm-ah { fill: ${ACCENT}; opacity: 0.7; }
     .tb { display:flex; align-items:center; gap:8px; height:100%; padding:0 12px; box-sizing:border-box;
-          font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:#d0d0d8; background:#26262d;
-          border-bottom:1px solid #3a3a44; }
-    .tb input { background:#1e1e23; color:#d0d0d8; border:1px solid #3a3a44; border-radius:5px; padding:4px 8px; font-size:12px; width:200px; }
-    .tb button { background:#1e1e23; color:#d0d0d8; border:1px solid #3a3a44; border-radius:5px; width:28px; height:26px; cursor:pointer; font-size:14px; }
-    .tb button:hover { background:#33333c; }
+          font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text); background:var(--panel);
+          border-bottom:1px solid var(--border); }
+    .tb input { background:var(--field); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:4px 8px; font-size:12px; width:180px; }
+    .tb button { background:var(--field); color:var(--text); border:1px solid var(--border); border-radius:5px; height:26px; min-width:28px; padding:0 6px; cursor:pointer; font-size:14px; }
+    .tb button:hover { background:var(--border); }
     .tb .sp { flex:1; }
-    .tb .hint { font-size:11px; color:#777e8c; }
-    .tb .avfrow { display:flex; gap:4px; align-items:center; max-width:46%; overflow-x:auto; }
+    .tb .hint { font-size:11px; color:var(--muted); white-space:nowrap; }
+    .tb .avfrow { display:flex; gap:4px; align-items:center; max-width:40%; overflow-x:auto; }
     .avf { width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
           font-size:9px; font-weight:700; color:#fff; cursor:pointer; opacity:0.5; border:2px solid transparent;
           flex:0 0 auto; user-select:none; box-sizing:border-box; }
     .avf:hover { opacity:0.8; }
-    .avf.on { opacity:1; border-color:#fff; }`
+    .avf.on { opacity:1; border-color:var(--text); }`
 
   const cfgJson = JSON.stringify({
     LABEL_W,
@@ -326,12 +320,16 @@ export function buildGanttSvg(
 var svg=document.querySelector('svg');var C=${cfgJson};var zoom=1;
 var rows=[].slice.call(svg.querySelectorAll('.row'));
 var deps=[].slice.call(svg.querySelectorAll('.dep'));
+var lrowmap={};[].slice.call(svg.querySelectorAll('.lrow')).forEach(function(l){lrowmap[l.getAttribute('data-id')]=l;});
 var search=document.getElementById('pm-search');
 var chips=[].slice.call(svg.querySelectorAll('.avf'));
+var toggles=[].slice.call(svg.querySelectorAll('.ctoggle'));
 var header=document.getElementById('pm-header');
 var toolbar=document.getElementById('pm-toolbar');
+var left=document.getElementById('pm-left');
+var corner=document.getElementById('pm-corner');
+var leftbg=document.getElementById('pm-leftbg');
 var days=document.getElementById('pm-days');
-var toggles=[].slice.call(svg.querySelectorAll('.ctoggle'));
 var selected=[];var collapsed={};
 function sx(x0){return C.LABEL_W + x0*zoom;}
 function recollapse(){var hideBelow=Infinity;
@@ -350,20 +348,23 @@ function layout(){
   var dl=document.getElementById('pm-dlines');if(dl)dl.style.display=detail?'':'none';
   var wk=document.getElementById('pm-weekends');if(wk)wk.style.display=detail?'':'none';
   var idx=0,pos={};
-  for(var r=0;r<rows.length;r++){var row=rows[r];
-    if(row.getAttribute('data-fhid')==='1'||row.getAttribute('data-chid')==='1'){row.style.display='none';continue;}
+  for(var r=0;r<rows.length;r++){var row=rows[r];var id=row.getAttribute('data-id');var lr=lrowmap[id];
+    if(row.getAttribute('data-fhid')==='1'||row.getAttribute('data-chid')==='1'){row.style.display='none';if(lr)lr.style.display='none';continue;}
     row.style.display='';var y=C.CHART_TOP+idx*C.ROW_H;row.setAttribute('transform','translate(0,'+y+')');
-    pos[row.getAttribute('data-id')]=y;idx++;}
+    if(lr){lr.style.display='';lr.setAttribute('transform','translate(0,'+y+')');}
+    pos[id]=y;idx++;}
   var contentH=C.CHART_TOP+idx*C.ROW_H;
   var vlines=svg.querySelectorAll('.vline,.dline,.msline,.todayline');for(var v=0;v<vlines.length;v++){vlines[v].setAttribute('y2',contentH);}
   var wr=svg.querySelectorAll('.wkrect');for(var w2=0;w2<wr.length;w2++){wr[w2].setAttribute('height',contentH-C.CHART_TOP);}
-  for(var d=0;d<deps.length;d++){var dep=deps[d];var f=pos[dep.getAttribute('data-from')],t=pos[dep.getAttribute('data-to')];
-    if(f==null||t==null){dep.style.display='none';continue;}
-    dep.style.display='';var fx=sx(parseFloat(dep.getAttribute('data-fx0'))),tx=sx(parseFloat(dep.getAttribute('data-tx0')));
+  if(leftbg)leftbg.setAttribute('height',contentH-C.CHART_TOP);
+  for(var d=0;d<deps.length;d++){var dp=deps[d];var f=pos[dp.getAttribute('data-from')],t=pos[dp.getAttribute('data-to')];
+    if(f==null||t==null){dp.style.display='none';continue;}
+    dp.style.display='';var fx=sx(parseFloat(dp.getAttribute('data-fx0'))),tx=sx(parseFloat(dp.getAttribute('data-tx0')));
     var fy=f+C.ROW_H/2,ty=t+C.ROW_H/2,mx=(fx+tx)/2;
-    dep.querySelector('.depline').setAttribute('d','M '+fx+' '+fy+' C '+mx+' '+fy+', '+mx+' '+ty+', '+tx+' '+ty);}
+    dp.querySelector('.depline').setAttribute('d','M '+fx+' '+fy+' C '+mx+' '+fy+', '+mx+' '+ty+', '+tx+' '+ty);}
   var w=C.LABEL_W+C.BASE_W*zoom+C.RIGHT_PAD,h=contentH+8;
   svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('viewBox','0 0 '+w+' '+h);
+  sticky();
 }
 function filt(){var q=(search.value||'').toLowerCase();
   for(var r=0;r<rows.length;r++){var row=rows[r];
@@ -374,9 +375,11 @@ function filt(){var q=(search.value||'').toLowerCase();
     if(!okA){for(var k=0;k<as.length;k++){if(selected.indexOf(as[k])>=0){okA=true;break;}}}
     row.setAttribute('data-fhid',(okT&&okA)?'0':'1');}
   layout();}
-function sticky(){var y=window.pageYOffset||document.documentElement.scrollTop||0;
-  if(header)header.setAttribute('transform','translate(0,'+y+')');
-  if(toolbar)toolbar.setAttribute('y',y);}
+function sticky(){var sy=window.pageYOffset||0;var sx2=window.pageXOffset||0;
+  if(header)header.setAttribute('transform','translate(0,'+sy+')');
+  if(left)left.setAttribute('transform','translate('+sx2+',0)');
+  if(corner)corner.setAttribute('transform','translate('+sx2+','+sy+')');
+  if(toolbar){toolbar.setAttribute('x',sx2);toolbar.setAttribute('y',sy);toolbar.setAttribute('width',window.innerWidth||C.LABEL_W+C.BASE_W);}}
 search.addEventListener('input',filt);
 for(var ci=0;ci<chips.length;ci++){(function(c){c.addEventListener('click',function(){
   c.classList.toggle('on');selected=[];
@@ -388,8 +391,10 @@ for(var ti=0;ti<toggles.length;ti++){(function(t){t.addEventListener('click',fun
 document.getElementById('pm-zin').addEventListener('click',function(){zoom=Math.min(6,zoom*1.25);layout();});
 document.getElementById('pm-zout').addEventListener('click',function(){zoom=Math.max(0.25,zoom/1.25);layout();});
 document.getElementById('pm-zreset').addEventListener('click',function(){zoom=1;layout();});
-window.addEventListener('scroll',sticky);
-recollapse();layout();sticky();`
+var themeBtn=document.getElementById('pm-theme');
+themeBtn.addEventListener('click',function(){var lite=svg.classList.toggle('light');themeBtn.textContent=lite?'☾':'☀';});
+window.addEventListener('scroll',sticky);window.addEventListener('resize',sticky);
+recollapse();layout();`
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" width="${initialW}" height="${initialH}" viewBox="0 0 ${initialW} ${initialH}" font-family="sans-serif">
@@ -398,21 +403,30 @@ recollapse();layout();sticky();`
   <marker id="pm-ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path class="pm-ah" d="M0,0 L0,6 L8,3 z"/></marker>
 </defs>
 <rect class="bg" x="0" y="0" width="100%" height="100%"/>
-<rect class="panel" x="0" y="0" width="${LABEL_W}" height="100%"/>
 <g id="pm-weekends">${weekendParts.join('')}</g>
 <g id="pm-dlines">${dlineParts.join('')}</g>
 <g class="grid">${gridParts.join('')}</g>
 <g class="mslines">${msLineParts.join('')}</g>
 <g class="today">${todayLine}</g>
 <g class="deps">${depParts.join('')}</g>
-<g class="rows">${rowParts.join('')}</g>
+<g class="rows">${bodyParts.join('')}</g>
+<g id="pm-left">
+  <rect id="pm-leftbg" class="panel" x="0" y="${CHART_TOP}" width="${LABEL_W}" height="${fillH}"/>
+  <line class="vdiv" x1="${LABEL_W}" y1="${CHART_TOP}" x2="${LABEL_W}" y2="${initialH}"/>
+  ${leftParts.join('')}
+</g>
 <g id="pm-header">
   <rect class="panel" x="0" y="${TOOLBAR_H}" width="100%" height="${HEADER_H}"/>
-  <text class="mlabel" x="8" y="${TOOLBAR_H + 32}">Task</text>
   <g class="months">${monthParts.join('')}</g>
   <g id="pm-days">${dayParts.join('')}</g>
   <g class="mspills">${msPillParts.join('')}</g>
   <line class="hdiv" x1="0" y1="${CHART_TOP}" x2="100%" y2="${CHART_TOP}"/>
+</g>
+<g id="pm-corner">
+  <rect class="panel" x="0" y="${TOOLBAR_H}" width="${LABEL_W}" height="${HEADER_H}"/>
+  <text class="mlabel" x="8" y="${TOOLBAR_H + 32}">Task</text>
+  <line class="vdiv" x1="${LABEL_W}" y1="${TOOLBAR_H}" x2="${LABEL_W}" y2="${CHART_TOP}"/>
+  <line class="hdiv" x1="0" y1="${CHART_TOP}" x2="${LABEL_W}" y2="${CHART_TOP}"/>
 </g>
 <foreignObject id="pm-toolbar" x="0" y="0" width="${initialW}" height="${TOOLBAR_H}">
   <body xmlns="http://www.w3.org/1999/xhtml" style="margin:0">
@@ -422,8 +436,9 @@ recollapse();layout();sticky();`
       <button id="pm-zout" title="Zoom out">−</button>
       <button id="pm-zreset" title="Reset zoom">1×</button>
       <button id="pm-zin" title="Zoom in">+</button>
+      <button id="pm-theme" title="Toggle light/dark">☀</button>
       <span class="sp"></span>
-      <span class="hint">${esc(project.title)} · open in a browser for zoom/filter</span>
+      <span class="hint">${esc(project.title)} · ${esc(exportedAt)}</span>
     </div>
   </body>
 </foreignObject>
