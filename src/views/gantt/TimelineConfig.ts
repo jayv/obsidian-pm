@@ -2,10 +2,10 @@ import type { Task, GanttGranularity } from '../../types'
 import { flattenTasks } from '../../store/TaskTreeOps'
 import { Temporal, today, parsePlainDate } from '../../dates'
 
-export const ROW_HEIGHT = 40
+export const ROW_HEIGHT = 32
 export const HEADER_HEIGHT = 56
 export const LABEL_WIDTH = 280
-export const BAR_PADDING = 6
+export const BAR_PADDING = 5
 export const BAR_BORDER_RADIUS = 7
 
 export const DAY_WIDTH: Record<GanttGranularity, number> = {
