@@ -2,14 +2,15 @@ import type { GanttGranularity, PriorityConfig, Project, StatusConfig, Task } fr
 import { flattenTasks, collectAllAssignees } from '../../store/TaskTreeOps'
 import { getStatusConfig, getPriorityConfig, stringToColor } from '../../utils'
 import { displayName, initialsFor } from '../../ui/primitives/Avatar'
-import { parsePlainDate } from '../../dates'
+import { parsePlainDate, today } from '../../dates'
 import { buildTimelineConfig, dateToX } from './TimelineConfig'
 
 // ── Layout constants (base, zoom = 1) ───────────────────────────────────────
 const LABEL_W = 240
 const TOOLBAR_H = 44
-const HEADER_H = 44
+const HEADER_H = 56
 const CHART_TOP = TOOLBAR_H + HEADER_H
+const PILL_CY = TOOLBAR_H + 13 // milestone pill band
 const ROW_H = 36
 const BAR_PAD = 7
 const RIGHT_PAD = 80
@@ -95,6 +96,8 @@ export function buildGanttSvg(
   const gridParts: string[] = []
   const monthParts: string[] = []
   const dayParts: string[] = []
+  const dlineParts: string[] = [] // per-day vertical borders
+  const weekendParts: string[] = [] // weekend column shading
   const showDays = cfg.totalDays <= 1500
   for (let i = 0; i <= cfg.totalDays; i++) {
     const d = cfg.startDate.add({ days: i })
@@ -107,17 +110,34 @@ export function buildGanttSvg(
     if (d.day === 1) {
       const label = d.toLocaleString(undefined, { month: 'short', year: '2-digit' })
       monthParts.push(
-        `<text class="mlabel" data-x0="${x0 + 5}" x="${LABEL_W + x0 + 5}" y="${TOOLBAR_H + 17}">${esc(label)}</text>`
+        `<text class="mlabel" data-x0="${x0 + 5}" x="${LABEL_W + x0 + 5}" y="${TOOLBAR_H + 32}">${esc(label)}</text>`
       )
     }
-    if (showDays) {
+    if (showDays && i < cfg.totalDays) {
       const cxx = x0 + cfg.dayWidth / 2
-      dayParts.push(`<text class="dlabel" data-x0="${cxx}" x="${LABEL_W + cxx}" y="${TOOLBAR_H + 36}">${d.day}</text>`)
+      dayParts.push(`<text class="dlabel" data-x0="${cxx}" x="${LABEL_W + cxx}" y="${TOOLBAR_H + 50}">${d.day}</text>`)
+      dlineParts.push(
+        `<line class="dline" data-x0="${x0}" x1="${LABEL_W + x0}" y1="${CHART_TOP}" x2="${LABEL_W + x0}" y2="${CHART_TOP}"/>`
+      )
+      if (d.dayOfWeek === 6 || d.dayOfWeek === 7) {
+        weekendParts.push(
+          `<rect class="wkrect" data-x0="${x0}" data-w0="${cfg.dayWidth}" x="${LABEL_W + x0}" y="${CHART_TOP}" width="${cfg.dayWidth}" height="0"/>`
+        )
+      }
     }
   }
 
+  // Today marker line (scales with zoom, full chart height).
+  const todayX0 = dx(today())
+  const todayLine =
+    todayX0 >= 0 && todayX0 <= BASE_W
+      ? `<line class="todayline" data-x0="${todayX0}" x1="${LABEL_W + todayX0}" y1="${CHART_TOP}" x2="${LABEL_W + todayX0}" y2="${CHART_TOP}"/>`
+      : ''
+
   // ── Rows ──────────────────────────────────────────────────────────────────
   const rowParts: string[] = []
+  const msPillParts: string[] = [] // header pills (sticky)
+  const msLineParts: string[] = [] // vertical connector lines (chart body)
   const labelMaxChars = Math.max(6, Math.floor((LABEL_W - 14) / 7))
   rows.forEach((r, i) => {
     const task = r.task
@@ -129,20 +149,34 @@ export function buildGanttSvg(
     const cy = ROW_H / 2
     const barY = BAR_PAD
     const barH = ROW_H - BAR_PAD * 2
+    const hasKids = i + 1 < rows.length && rows[i + 1].depth > r.depth
 
     const name = displayName(task.title)
-    const labelText = name.length > labelMaxChars ? name.slice(0, labelMaxChars - 1) + '…' : name
+    const labelMax = Math.max(4, labelMaxChars - r.depth * 2)
+    const labelText = name.length > labelMax ? name.slice(0, labelMax - 1) + '…' : name
 
     const parts: string[] = []
-    parts.push(`<text class="rlabel" x="${lx}" y="${cy}">${esc(labelText)}</text>`)
+    if (hasKids) {
+      parts.push(`<text class="ctoggle" data-id="${esc(task.id)}" x="${lx}" y="${cy}">▾</text>`)
+    }
+    parts.push(`<text class="rlabel" x="${lx + 14}" y="${cy}">${esc(labelText)}</text>`)
 
     if (r.msX0 !== null) {
-      // Milestone diamond + label, in a translate-only group (never distorts).
+      // Milestone diamond on its row; pill goes in the sticky header and a
+      // dashed connector line spans the chart (collected below).
       const s = 9
       parts.push(
         `<g class="ms" data-x0="${r.msX0}" data-ty="${cy}" transform="translate(${LABEL_W + r.msX0},${cy})">` +
-          `<polygon points="0,${-s} ${s},0 0,${s} ${-s},0" fill="${MILESTONE_COLOR}"/>` +
-          `<text class="mslabel" x="14" y="0">${esc(name)}</text></g>`
+          `<polygon points="0,${-s} ${s},0 0,${s} ${-s},0" fill="${MILESTONE_COLOR}"/></g>`
+      )
+      msLineParts.push(
+        `<line class="msline" data-x0="${r.msX0}" x1="${LABEL_W + r.msX0}" y1="${CHART_TOP}" x2="${LABEL_W + r.msX0}" y2="${CHART_TOP}"/>`
+      )
+      const pw = name.length * 6.2 + 16
+      msPillParts.push(
+        `<g class="mspill" data-x0="${r.msX0}" data-ty="${PILL_CY}" transform="translate(${LABEL_W + r.msX0},${PILL_CY})">` +
+          `<rect x="${-pw / 2}" y="-9" width="${pw}" height="18" rx="9" fill="${MILESTONE_COLOR}" fill-opacity="0.95"/>` +
+          `<text class="mspilltext" x="0" y="0">${esc(name)}</text></g>`
       )
     } else if (r.barX0 !== null && r.barW0 !== null) {
       const bx = LABEL_W + r.barX0
@@ -200,8 +234,9 @@ export function buildGanttSvg(
       )
     }
 
+    const msAttr = r.msX0 !== null ? ' data-ms="1"' : ''
     rowParts.push(
-      `<g class="row" data-id="${esc(task.id)}" data-title="${esc(name)}" data-assignees="${esc(JSON.stringify(task.assignees.map(displayName)))}" transform="translate(0,${y})">${parts.join('')}</g>`
+      `<g class="row"${msAttr} data-id="${esc(task.id)}" data-depth="${r.depth}" data-title="${esc(name)}" data-assignees="${esc(JSON.stringify(task.assignees.map(displayName)))}" transform="translate(0,${y})">${parts.join('')}</g>`
     )
   })
 
@@ -244,10 +279,17 @@ export function buildGanttSvg(
     text { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; fill: #d0d0d8; }
     .bg { fill: #1e1e23; }
     .panel { fill: #26262d; }
-    .vline { stroke: rgba(255,255,255,0.06); stroke-width: 1; }
+    .vline { stroke: rgba(255,255,255,0.10); stroke-width: 1; }
+    .dline { stroke: rgba(255,255,255,0.04); stroke-width: 1; }
+    .wkrect { fill: rgba(255,255,255,0.035); }
+    .msline { stroke: ${MILESTONE_COLOR}; stroke-width: 1.5; stroke-dasharray: 4 4; opacity: 0.55; }
+    .todayline { stroke: #d86b6b; stroke-width: 1.5; stroke-dasharray: 5 4; opacity: 0.8; }
+    .mspilltext { font-size: 10px; font-weight: 700; fill: #0b3d24; text-anchor: middle; dominant-baseline: central; }
     .mlabel { font-size: 11px; font-weight: 600; fill: #c2c7d0; }
     .dlabel { font-size: 9px; fill: #8b909c; text-anchor: middle; }
     .rlabel { font-size: 12px; dominant-baseline: middle; }
+    .ctoggle { font-size: 10px; dominant-baseline: middle; fill: #8b909c; cursor: pointer; }
+    .ctoggle:hover { fill: #d0d0d8; }
     .blabel { font-size: 11px; dominant-baseline: middle; fill: #b9bdc7; }
     .mslabel { font-size: 11px; font-weight: 600; dominant-baseline: middle; fill: ${MILESTONE_COLOR}; }
     .hdiv { stroke: #3a3a44; stroke-width: 1; }
@@ -289,8 +331,13 @@ var chips=[].slice.call(svg.querySelectorAll('.avf'));
 var header=document.getElementById('pm-header');
 var toolbar=document.getElementById('pm-toolbar');
 var days=document.getElementById('pm-days');
-var selected=[];
+var toggles=[].slice.call(svg.querySelectorAll('.ctoggle'));
+var selected=[];var collapsed={};
 function sx(x0){return C.LABEL_W + x0*zoom;}
+function recollapse(){var hideBelow=Infinity;
+  for(var r=0;r<rows.length;r++){var row=rows[r];var dep=parseInt(row.getAttribute('data-depth')||'0',10);
+    if(dep>hideBelow){row.setAttribute('data-chid','1');}
+    else{row.setAttribute('data-chid','0');hideBelow=Infinity;if(collapsed[row.getAttribute('data-id')])hideBelow=dep;}}}
 function layout(){
   var xs=svg.querySelectorAll('[data-x0]');
   for(var i=0;i<xs.length;i++){var el=xs[i];var x0=parseFloat(el.getAttribute('data-x0'));var X=sx(x0);var tag=el.tagName.toLowerCase();
@@ -299,13 +346,17 @@ function layout(){
     else if(tag==='text'){el.setAttribute('x',X);}
     else if(tag==='g'){el.setAttribute('transform','translate('+X+','+el.getAttribute('data-ty')+')');}}
   if(days){days.style.display=(C.DAY*zoom>=C.DAY_MIN)?'':'none';}
+  var detail=C.DAY*zoom>=6;
+  var dl=document.getElementById('pm-dlines');if(dl)dl.style.display=detail?'':'none';
+  var wk=document.getElementById('pm-weekends');if(wk)wk.style.display=detail?'':'none';
   var idx=0,pos={};
   for(var r=0;r<rows.length;r++){var row=rows[r];
-    if(row.getAttribute('data-hidden')==='1'){row.style.display='none';continue;}
+    if(row.getAttribute('data-fhid')==='1'||row.getAttribute('data-chid')==='1'){row.style.display='none';continue;}
     row.style.display='';var y=C.CHART_TOP+idx*C.ROW_H;row.setAttribute('transform','translate(0,'+y+')');
     pos[row.getAttribute('data-id')]=y;idx++;}
   var contentH=C.CHART_TOP+idx*C.ROW_H;
-  var vlines=svg.querySelectorAll('.vline');for(var v=0;v<vlines.length;v++){vlines[v].setAttribute('y2',contentH);}
+  var vlines=svg.querySelectorAll('.vline,.dline,.msline,.todayline');for(var v=0;v<vlines.length;v++){vlines[v].setAttribute('y2',contentH);}
+  var wr=svg.querySelectorAll('.wkrect');for(var w2=0;w2<wr.length;w2++){wr[w2].setAttribute('height',contentH-C.CHART_TOP);}
   for(var d=0;d<deps.length;d++){var dep=deps[d];var f=pos[dep.getAttribute('data-from')],t=pos[dep.getAttribute('data-to')];
     if(f==null||t==null){dep.style.display='none';continue;}
     dep.style.display='';var fx=sx(parseFloat(dep.getAttribute('data-fx0'))),tx=sx(parseFloat(dep.getAttribute('data-tx0')));
@@ -316,11 +367,12 @@ function layout(){
 }
 function filt(){var q=(search.value||'').toLowerCase();
   for(var r=0;r<rows.length;r++){var row=rows[r];
+    if(row.getAttribute('data-ms')==='1'){row.setAttribute('data-fhid','0');continue;}
     var okT=!q||(row.getAttribute('data-title')||'').toLowerCase().indexOf(q)>=0;
     var as=[];try{as=JSON.parse(row.getAttribute('data-assignees')||'[]');}catch(e){}
     var okA=selected.length===0;
     if(!okA){for(var k=0;k<as.length;k++){if(selected.indexOf(as[k])>=0){okA=true;break;}}}
-    row.setAttribute('data-hidden',(okT&&okA)?'0':'1');}
+    row.setAttribute('data-fhid',(okT&&okA)?'0':'1');}
   layout();}
 function sticky(){var y=window.pageYOffset||document.documentElement.scrollTop||0;
   if(header)header.setAttribute('transform','translate(0,'+y+')');
@@ -330,11 +382,14 @@ for(var ci=0;ci<chips.length;ci++){(function(c){c.addEventListener('click',funct
   c.classList.toggle('on');selected=[];
   for(var j=0;j<chips.length;j++){if(chips[j].classList.contains('on'))selected.push(chips[j].getAttribute('data-name'));}
   filt();});})(chips[ci]);}
+for(var ti=0;ti<toggles.length;ti++){(function(t){t.addEventListener('click',function(){
+  var id=t.getAttribute('data-id');collapsed[id]=!collapsed[id];t.textContent=collapsed[id]?'▸':'▾';
+  recollapse();layout();});})(toggles[ti]);}
 document.getElementById('pm-zin').addEventListener('click',function(){zoom=Math.min(6,zoom*1.25);layout();});
 document.getElementById('pm-zout').addEventListener('click',function(){zoom=Math.max(0.25,zoom/1.25);layout();});
 document.getElementById('pm-zreset').addEventListener('click',function(){zoom=1;layout();});
 window.addEventListener('scroll',sticky);
-layout();sticky();`
+recollapse();layout();sticky();`
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" width="${initialW}" height="${initialH}" viewBox="0 0 ${initialW} ${initialH}" font-family="sans-serif">
@@ -344,14 +399,19 @@ layout();sticky();`
 </defs>
 <rect class="bg" x="0" y="0" width="100%" height="100%"/>
 <rect class="panel" x="0" y="0" width="${LABEL_W}" height="100%"/>
+<g id="pm-weekends">${weekendParts.join('')}</g>
+<g id="pm-dlines">${dlineParts.join('')}</g>
 <g class="grid">${gridParts.join('')}</g>
+<g class="mslines">${msLineParts.join('')}</g>
+<g class="today">${todayLine}</g>
 <g class="deps">${depParts.join('')}</g>
 <g class="rows">${rowParts.join('')}</g>
 <g id="pm-header">
   <rect class="panel" x="0" y="${TOOLBAR_H}" width="100%" height="${HEADER_H}"/>
-  <text class="mlabel" x="8" y="${TOOLBAR_H + 17}">Task</text>
+  <text class="mlabel" x="8" y="${TOOLBAR_H + 32}">Task</text>
   <g class="months">${monthParts.join('')}</g>
   <g id="pm-days">${dayParts.join('')}</g>
+  <g class="mspills">${msPillParts.join('')}</g>
   <line class="hdiv" x1="0" y1="${CHART_TOP}" x2="100%" y2="${CHART_TOP}"/>
 </g>
 <foreignObject id="pm-toolbar" x="0" y="0" width="${initialW}" height="${TOOLBAR_H}">
