@@ -1,4 +1,4 @@
-import { ButtonComponent } from 'obsidian'
+import { ButtonComponent, Notice } from 'obsidian'
 import type PMPlugin from '../../main'
 import type { Project, Task, GanttGranularity, FilterState } from '../../types'
 import { type FlatTask, flattenTasks } from '../../store/TaskTreeOps'
@@ -24,6 +24,7 @@ import { Temporal, today } from '../../dates'
 import type { RendererContext } from './GanttRenderer'
 import { renderTaskLabel } from './TaskLabelRenderer'
 import { computeResourceConflicts } from './ResourceConflicts'
+import { buildGanttSvg } from './GanttSvgExport'
 import type { TaskConflicts } from './ResourceConflicts'
 
 // Shift+wheel zoom: a multiplier on the granularity's base day width.
@@ -145,6 +146,27 @@ export class GanttView implements SubView {
 
     new ButtonComponent(bar).setButtonText('Expand all').onClick(() => this.setAllCollapsed(false))
     new ButtonComponent(bar).setButtonText('Collapse all').onClick(() => this.setAllCollapsed(true))
+    new ButtonComponent(bar)
+      .setButtonText('Export SVG')
+      .setTooltip('Export a self-contained interactive SVG of this chart')
+      .onClick(() => void this.exportSvg())
+  }
+
+  private async exportSvg(): Promise<void> {
+    try {
+      const svg = buildGanttSvg(
+        this.project,
+        this.plugin.settings.statuses,
+        this.plugin.settings.priorities,
+        this.granularity
+      )
+      const path = this.project.filePath.replace(/\.md$/, ' Gantt.svg')
+      await this.plugin.app.vault.adapter.write(path, svg)
+      new Notice(`Exported to ${path}\nOpen it in a browser for zoom / filtering.`)
+    } catch (e) {
+      new Notice('Failed to export the SVG. Check the console.')
+      console.error('GanttSvgExport: write failed', e)
+    }
   }
 
   private renderGantt(): void {
