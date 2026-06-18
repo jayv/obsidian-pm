@@ -1,7 +1,7 @@
 import { Notice } from 'obsidian'
 import type { Task } from '../../types'
 import { openTaskModal } from '../../ui/ModalFactory'
-import { svgEl, getStatusConfig, safeAsync, stringToColor } from '../../utils'
+import { svgEl, getStatusConfig, getPriorityConfig, safeAsync, stringToColor } from '../../utils'
 import { displayName, initialsFor } from '../../ui/primitives/Avatar'
 import { parsePlainDate } from '../../dates'
 import {
@@ -131,6 +131,29 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
     )
   }
 
+  // Priority outline — a colored border so priority reads at a glance. Drawn
+  // over the fill/progress (fill: none) so progress never covers it.
+  if (!isSummary) {
+    const priorityColor = getPriorityConfig(ctx.plugin.settings.priorities, task.priority)?.color
+    if (priorityColor) {
+      barGroup.appendChild(
+        svgEl('rect', {
+          x,
+          y,
+          width,
+          height,
+          rx: BAR_BORDER_RADIUS,
+          ry: BAR_BORDER_RADIUS,
+          fill: 'none',
+          stroke: priorityColor,
+          'stroke-width': 2,
+          class: 'pm-gantt-bar-priority',
+          'pointer-events': 'none'
+        })
+      )
+    }
+  }
+
   // Resource-conflict hatch: red diagonal stripes over each span where this
   // task overlaps another task sharing an assignee.
   if (conflict && conflict.segments.length) {
@@ -173,13 +196,13 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   // Rendered before the label so the label can reserve room and avoid overlap.
   const avatarZone = renderAssigneeAvatars(barGroup, task, x, width, y, height, conflict?.assignees)
 
-  // Label: inside the bar when it fits, otherwise to the right of the bar so
-  // short tasks don't clip or hide their title.
+  // Label: inside the bar only when the full title fits; otherwise render it in
+  // full to the right of the bar. Never truncate with an ellipsis.
   const labelY = y + height / 2 + 5
-  if (width - avatarZone > 55) {
+  const innerChars = Math.floor((width - 16 - avatarZone) / 7.5)
+  if (width - avatarZone > 55 && task.title.length <= innerChars) {
     const label = svgEl('text', { x: x + 8, y: labelY, class: 'pm-gantt-bar-label' })
-    const maxChars = Math.max(4, Math.floor((width - 16 - avatarZone) / 7.5))
-    label.textContent = task.title.length > maxChars ? task.title.slice(0, maxChars - 1) + '\u2026' : task.title
+    label.textContent = task.title
     barGroup.appendChild(label)
   } else {
     // Sit clear of the bar's right edge, the recurrence glyph, and the link dot.
