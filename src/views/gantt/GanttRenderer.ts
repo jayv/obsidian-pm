@@ -55,6 +55,19 @@ export function renderGridLines(ctx: RendererContext, totalRows: number): void {
       )
     }
 
+    // Thin per-day border, only when days are wide enough to read.
+    if (dayWidth >= 16) {
+      g.appendChild(
+        svgEl('line', {
+          x1: x,
+          y1: HEADER_HEIGHT,
+          x2: x,
+          y2: totalHeight,
+          class: 'pm-gantt-gridline-day'
+        })
+      )
+    }
+
     const shouldDrawLine =
       (granularity === 'day' && isMonday) ||
       (granularity === 'week' && isMonday) ||
