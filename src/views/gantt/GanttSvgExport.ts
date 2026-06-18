@@ -7,14 +7,17 @@ import { buildTimelineConfig, dateToX } from './TimelineConfig'
 
 // ── Layout constants (base, zoom = 1) ───────────────────────────────────────
 const LABEL_W = 240
-const HEADER_H = 40
-const ROW_H = 36
 const TOOLBAR_H = 44
+const HEADER_H = 44
+const CHART_TOP = TOOLBAR_H + HEADER_H
+const ROW_H = 36
 const BAR_PAD = 7
-const RIGHT_PAD = 60
+const RIGHT_PAD = 80
 const AVATAR_R = 9
 const AVATAR_STEP = 13
 const AVATAR_EDGE_GAP = 3
+const DAY_MIN = 16 // min effective day width (px) to show day numbers
+const MILESTONE_COLOR = '#8fd9ad'
 const ACCENT = '#6c8cd5'
 
 function esc(s: string): string {
@@ -24,12 +27,10 @@ function esc(s: string): string {
 interface RowGeom {
   task: Task
   depth: number
-  /** Bar left, in timeline px at zoom 1 (relative to timeline origin). */
+  isSummary: boolean
   barX0: number | null
   barW0: number | null
-  /** Milestone diamond centre, timeline px at zoom 1. */
   msX0: number | null
-  /** Dependency anchors at zoom 1. */
   inX0: number | null
   outX0: number | null
 }
@@ -80,7 +81,8 @@ export function buildGanttSvg(
         outX0 = barX0 + barW0
       }
     }
-    return { task, depth: f.depth, barX0, barW0, msX0, inX0, outX0 }
+    const isSummary = !isMs && task.subtasks.length > 0 && barX0 !== null
+    return { task, depth: f.depth, isSummary, barX0, barW0, msX0, inX0, outX0 }
   })
 
   const anchor = new Map<string, { inX0: number; outX0: number }>()
@@ -89,21 +91,28 @@ export function buildGanttSvg(
   const rowIndex = new Map<string, number>()
   rows.forEach((r, i) => rowIndex.set(r.task.id, i))
 
-  // ── Grid lines (weekly) + month labels ───────────────────────────────────
+  // ── Header: month band (top) + day numbers (bottom) + weekly gridlines ─────
   const gridParts: string[] = []
-  const headerParts: string[] = []
+  const monthParts: string[] = []
+  const dayParts: string[] = []
+  const showDays = cfg.totalDays <= 1500
   for (let i = 0; i <= cfg.totalDays; i++) {
     const d = cfg.startDate.add({ days: i })
+    const x0 = i * cfg.dayWidth
     if (d.dayOfWeek === 1) {
-      const x0 = i * cfg.dayWidth
       gridParts.push(
-        `<line class="vline" data-x0="${x0}" x1="${LABEL_W + x0}" y1="${HEADER_H}" x2="${LABEL_W + x0}" y2="${HEADER_H}"/>`
+        `<line class="vline" data-x0="${x0}" x1="${LABEL_W + x0}" y1="${CHART_TOP}" x2="${LABEL_W + x0}" y2="${CHART_TOP}"/>`
       )
     }
     if (d.day === 1) {
-      const x0 = i * cfg.dayWidth
       const label = d.toLocaleString(undefined, { month: 'short', year: '2-digit' })
-      headerParts.push(`<text class="mlabel" data-x0="${x0 + 4}" x="${LABEL_W + x0 + 4}" y="26">${esc(label)}</text>`)
+      monthParts.push(
+        `<text class="mlabel" data-x0="${x0 + 5}" x="${LABEL_W + x0 + 5}" y="${TOOLBAR_H + 17}">${esc(label)}</text>`
+      )
+    }
+    if (showDays) {
+      const cxx = x0 + cfg.dayWidth / 2
+      dayParts.push(`<text class="dlabel" data-x0="${cxx}" x="${LABEL_W + cxx}" y="${TOOLBAR_H + 36}">${d.day}</text>`)
     }
   }
 
@@ -116,7 +125,7 @@ export function buildGanttSvg(
     const status = getStatusConfig(statuses, task.status)
     const fill = status?.color ?? ACCENT
     const priority = getPriorityConfig(priorities, task.priority)?.color
-    const y = HEADER_H + i * ROW_H
+    const y = CHART_TOP + i * ROW_H
     const cy = ROW_H / 2
     const barY = BAR_PAD
     const barH = ROW_H - BAR_PAD * 2
@@ -128,47 +137,67 @@ export function buildGanttSvg(
     parts.push(`<text class="rlabel" x="${lx}" y="${cy}">${esc(labelText)}</text>`)
 
     if (r.msX0 !== null) {
-      // Milestone diamond — positioned by group translate so it never distorts.
+      // Milestone diamond + label, in a translate-only group (never distorts).
       const s = 9
       parts.push(
         `<g class="ms" data-x0="${r.msX0}" data-ty="${cy}" transform="translate(${LABEL_W + r.msX0},${cy})">` +
-          `<polygon points="0,${-s} ${s},0 0,${s} ${-s},0" fill="#8fd9ad"/></g>`
+          `<polygon points="0,${-s} ${s},0 0,${s} ${-s},0" fill="${MILESTONE_COLOR}"/>` +
+          `<text class="mslabel" x="14" y="0">${esc(name)}</text></g>`
       )
     } else if (r.barX0 !== null && r.barW0 !== null) {
       const bx = LABEL_W + r.barX0
-      parts.push(
-        `<rect class="bar" data-x0="${r.barX0}" data-w0="${r.barW0}" x="${bx}" y="${barY}" width="${r.barW0}" height="${barH}" rx="6" fill="${fill}" fill-opacity="0.4"/>`
-      )
-      if (task.progress > 0) {
-        const pw = (task.progress / 100) * r.barW0
+      const rightX0 = r.barX0 + r.barW0
+      if (r.isSummary) {
+        // Summary (parent): thin bar with downward slanted legs at start/end.
+        const TH = 4
+        const LEG = 9
+        const legW = Math.min(6, r.barW0 / 2)
         parts.push(
-          `<rect class="prog" data-x0="${r.barX0}" data-w0="${pw}" x="${bx}" y="${barY}" width="${pw}" height="${barH}" rx="6" fill="${fill}" fill-opacity="0.9"/>`
+          `<rect class="sbar" data-x0="${r.barX0}" data-w0="${r.barW0}" x="${bx}" y="${barY}" width="${r.barW0}" height="${TH}" fill="${fill}" fill-opacity="0.9"/>`
         )
-      }
-      if (priority) {
         parts.push(
-          `<rect class="pout" data-x0="${r.barX0}" data-w0="${r.barW0}" x="${bx}" y="${barY}" width="${r.barW0}" height="${barH}" rx="6" fill="none" stroke="${priority}" stroke-width="2"/>`
+          `<g class="scap" data-x0="${r.barX0}" data-ty="${barY}" transform="translate(${bx},${barY})"><polygon points="0,0 0,${LEG} ${legW},${TH}" fill="${fill}" fill-opacity="0.9"/></g>`
         )
-      }
-      // Avatars, right-aligned inside the bar, in a translate-only group.
-      if (task.assignees.length) {
-        const rightX0 = r.barX0 + r.barW0
-        const names = task.assignees.map(displayName)
-        const shown = Math.min(3, names.length)
-        const overflow = names.length - shown
-        const av: string[] = []
-        for (let k = shown - 1; k >= 0; k--) {
-          const acx = -AVATAR_R - AVATAR_EDGE_GAP - k * AVATAR_STEP
-          const isOver = overflow > 0 && k === shown - 1
-          const aFill = isOver ? '#555b66' : stringToColor(names[k])
-          const aText = isOver ? `+${overflow + 1}` : initialsFor(names[k])
-          av.push(`<circle cx="${acx}" cy="0" r="${AVATAR_R}" fill="${aFill}" stroke="rgba(255,255,255,0.7)"/>`)
-          av.push(`<text class="av" x="${acx}" y="0">${esc(aText)}</text>`)
+        parts.push(
+          `<g class="scap" data-x0="${rightX0}" data-ty="${barY}" transform="translate(${LABEL_W + rightX0},${barY})"><polygon points="0,0 0,${LEG} ${-legW},${TH}" fill="${fill}" fill-opacity="0.9"/></g>`
+        )
+      } else {
+        parts.push(
+          `<rect class="bar" data-x0="${r.barX0}" data-w0="${r.barW0}" x="${bx}" y="${barY}" width="${r.barW0}" height="${barH}" rx="6" fill="${fill}" fill-opacity="0.4"/>`
+        )
+        if (task.progress > 0) {
+          const pw = (task.progress / 100) * r.barW0
+          parts.push(
+            `<rect class="prog" data-x0="${r.barX0}" data-w0="${pw}" x="${bx}" y="${barY}" width="${pw}" height="${barH}" rx="6" fill="${fill}" fill-opacity="0.9"/>`
+          )
         }
-        parts.push(
-          `<g class="avg" data-x0="${rightX0}" data-ty="${cy}" transform="translate(${LABEL_W + rightX0},${cy})">${av.join('')}</g>`
-        )
+        if (priority) {
+          parts.push(
+            `<rect class="pout" data-x0="${r.barX0}" data-w0="${r.barW0}" x="${bx}" y="${barY}" width="${r.barW0}" height="${barH}" rx="6" fill="none" stroke="${priority}" stroke-width="2"/>`
+          )
+        }
+        if (task.assignees.length) {
+          const names = task.assignees.map(displayName)
+          const shown = Math.min(3, names.length)
+          const overflow = names.length - shown
+          const av: string[] = []
+          for (let k = shown - 1; k >= 0; k--) {
+            const acx = -AVATAR_R - AVATAR_EDGE_GAP - k * AVATAR_STEP
+            const isOver = overflow > 0 && k === shown - 1
+            const aFill = isOver ? '#555b66' : stringToColor(names[k])
+            const aText = isOver ? `+${overflow + 1}` : initialsFor(names[k])
+            av.push(`<circle cx="${acx}" cy="0" r="${AVATAR_R}" fill="${aFill}" stroke="rgba(255,255,255,0.7)"/>`)
+            av.push(`<text class="av" x="${acx}" y="0">${esc(aText)}</text>`)
+          }
+          parts.push(
+            `<g class="avg" data-x0="${rightX0}" data-ty="${cy}" transform="translate(${LABEL_W + rightX0},${cy})">${av.join('')}</g>`
+          )
+        }
       }
+      // Task name to the right of the bar (full, never truncated).
+      parts.push(
+        `<text class="blabel" data-x0="${rightX0}" dx="8" x="${LABEL_W + rightX0}" y="${cy}">${esc(name)}</text>`
+      )
     }
 
     rowParts.push(
@@ -190,8 +219,8 @@ export function buildGanttSvg(
       if (!from || fromRow === undefined) continue
       const fx = LABEL_W + from.outX0
       const tx = LABEL_W + to.inX0
-      const fy = HEADER_H + fromRow * ROW_H + ROW_H / 2
-      const ty = HEADER_H + toRow * ROW_H + ROW_H / 2
+      const fy = CHART_TOP + fromRow * ROW_H + ROW_H / 2
+      const ty = CHART_TOP + toRow * ROW_H + ROW_H / 2
       const mx = (fx + tx) / 2
       depParts.push(
         `<g class="dep" data-from="${esc(depId)}" data-to="${esc(succ.id)}" data-fx0="${from.outX0}" data-tx0="${to.inX0}">` +
@@ -200,8 +229,7 @@ export function buildGanttSvg(
     }
   }
 
-  // ── Toolbar (HTML via foreignObject) ───────────────────────────────────────
-  // Assignee filter is a row of toggleable avatar chips.
+  // ── Toolbar (HTML via foreignObject) — assignee filter = avatar chips ──────
   const assigneeChips = collectAllAssignees(project.tasks)
     .map((a) => {
       const name = displayName(a)
@@ -209,7 +237,7 @@ export function buildGanttSvg(
     })
     .join('')
 
-  const initialH = TOOLBAR_H + HEADER_H + rows.length * ROW_H + 8
+  const initialH = CHART_TOP + rows.length * ROW_H + 8
   const initialW = LABEL_W + BASE_W + RIGHT_PAD
 
   const css = `
@@ -217,18 +245,20 @@ export function buildGanttSvg(
     .bg { fill: #1e1e23; }
     .panel { fill: #26262d; }
     .vline { stroke: rgba(255,255,255,0.06); stroke-width: 1; }
-    .mlabel { font-size: 11px; font-weight: 600; fill: #9aa0ad; }
+    .mlabel { font-size: 11px; font-weight: 600; fill: #c2c7d0; }
+    .dlabel { font-size: 9px; fill: #8b909c; text-anchor: middle; }
     .rlabel { font-size: 12px; dominant-baseline: middle; }
+    .blabel { font-size: 11px; dominant-baseline: middle; fill: #b9bdc7; }
+    .mslabel { font-size: 11px; font-weight: 600; dominant-baseline: middle; fill: ${MILESTONE_COLOR}; }
+    .hdiv { stroke: #3a3a44; stroke-width: 1; }
     .av { font-size: 9px; font-weight: 700; fill: #fff; text-anchor: middle; dominant-baseline: central; }
     .depline { fill: none; stroke: ${ACCENT}; stroke-width: 1.3; stroke-dasharray: 4 3; opacity: 0.55; }
     .pm-ah { fill: ${ACCENT}; opacity: 0.7; }
     .tb { display:flex; align-items:center; gap:8px; height:100%; padding:0 12px; box-sizing:border-box;
-          font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:#d0d0d8; background:#26262d; }
-    .tb input, .tb select { background:#1e1e23; color:#d0d0d8; border:1px solid #3a3a44; border-radius:5px;
-          padding:4px 8px; font-size:12px; }
-    .tb input { width:200px; }
-    .tb button { background:#1e1e23; color:#d0d0d8; border:1px solid #3a3a44; border-radius:5px;
-          width:28px; height:26px; cursor:pointer; font-size:14px; }
+          font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:#d0d0d8; background:#26262d;
+          border-bottom:1px solid #3a3a44; }
+    .tb input { background:#1e1e23; color:#d0d0d8; border:1px solid #3a3a44; border-radius:5px; padding:4px 8px; font-size:12px; width:200px; }
+    .tb button { background:#1e1e23; color:#d0d0d8; border:1px solid #3a3a44; border-radius:5px; width:28px; height:26px; cursor:pointer; font-size:14px; }
     .tb button:hover { background:#33333c; }
     .tb .sp { flex:1; }
     .tb .hint { font-size:11px; color:#777e8c; }
@@ -239,7 +269,16 @@ export function buildGanttSvg(
     .avf:hover { opacity:0.8; }
     .avf.on { opacity:1; border-color:#fff; }`
 
-  const cfgJson = JSON.stringify({ LABEL_W, HEADER_H, ROW_H, TOOLBAR_H, BASE_W, RIGHT_PAD })
+  const cfgJson = JSON.stringify({
+    LABEL_W,
+    ROW_H,
+    CHART_TOP,
+    TOOLBAR_H,
+    BASE_W,
+    RIGHT_PAD,
+    DAY: cfg.dayWidth,
+    DAY_MIN
+  })
 
   const script = `
 var svg=document.querySelector('svg');var C=${cfgJson};var zoom=1;
@@ -247,6 +286,9 @@ var rows=[].slice.call(svg.querySelectorAll('.row'));
 var deps=[].slice.call(svg.querySelectorAll('.dep'));
 var search=document.getElementById('pm-search');
 var chips=[].slice.call(svg.querySelectorAll('.avf'));
+var header=document.getElementById('pm-header');
+var toolbar=document.getElementById('pm-toolbar');
+var days=document.getElementById('pm-days');
 var selected=[];
 function sx(x0){return C.LABEL_W + x0*zoom;}
 function layout(){
@@ -256,19 +298,20 @@ function layout(){
     else if(tag==='rect'){el.setAttribute('x',X);var w0=el.getAttribute('data-w0');if(w0!==null)el.setAttribute('width',parseFloat(w0)*zoom);}
     else if(tag==='text'){el.setAttribute('x',X);}
     else if(tag==='g'){el.setAttribute('transform','translate('+X+','+el.getAttribute('data-ty')+')');}}
+  if(days){days.style.display=(C.DAY*zoom>=C.DAY_MIN)?'':'none';}
   var idx=0,pos={};
   for(var r=0;r<rows.length;r++){var row=rows[r];
     if(row.getAttribute('data-hidden')==='1'){row.style.display='none';continue;}
-    row.style.display='';var y=C.HEADER_H+idx*C.ROW_H;row.setAttribute('transform','translate(0,'+y+')');
+    row.style.display='';var y=C.CHART_TOP+idx*C.ROW_H;row.setAttribute('transform','translate(0,'+y+')');
     pos[row.getAttribute('data-id')]=y;idx++;}
-  var contentH=C.HEADER_H+idx*C.ROW_H;
+  var contentH=C.CHART_TOP+idx*C.ROW_H;
   var vlines=svg.querySelectorAll('.vline');for(var v=0;v<vlines.length;v++){vlines[v].setAttribute('y2',contentH);}
   for(var d=0;d<deps.length;d++){var dep=deps[d];var f=pos[dep.getAttribute('data-from')],t=pos[dep.getAttribute('data-to')];
     if(f==null||t==null){dep.style.display='none';continue;}
     dep.style.display='';var fx=sx(parseFloat(dep.getAttribute('data-fx0'))),tx=sx(parseFloat(dep.getAttribute('data-tx0')));
     var fy=f+C.ROW_H/2,ty=t+C.ROW_H/2,mx=(fx+tx)/2;
     dep.querySelector('.depline').setAttribute('d','M '+fx+' '+fy+' C '+mx+' '+fy+', '+mx+' '+ty+', '+tx+' '+ty);}
-  var w=C.LABEL_W+C.BASE_W*zoom+C.RIGHT_PAD,h=C.TOOLBAR_H+contentH+8;
+  var w=C.LABEL_W+C.BASE_W*zoom+C.RIGHT_PAD,h=contentH+8;
   svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('viewBox','0 0 '+w+' '+h);
 }
 function filt(){var q=(search.value||'').toLowerCase();
@@ -279,6 +322,9 @@ function filt(){var q=(search.value||'').toLowerCase();
     if(!okA){for(var k=0;k<as.length;k++){if(selected.indexOf(as[k])>=0){okA=true;break;}}}
     row.setAttribute('data-hidden',(okT&&okA)?'0':'1');}
   layout();}
+function sticky(){var y=window.pageYOffset||document.documentElement.scrollTop||0;
+  if(header)header.setAttribute('transform','translate(0,'+y+')');
+  if(toolbar)toolbar.setAttribute('y',y);}
 search.addEventListener('input',filt);
 for(var ci=0;ci<chips.length;ci++){(function(c){c.addEventListener('click',function(){
   c.classList.toggle('on');selected=[];
@@ -287,7 +333,8 @@ for(var ci=0;ci<chips.length;ci++){(function(c){c.addEventListener('click',funct
 document.getElementById('pm-zin').addEventListener('click',function(){zoom=Math.min(6,zoom*1.25);layout();});
 document.getElementById('pm-zout').addEventListener('click',function(){zoom=Math.max(0.25,zoom/1.25);layout();});
 document.getElementById('pm-zreset').addEventListener('click',function(){zoom=1;layout();});
-layout();`
+window.addEventListener('scroll',sticky);
+layout();sticky();`
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" width="${initialW}" height="${initialH}" viewBox="0 0 ${initialW} ${initialH}" font-family="sans-serif">
@@ -296,15 +343,18 @@ layout();`
   <marker id="pm-ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path class="pm-ah" d="M0,0 L0,6 L8,3 z"/></marker>
 </defs>
 <rect class="bg" x="0" y="0" width="100%" height="100%"/>
-<g transform="translate(0,${TOOLBAR_H})">
-  <rect class="panel" x="0" y="0" width="${LABEL_W}" height="100%"/>
-  <rect class="panel" x="0" y="0" width="100%" height="${HEADER_H}"/>
-  <g class="grid">${gridParts.join('')}</g>
-  <g class="header">${headerParts.join('')}</g>
-  <g class="deps">${depParts.join('')}</g>
-  <g class="rows">${rowParts.join('')}</g>
+<rect class="panel" x="0" y="0" width="${LABEL_W}" height="100%"/>
+<g class="grid">${gridParts.join('')}</g>
+<g class="deps">${depParts.join('')}</g>
+<g class="rows">${rowParts.join('')}</g>
+<g id="pm-header">
+  <rect class="panel" x="0" y="${TOOLBAR_H}" width="100%" height="${HEADER_H}"/>
+  <text class="mlabel" x="8" y="${TOOLBAR_H + 17}">Task</text>
+  <g class="months">${monthParts.join('')}</g>
+  <g id="pm-days">${dayParts.join('')}</g>
+  <line class="hdiv" x1="0" y1="${CHART_TOP}" x2="100%" y2="${CHART_TOP}"/>
 </g>
-<foreignObject x="0" y="0" width="${initialW}" height="${TOOLBAR_H}">
+<foreignObject id="pm-toolbar" x="0" y="0" width="${initialW}" height="${TOOLBAR_H}">
   <body xmlns="http://www.w3.org/1999/xhtml" style="margin:0">
     <div class="tb">
       <input id="pm-search" type="text" placeholder="Search tasks…"/>

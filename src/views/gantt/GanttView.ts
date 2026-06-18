@@ -149,10 +149,10 @@ export class GanttView implements SubView {
     new ButtonComponent(bar)
       .setButtonText('Export SVG')
       .setTooltip('Export a self-contained interactive SVG of this chart')
-      .onClick(() => void this.exportSvg())
+      .onClick(() => this.exportSvg())
   }
 
-  private async exportSvg(): Promise<void> {
+  private exportSvg(): void {
     try {
       const svg = buildGanttSvg(
         this.project,
@@ -160,12 +160,18 @@ export class GanttView implements SubView {
         this.plugin.settings.priorities,
         this.granularity
       )
-      const path = this.project.filePath.replace(/\.md$/, ' Gantt.svg')
-      await this.plugin.app.vault.adapter.write(path, svg)
-      new Notice(`Exported to ${path}\nOpen it in a browser for zoom / filtering.`)
+      // Trigger a save dialog so the user picks where to write the file.
+      const blob = new Blob([svg], { type: 'image/svg+xml' })
+      const url = URL.createObjectURL(blob)
+      const a = activeDocument.createElement('a')
+      a.href = url
+      a.download = `${this.project.title} Gantt.svg`
+      a.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      new Notice('Exported. Open the SVG in a browser for zoom / filtering.')
     } catch (e) {
       new Notice('Failed to export the SVG. Check the console.')
-      console.error('GanttSvgExport: write failed', e)
+      console.error('GanttSvgExport: export failed', e)
     }
   }
 
