@@ -446,7 +446,7 @@ export class ProjectView extends ItemView {
     for (const key of orderedKeys) {
       lines.push(`- *${key}*`)
       const items = (groups.get(key) ?? []).sort((a, b) => byDue(a.task, b.task))
-      for (const f of items) lines.push(`  - ${titlePath(f)}${fmtDue(f.task)}`)
+      for (const f of items) lines.push(`    - ${titlePath(f)}${fmtDue(f.task)}`)
     }
     // Milestones as a flat list after the assignee groups.
     const milestones = visible.filter((f) => f.task.type === 'milestone').sort((a, b) => byDue(a.task, b.task))
