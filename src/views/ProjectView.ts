@@ -10,7 +10,7 @@ import { KanbanView } from './KanbanView'
 import { openProjectModal, openTaskModal } from '../ui/ModalFactory'
 import { ViewSwitcher } from '../ui/primitives/ViewSwitcher'
 import { ProjectHeader } from '../ui/composites/ProjectHeader'
-import { flattenTasks } from '../store/TaskTreeOps'
+import { flattenTasks, type FlatTask } from '../store/TaskTreeOps'
 import { matchesFilter } from '../store/TaskFilter'
 import { computeResourceConflicts } from './gantt/ResourceConflicts'
 
@@ -402,9 +402,9 @@ export class ProjectView extends ItemView {
   private async copyVisibleTasksMarkdown(): Promise<void> {
     if (!this.project) return
     const statuses = this.plugin.settings.statuses
-    const visible = flattenTasks(this.project.tasks)
-      .map((f) => f.task)
-      .filter((t) => t.subtasks.length === 0 && matchesFilter(t, this.filter, statuses))
+    const flat = flattenTasks(this.project.tasks)
+    const byId = new Map(flat.map((f) => [f.task.id, f]))
+    const visible = flat.filter((f) => f.task.subtasks.length === 0 && matchesFilter(f.task, this.filter, statuses))
     if (!visible.length) {
       new Notice('No visible tasks to copy.')
       return
@@ -415,20 +415,31 @@ export class ProjectView extends ItemView {
       a.due === b.due ? 0 : !a.due ? 1 : !b.due ? -1 : a.due.localeCompare(b.due)
     const whoOf = (t: Task): string => (t.assignees.length ? t.assignees.join(', ') : 'Unassigned')
     const fmtDue = (t: Task): string => (t.due ? ` _(${t.due})_` : '')
+    // Prefix a subtask with its ancestor chain: "Parent > Child > …".
+    const titlePath = (f: FlatTask): string => {
+      const parts = [f.task.title]
+      for (let pid = f.parentId; pid; ) {
+        const parent = byId.get(pid)
+        if (!parent) break
+        parts.unshift(parent.task.title)
+        pid = parent.parentId
+      }
+      return parts.join(' > ')
+    }
 
     const tasks = visible
-      .filter((t) => t.type !== 'milestone')
+      .filter((f) => f.task.type !== 'milestone')
       .sort((a, b) => {
         // Group by assignee, but keep unassigned tasks together at the end rather than
         // alphabetizing the literal "Unassigned" into the middle of the names.
-        if (!a.assignees.length !== !b.assignees.length) return a.assignees.length ? -1 : 1
-        return whoOf(a).localeCompare(whoOf(b)) || byDue(a, b)
+        if (!a.task.assignees.length !== !b.task.assignees.length) return a.task.assignees.length ? -1 : 1
+        return whoOf(a.task).localeCompare(whoOf(b.task)) || byDue(a.task, b.task)
       })
-    const milestones = visible.filter((t) => t.type === 'milestone').sort(byDue)
+    const milestones = visible.filter((f) => f.task.type === 'milestone').sort((a, b) => byDue(a.task, b.task))
 
     const lines = [
-      ...tasks.map((t) => `- **${whoOf(t)}:** ${t.title}${fmtDue(t)}`),
-      ...milestones.map((t) => `- **Milestone:** ${t.title}${fmtDue(t)}`)
+      ...tasks.map((f) => `- **${whoOf(f.task)}:** ${titlePath(f)}${fmtDue(f.task)}`),
+      ...milestones.map((f) => `- **Milestone:** ${titlePath(f)}${fmtDue(f.task)}`)
     ]
     await navigator.clipboard.writeText(lines.join('\n'))
     new Notice(`Copied ${lines.length} item${lines.length === 1 ? '' : 's'} as Markdown.`)
