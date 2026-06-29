@@ -427,8 +427,8 @@ export class ProjectView extends ItemView {
     const milestones = visible.filter((t) => t.type === 'milestone').sort(byDue)
 
     const lines = [
-      ...tasks.map((t) => `- **${whoOf(t)}: ${t.title}**${fmtDue(t)}`),
-      ...milestones.map((t) => `- **Milestone: ${t.title}**${fmtDue(t)}`)
+      ...tasks.map((t) => `- **${whoOf(t)}:** ${t.title}${fmtDue(t)}`),
+      ...milestones.map((t) => `- **Milestone:** ${t.title}${fmtDue(t)}`)
     ]
     await navigator.clipboard.writeText(lines.join('\n'))
     new Notice(`Copied ${lines.length} item${lines.length === 1 ? '' : 's'} as Markdown.`)
