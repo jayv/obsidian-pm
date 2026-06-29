@@ -427,20 +427,30 @@ export class ProjectView extends ItemView {
       return parts.join(' > ')
     }
 
-    const tasks = visible
-      .filter((f) => f.task.type !== 'milestone')
-      .sort((a, b) => {
-        // Group by assignee, but keep unassigned tasks together at the end rather than
-        // alphabetizing the literal "Unassigned" into the middle of the names.
-        if (!a.task.assignees.length !== !b.task.assignees.length) return a.task.assignees.length ? -1 : 1
-        return whoOf(a.task).localeCompare(whoOf(b.task)) || byDue(a.task, b.task)
-      })
-    const milestones = visible.filter((f) => f.task.type === 'milestone').sort((a, b) => byDue(a.task, b.task))
+    // Group tasks by assignee into a nested list: assignee header, then its tasks.
+    const groups = new Map<string, FlatTask[]>()
+    for (const f of visible) {
+      if (f.task.type === 'milestone') continue
+      const key = whoOf(f.task)
+      const arr = groups.get(key)
+      if (arr) arr.push(f)
+      else groups.set(key, [f])
+    }
+    // Named assignees alphabetically; "Unassigned" grouped at the end.
+    const orderedKeys = [...groups.keys()].sort((a, b) => {
+      if ((a === 'Unassigned') !== (b === 'Unassigned')) return a === 'Unassigned' ? 1 : -1
+      return a.localeCompare(b)
+    })
 
-    const lines = [
-      ...tasks.map((f) => `- **${whoOf(f.task)}:** ${titlePath(f)}${fmtDue(f.task)}`),
-      ...milestones.map((f) => `- **Milestone:** ${titlePath(f)}${fmtDue(f.task)}`)
-    ]
+    const lines: string[] = []
+    for (const key of orderedKeys) {
+      lines.push(`- *${key}*`)
+      const items = (groups.get(key) ?? []).sort((a, b) => byDue(a.task, b.task))
+      for (const f of items) lines.push(`  - ${titlePath(f)}${fmtDue(f.task)}`)
+    }
+    // Milestones as a flat list after the assignee groups.
+    const milestones = visible.filter((f) => f.task.type === 'milestone').sort((a, b) => byDue(a.task, b.task))
+    for (const f of milestones) lines.push(`- **Milestone:** ${titlePath(f)}${fmtDue(f.task)}`)
     await navigator.clipboard.writeText(lines.join('\n'))
     new Notice(`Copied ${lines.length} item${lines.length === 1 ? '' : 's'} as Markdown.`)
   }
