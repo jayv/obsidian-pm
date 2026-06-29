@@ -443,14 +443,17 @@ export class ProjectView extends ItemView {
     })
 
     const lines: string[] = []
+    // Milestones first, nested under their own group header like the assignees.
+    const milestones = visible.filter((f) => f.task.type === 'milestone').sort((a, b) => byDue(a.task, b.task))
+    if (milestones.length) {
+      lines.push('- *Milestones*')
+      for (const f of milestones) lines.push(`    - ${titlePath(f)}${fmtDue(f.task)}`)
+    }
     for (const key of orderedKeys) {
       lines.push(`- *${key}*`)
       const items = (groups.get(key) ?? []).sort((a, b) => byDue(a.task, b.task))
       for (const f of items) lines.push(`    - ${titlePath(f)}${fmtDue(f.task)}`)
     }
-    // Milestones as a flat list after the assignee groups.
-    const milestones = visible.filter((f) => f.task.type === 'milestone').sort((a, b) => byDue(a.task, b.task))
-    for (const f of milestones) lines.push(`- *Milestone:* ${titlePath(f)}${fmtDue(f.task)}`)
     await navigator.clipboard.writeText(lines.join('\n'))
     new Notice(`Copied ${lines.length} item${lines.length === 1 ? '' : 's'} as Markdown.`)
   }
