@@ -116,6 +116,8 @@ export class TableView implements SubView {
         case 'set-assignee':
           if (action.assignee === '') {
             await this.plugin.store.updateTasks(this.project, ids, { assignees: [] })
+          } else if (action.remove) {
+            await this.bulkRemoveFromArray(ids, 'assignees', action.assignee)
           } else {
             await this.bulkAddToArray(ids, 'assignees', action.assignee)
           }
@@ -163,9 +165,11 @@ export class TableView implements SubView {
             return
           }
           await this.plugin.store.deleteTasks(this.project, ids)
+          this.state.selectedTaskIds.clear() // deleted tasks no longer exist
           break
       }
-      this.state.selectedTaskIds.clear()
+      // Keep the selection across non-destructive actions so several edits can be made
+      // to the same tasks in a row (status, then assignee, …) without re-selecting.
       await this.onRefresh()
     } catch (err) {
       console.error('Bulk action failed', err)
@@ -177,6 +181,12 @@ export class TableView implements SubView {
   private async bulkAddToArray(ids: string[], field: 'assignees' | 'tags', value: string): Promise<void> {
     await this.plugin.store.updateTasks(this.project, ids, (task) =>
       task[field].includes(value) ? null : { [field]: [...task[field], value] }
+    )
+  }
+
+  private async bulkRemoveFromArray(ids: string[], field: 'assignees' | 'tags', value: string): Promise<void> {
+    await this.plugin.store.updateTasks(this.project, ids, (task) =>
+      task[field].includes(value) ? { [field]: task[field].filter((v) => v !== value) } : null
     )
   }
 

@@ -12,7 +12,7 @@ import { updateSelectAllCheckbox } from './TableRow'
 export type BulkAction =
   | { type: 'set-status'; status: TaskStatus }
   | { type: 'set-priority'; priority: TaskPriority }
-  | { type: 'set-assignee'; assignee: string }
+  | { type: 'set-assignee'; assignee: string; remove?: boolean }
   | { type: 'set-tag'; tag: string }
   | { type: 'set-due-date'; due: string }
   | { type: 'set-progress'; progress: number }
@@ -83,15 +83,23 @@ function updateBarContent(bar: HTMLElement, ctx: TableContext, onAction: (a: Bul
     menu.showAtMouseEvent(e)
   })
 
-  // Assignee button
+  // Assignee button — a checklist of members: checked = on ALL selected tasks. Clicking
+  // toggles (add to all / remove from all), so you can reassign and uncheck, not just add.
   new ButtonComponent(left).setButtonText('Set assignee').onClick((e) => {
     const menu = new Menu()
+    const tasks = [...ctx.state.selectedTaskIds].map((id) => findTaskById(ctx.project, id)).filter(Boolean) as Task[]
     const allMembers = collectAllAssignees(ctx.project.tasks, [
       ...ctx.project.teamMembers,
       ...ctx.plugin.settings.globalTeamMembers
     ])
     for (const m of allMembers) {
-      menu.addItem((item) => item.setTitle(m).onClick(() => onAction({ type: 'set-assignee', assignee: m })))
+      const onAll = tasks.length > 0 && tasks.every((t) => t.assignees.includes(m))
+      menu.addItem((item) =>
+        item
+          .setTitle(m)
+          .setChecked(onAll)
+          .onClick(() => onAction({ type: 'set-assignee', assignee: m, remove: onAll }))
+      )
     }
     menu.addSeparator()
     menu.addItem((item) =>
