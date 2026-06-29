@@ -450,7 +450,7 @@ export class ProjectView extends ItemView {
     }
     // Milestones as a flat list after the assignee groups.
     const milestones = visible.filter((f) => f.task.type === 'milestone').sort((a, b) => byDue(a.task, b.task))
-    for (const f of milestones) lines.push(`- **Milestone:** ${titlePath(f)}${fmtDue(f.task)}`)
+    for (const f of milestones) lines.push(`- *Milestone:* ${titlePath(f)}${fmtDue(f.task)}`)
     await navigator.clipboard.writeText(lines.join('\n'))
     new Notice(`Copied ${lines.length} item${lines.length === 1 ? '' : 's'} as Markdown.`)
   }
