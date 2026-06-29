@@ -418,7 +418,12 @@ export class ProjectView extends ItemView {
 
     const tasks = visible
       .filter((t) => t.type !== 'milestone')
-      .sort((a, b) => whoOf(a).localeCompare(whoOf(b)) || byDue(a, b))
+      .sort((a, b) => {
+        // Group by assignee, but keep unassigned tasks together at the end rather than
+        // alphabetizing the literal "Unassigned" into the middle of the names.
+        if (!a.assignees.length !== !b.assignees.length) return a.assignees.length ? -1 : 1
+        return whoOf(a).localeCompare(whoOf(b)) || byDue(a, b)
+      })
     const milestones = visible.filter((t) => t.type === 'milestone').sort(byDue)
 
     const lines = [
