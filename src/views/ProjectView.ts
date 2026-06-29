@@ -1,6 +1,6 @@
-import { ButtonComponent, ExtraButtonComponent, ItemView, WorkspaceLeaf, TFile, EventRef } from 'obsidian'
+import { ButtonComponent, ExtraButtonComponent, ItemView, Notice, WorkspaceLeaf, TFile, EventRef } from 'obsidian'
 import type PMPlugin from '../main'
-import { Project, ViewMode, FilterState, SavedView, makeDefaultFilter, makeId } from '../types'
+import { Project, Task, ViewMode, FilterState, SavedView, makeDefaultFilter, makeId } from '../types'
 import { truncateTitle, safeAsync } from '../utils'
 import type { SubView } from './SubView'
 import { TableView } from './table/TableView'
@@ -11,6 +11,7 @@ import { openProjectModal, openTaskModal } from '../ui/ModalFactory'
 import { ViewSwitcher } from '../ui/primitives/ViewSwitcher'
 import { ProjectHeader } from '../ui/composites/ProjectHeader'
 import { flattenTasks } from '../store/TaskTreeOps'
+import { matchesFilter } from '../store/TaskFilter'
 import { computeResourceConflicts } from './gantt/ResourceConflicts'
 
 export const PM_PROJECT_VIEW_TYPE = 'pm-project'
@@ -374,6 +375,11 @@ export class ProjectView extends ItemView {
     }
 
     new ExtraButtonComponent(right)
+      .setIcon('clipboard-list')
+      .setTooltip('Copy visible tasks as Markdown (for Slack)')
+      .onClick(safeAsync(() => this.copyVisibleTasksMarkdown()))
+
+    new ExtraButtonComponent(right)
       .setIcon('settings')
       .setTooltip('Project settings')
       .onClick(() => {
@@ -386,6 +392,41 @@ export class ProjectView extends ItemView {
           }
         })
       })
+  }
+
+  /**
+   * Copy the currently-visible leaf tasks (passing the active filter, parents excluded)
+   * to the clipboard as a Markdown bullet list — handy for pasting a status update into
+   * Slack. Tasks are grouped by assignee then due date; milestones are listed last.
+   */
+  private async copyVisibleTasksMarkdown(): Promise<void> {
+    if (!this.project) return
+    const statuses = this.plugin.settings.statuses
+    const visible = flattenTasks(this.project.tasks)
+      .map((f) => f.task)
+      .filter((t) => t.subtasks.length === 0 && matchesFilter(t, this.filter, statuses))
+    if (!visible.length) {
+      new Notice('No visible tasks to copy.')
+      return
+    }
+
+    // Empty due dates sort after dated ones.
+    const byDue = (a: Task, b: Task): number =>
+      a.due === b.due ? 0 : !a.due ? 1 : !b.due ? -1 : a.due.localeCompare(b.due)
+    const whoOf = (t: Task): string => (t.assignees.length ? t.assignees.join(', ') : 'Unassigned')
+    const fmtDue = (t: Task): string => (t.due ? ` _(${t.due})_` : '')
+
+    const tasks = visible
+      .filter((t) => t.type !== 'milestone')
+      .sort((a, b) => whoOf(a).localeCompare(whoOf(b)) || byDue(a, b))
+    const milestones = visible.filter((t) => t.type === 'milestone').sort(byDue)
+
+    const lines = [
+      ...tasks.map((t) => `- **${whoOf(t)}: ${t.title}**${fmtDue(t)}`),
+      ...milestones.map((t) => `- **Milestone: ${t.title}**${fmtDue(t)}`)
+    ]
+    await navigator.clipboard.writeText(lines.join('\n'))
+    new Notice(`Copied ${lines.length} item${lines.length === 1 ? '' : 's'} as Markdown.`)
   }
 
   /** Focus the task search box. Used by the search-focus hotkey. */
