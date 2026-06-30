@@ -508,7 +508,16 @@ export class ProjectStore {
       } else {
         const content = serializeProject(project, this.getStatuses())
         this.markSelfWrite(project.filePath)
-        await this.app.vault.create(project.filePath, content)
+        try {
+          await this.app.vault.create(project.filePath, content)
+        } catch (e) {
+          // A concurrent/duplicate save of the same new project (e.g. a settings change
+          // fires saveProject while the first create is still in flight) can land here
+          // after the file already exists. Fall back to modifying it instead of failing.
+          const existing = this.app.vault.getAbstractFileByPath(project.filePath)
+          if (existing instanceof TFile) await this.app.vault.modify(existing, content)
+          else throw e
+        }
         this.hydratedBodies.add(project)
       }
       // The object we just saved is the canonical in-memory copy (it may be a
@@ -664,10 +673,24 @@ export class ProjectStore {
 
   // ─── CRUD shortcuts ────────────────────────────────────────────────────────
 
+  /**
+   * A project title + file path not already taken in `folder`, bumping a collision
+   * ("New Project" → "New Project 2" → …). Prevents the "File already exists" save
+   * error when creating a second project with the same (often default) name.
+   */
+  freeProjectName(folder: string, base: string): { title: string; filePath: string } {
+    const safe = (t: string): string => t.replace(/[\\/:*?"<>|]/g, '-')
+    for (let n = 1; ; n++) {
+      const title = n === 1 ? base : `${base} ${n}`
+      const filePath = normalizePath(`${folder}/${safe(title)}.md`)
+      if (!this.app.vault.getAbstractFileByPath(filePath)) return { title, filePath }
+    }
+  }
+
   async createProject(title: string, folder: string): Promise<Project> {
-    const safeName = title.replace(/[\\/:*?"<>|]/g, '-')
-    const filePath = normalizePath(`${folder}/${safeName}.md`)
-    const project = makeProject(title, filePath)
+    await this.ensureFolder(folder)
+    const free = this.freeProjectName(folder, title)
+    const project = makeProject(free.title, free.filePath)
     await this.ensureFolder(this.projectTaskFolder(project))
     await this.saveProject(project)
     return project

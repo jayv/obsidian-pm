@@ -691,3 +691,26 @@ describe('ProjectStore project cache', () => {
     expect(reloaded).toBe(clone)
   })
 })
+
+describe('ProjectStore project name collisions', () => {
+  it('creating a second project with the same name bumps the name (no "File already exists")', async () => {
+    const { store } = newStore()
+    const first = await store.createProject('New Project', 'Projects')
+    expect(first.title).toBe('New Project')
+
+    const second = await store.createProject('New Project', 'Projects')
+    expect(second.title).toBe('New Project 2')
+    expect(second.filePath).not.toBe(first.filePath)
+
+    const third = await store.createProject('New Project', 'Projects')
+    expect(third.title).toBe('New Project 3')
+  })
+
+  it('freeProjectName returns the base name when free', () => {
+    const { store } = newStore()
+    expect(store.freeProjectName('Projects', 'Roadmap')).toEqual({
+      title: 'Roadmap',
+      filePath: 'Projects/Roadmap.md'
+    })
+  })
+})
