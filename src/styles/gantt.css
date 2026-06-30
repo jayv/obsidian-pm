@@ -277,10 +277,14 @@
 /* Gantt bars */
 .pm-gantt-bar {
   cursor: pointer;
-  transition: filter 0.15s;
+  transition: opacity 0.15s;
 }
-.pm-gantt-bar:hover {
-  filter: brightness(1.15);
+/* Paint-only highlight (opacity, like the row hover) — NOT `filter`, which on a
+   large/zoomed SVG re-rasterizes a filter layer sized to the whole canvas and makes
+   the view flicker as the cursor crosses bars. Summary bars are an invisible (opacity
+   0) hit area, so they're excluded and highlight via their visible shape below. */
+.pm-gantt-bar:not(.pm-gantt-bar--summary):hover {
+  opacity: 0.6;
 }
 .pm-gantt-bar-progress {
   pointer-events: none;
@@ -302,9 +306,10 @@
 .pm-gantt-summary-shape {
   opacity: 0.9;
   pointer-events: none;
+  transition: opacity 0.15s;
 }
 .pm-gantt-bar-group:hover .pm-gantt-summary-shape {
-  filter: brightness(1.15);
+  opacity: 1;
 }
 .pm-gantt-bar-label {
   font-size: 10px;
