@@ -9,18 +9,27 @@ export function stringToColor(s: string): string {
   return `hsl(${Math.abs(hash) % 360}, 55%, 45%)`
 }
 
+/**
+ * Read a date string for display. A bare calendar date (YYYY-MM-DD) is interpreted in
+ * LOCAL time; `new Date('2026-06-29')` would parse it as UTC midnight and then render
+ * the previous day in any negative-offset timezone (the "due 6/29 shows as 6/28" bug).
+ * Full ISO timestamps fall through to the normal parser.
+ */
+function localDate(iso: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(iso)
+}
+
 /** Short date: "Mar 28" */
 export function formatDateShort(iso: string): string {
   if (!iso) return ''
-  const d = new Date(iso)
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return localDate(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 /** Long date: "Mar 28, '26" */
 export function formatDateLong(iso: string): string {
   if (!iso) return ''
-  const d = new Date(iso)
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })
+  return localDate(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })
 }
 
 /** Is a status marked as terminal (complete) in the config? */
