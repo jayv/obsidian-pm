@@ -379,6 +379,15 @@ export class ProjectView extends ItemView {
       .setTooltip('Copy visible tasks as Markdown (for Slack)')
       .onClick(safeAsync(() => this.copyVisibleTasksMarkdown()))
 
+    if (this.currentView === 'gantt') {
+      new ExtraButtonComponent(right)
+        .setIcon('external-link')
+        .setTooltip('Export as SVG')
+        .onClick(() => {
+          if (this.subview instanceof GanttView) this.subview.exportSvg()
+        })
+    }
+
     new ExtraButtonComponent(right)
       .setIcon('settings')
       .setTooltip('Project settings')

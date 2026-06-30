@@ -146,13 +146,10 @@ export class GanttView implements SubView {
 
     new ButtonComponent(bar).setButtonText('Expand all').onClick(() => this.setAllCollapsed(false))
     new ButtonComponent(bar).setButtonText('Collapse all').onClick(() => this.setAllCollapsed(true))
-    new ButtonComponent(bar)
-      .setButtonText('Export SVG')
-      .setTooltip('Export a self-contained interactive SVG of this chart')
-      .onClick(() => this.exportSvg())
   }
 
-  private exportSvg(): void {
+  /** Export a self-contained interactive SVG of this chart (driven from the toolbar). */
+  exportSvg(): void {
     try {
       const svg = buildGanttSvg(
         this.project,
