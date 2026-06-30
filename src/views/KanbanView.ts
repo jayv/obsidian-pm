@@ -56,11 +56,19 @@ export class KanbanView implements SubView {
    * Task descriptions live in the note body, which loads lazily. Pull the bodies
    * for the cards on the board, then re-render once so previews fill in.
    */
-  private async hydrateDescriptions(): Promise<void> {
+  /**
+   * Cards on the board: actionable leaf tasks only — milestones and tasks that have
+   * subtasks (parents) are never shown.
+   */
+  private cardTasks(): Task[] {
     const candidates = this.plugin.settings.kanbanShowSubtasks
       ? flattenTasks(this.project.tasks).map((ft) => ft.task)
       : this.project.tasks
-    const pending = candidates.filter(
+    return candidates.filter((t) => t.type !== 'milestone' && t.subtasks.length === 0)
+  }
+
+  private async hydrateDescriptions(): Promise<void> {
+    const pending = this.cardTasks().filter(
       (t) => t.filePath && !t.description && matchesFilter(t, this.filter, this.plugin.settings.statuses)
     )
     if (!pending.length) return
@@ -69,10 +77,9 @@ export class KanbanView implements SubView {
   }
 
   private getTasksForStatus(status: TaskStatus): Task[] {
-    const candidates = this.plugin.settings.kanbanShowSubtasks
-      ? flattenTasks(this.project.tasks).map((ft) => ft.task)
-      : this.project.tasks
-    return candidates.filter((t) => t.status === status && matchesFilter(t, this.filter, this.plugin.settings.statuses))
+    return this.cardTasks().filter(
+      (t) => t.status === status && matchesFilter(t, this.filter, this.plugin.settings.statuses)
+    )
   }
 
   private buildCardData(task: Task): KanbanCardData {
