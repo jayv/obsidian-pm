@@ -453,6 +453,10 @@ export class ProjectStore {
   // ─── Save ──────────────────────────────────────────────────────────────────
 
   async saveProject(project: Project): Promise<void> {
+    // A project with no file path hasn't been created yet (e.g. the new-project modal
+    // before "Create project"). Writing it would call vault.create('') and corrupt
+    // Obsidian's file index. The in-memory edits persist once a path is assigned.
+    if (!project.filePath) return
     const key = project.filePath
     const prev = this.saveQueues.get(key) ?? Promise.resolve()
     const next = (async () => {
@@ -694,6 +698,23 @@ export class ProjectStore {
     await this.ensureFolder(this.projectTaskFolder(project))
     await this.saveProject(project)
     return project
+  }
+
+  /**
+   * Ensure a project exists on disk before writing into it (importing tasks, loading
+   * connector config, etc.). A brand-new modal project has no path yet — assign a unique
+   * one from its title and create it. Idempotent: an already-saved project is just
+   * re-saved. Returns the (possibly newly assigned) file path.
+   */
+  async ensureCreated(project: Project, folder: string): Promise<string> {
+    if (!project.filePath) {
+      const free = this.freeProjectName(folder, project.title.trim() || 'New Project')
+      project.title = free.title
+      project.filePath = free.filePath
+      await this.ensureFolder(this.projectTaskFolder(project))
+    }
+    await this.saveProject(project)
+    return project.filePath
   }
 
   async addTask(project: Project, parentId: string | null = null): Promise<Task> {

@@ -2,7 +2,7 @@ import type { App } from 'obsidian'
 import { TFile } from 'obsidian'
 import { describe, expect, it, vi } from 'vitest'
 import { makeFakeApp, type FakeVault } from '../../test/fakeVault'
-import { makeTask, type StatusConfig, type Task } from '../types'
+import { makeProject, makeTask, type StatusConfig, type Task } from '../types'
 import { ProjectStore } from './ProjectStore'
 import { buildTaskIndex } from './TaskIndex'
 import { flattenTasks } from './TaskTreeOps'
@@ -689,6 +689,24 @@ describe('ProjectStore project cache', () => {
     if (!(file instanceof TFile)) throw new Error('project file missing')
     const reloaded = await store.loadProject(file)
     expect(reloaded).toBe(clone)
+  })
+})
+
+describe('ProjectStore.ensureCreated', () => {
+  it('creates a path-less project from its title and persists it', async () => {
+    const { store, vault } = newStore()
+    const project = makeProject('Fresh', '') // a fresh modal project: no path yet
+    const path = await store.ensureCreated(project, 'Projects')
+    expect(path).toBe('Projects/Fresh.md')
+    expect(project.filePath).toBe('Projects/Fresh.md')
+    expect(vault.getAbstractFileByPath('Projects/Fresh.md')).toBeInstanceOf(TFile)
+  })
+
+  it('saveProject is a no-op for a path-less project (never writes vault.create(""))', async () => {
+    const { store } = newStore()
+    const project = makeProject('Ghost', '')
+    await expect(store.saveProject(project)).resolves.toBeUndefined() // no throw, no create('')
+    expect(project.filePath).toBe('') // untouched; nothing created
   })
 })
 
