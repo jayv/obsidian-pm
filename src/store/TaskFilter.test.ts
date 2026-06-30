@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_STATUSES, makeDefaultFilter, makeTask, type FilterState, type Task } from '../types'
 import {
   applyTaskFilter,
@@ -96,6 +96,23 @@ describe('matchesFilter', () => {
   it('treats no-date dueDateFilter correctly', () => {
     expect(matchesFilter(task({ id: 'a', due: '' }), filter({ dueDateFilter: 'no-date' }))).toBe(true)
     expect(matchesFilter(task({ id: 'b', due: '2026-01-01' }), filter({ dueDateFilter: 'no-date' }))).toBe(false)
+  })
+
+  describe('this-week covers the whole week, not just today onward', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('matches any day of the current week (Mon–Sun), including days already past', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-07-01T12:00:00Z')) // a Wednesday; week = Mon 06-29 … Sun 07-05
+      const f = filter({ dueDateFilter: 'this-week' })
+      const m = (due: string) => matchesFilter(task({ id: due, due, status: 'done' }), f, DEFAULT_STATUSES)
+
+      expect(m('2026-06-29')).toBe(true) // Monday (earlier this week, e.g. completed)
+      expect(m('2026-07-01')).toBe(true) // today
+      expect(m('2026-07-05')).toBe(true) // Sunday (end of week)
+      expect(m('2026-06-28')).toBe(false) // last week's Sunday
+      expect(m('2026-07-06')).toBe(false) // next Monday
+    })
   })
 })
 

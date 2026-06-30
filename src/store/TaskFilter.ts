@@ -88,12 +88,15 @@ function matchDueDateFilter(task: Task, filter: DueDateFilter, statuses: StatusC
     case 'overdue':
       return Temporal.PlainDate.compare(due, now) < 0 && !isTerminalStatus(task.status, statuses)
     case 'this-week': {
-      const daysToEnd = 7 - (now.dayOfWeek % 7)
-      const endOfWeek = now.add({ days: daysToEnd })
-      return Temporal.PlainDate.compare(due, now) >= 0 && Temporal.PlainDate.compare(due, endOfWeek) <= 0
+      // The whole current week (Mon–Sun), not just today onward — so a task due
+      // earlier this week (e.g. one already completed) still counts as "this week".
+      const startOfWeek = now.subtract({ days: now.dayOfWeek - 1 })
+      const endOfWeek = startOfWeek.add({ days: 6 })
+      return Temporal.PlainDate.compare(due, startOfWeek) >= 0 && Temporal.PlainDate.compare(due, endOfWeek) <= 0
     }
     case 'this-month':
-      return due.year === now.year && due.month === now.month && Temporal.PlainDate.compare(due, now) >= 0
+      // The whole current month, including days already past.
+      return due.year === now.year && due.month === now.month
     default:
       return true
   }
