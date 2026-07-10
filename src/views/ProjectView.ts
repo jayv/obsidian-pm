@@ -472,6 +472,24 @@ export class ProjectView extends ItemView {
       .setCta()
       .onClick(() => this.openNewTaskModal())
 
+    for (const c of this.plugin.connectors.activeFor(this.project)) {
+      if (!c.toolbarActions) continue
+      for (const action of c.toolbarActions(this.project)) {
+        new ButtonComponent(right).setButtonText(action.label).onClick(action.onClick)
+      }
+    }
+
+    // Sync button (rightmost) — only for connectors enabled on this project.
+    for (const c of this.plugin.connectors.activeFor(this.project)) {
+      if (!c.syncNow || !c.isEnabled(this.project)) continue
+      new ExtraButtonComponent(right)
+        .setIcon('refresh-cw')
+        .setTooltip(`Sync with ${c.name}`)
+        .onClick(() => {
+          if (this.project) void c.syncNow?.(this.project)
+        })
+    }
+
     new ExtraButtonComponent(right)
       .setIcon('clipboard-list')
       .setTooltip('Copy visible tasks as Markdown')

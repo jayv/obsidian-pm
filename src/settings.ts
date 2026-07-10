@@ -197,6 +197,12 @@ export class PMSettingTab extends PluginSettingTab {
           this.renderStatusList(statusContainer)
         })
     )
+
+    // Connector-contributed global settings (e.g. JIRA servers). Opening settings
+    // is a deliberate action, so building every connector here is fine.
+    for (const c of this.plugin.connectors.all()) {
+      c.renderGlobalSettings?.(containerEl)
+    }
   }
 
   private renderMembersList(container: HTMLElement): void {

@@ -158,6 +158,12 @@ export function renderTaskFormFields(container: HTMLElement, ctx: TaskFormFields
     return input
   })
 
+  // Connector-contributed task fields (e.g. JIRA sync toggle), gated per connector.
+  // activeFor avoids building connectors the project doesn't use.
+  for (const c of plugin.connectors.activeFor(project)) {
+    if (c.renderTaskField && c.isEnabled(project)) c.renderTaskField(container, task, project)
+  }
+
   // Completed date — auto-stamped when the task enters a complete status, but editable.
   // Shown once the task is in a complete status or already carries a date.
   if (task.completed || isTerminalStatus(task.status, plugin.settings.statuses)) {

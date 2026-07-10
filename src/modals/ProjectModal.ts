@@ -253,6 +253,19 @@ export class ProjectModal extends Modal {
     }
     renderCFs()
 
+    // ── Connector panels (e.g. JIRA) ────────────────────────────────────────────
+    // all() so any connector can be enabled on this project, even a fresh one.
+    for (const c of this.plugin.connectors.all()) {
+      if (!c.renderProjectPanel) continue
+      const section = el.createDiv('pm-connector-section')
+      c.renderProjectPanel(
+        section,
+        this.project,
+        () => this.close(),
+        () => this.rerender()
+      )
+    }
+
     // ── Footer ────────────────────────────────────────────────────────────────
     // Existing projects auto-persist on close (no Save button); new projects need
     // an explicit create step.

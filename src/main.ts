@@ -9,6 +9,8 @@ import { PMViewRouter } from './views/PMViewRouter'
 import { openProjectModal, openTaskModal, openProjectPicker, openTaskPicker, openImportModal } from './ui/ModalFactory'
 import { Notifier } from './components/Notifier'
 import { migrateProjects } from './migration'
+import { ConnectorRegistry } from './connectors/registry'
+import { CONNECTORS } from './connectors'
 import { safeAsync } from './utils'
 
 export default class PMPlugin extends Plugin {
@@ -18,6 +20,8 @@ export default class PMPlugin extends Plugin {
   router!: PMViewRouter
   undoStack: Array<{ undo: () => Promise<void>; redo: () => Promise<void> }> = []
   redoStack: Array<{ undo: () => Promise<void>; redo: () => Promise<void> }> = []
+  /** Registered integration connectors (JIRA, …). */
+  connectors = new ConnectorRegistry()
 
   pushUndo(entry: { undo: () => Promise<void>; redo: () => Promise<void> }): void {
     this.undoStack.push(entry)
@@ -45,6 +49,15 @@ export default class PMPlugin extends Plugin {
     await this.loadSettings()
     this.store = new ProjectStore(this.app, () => this.settings.statuses)
     this.store.registerCacheInvalidation(this)
+    // Register connector descriptors (cheap); each connector is built lazily on
+    // first real use. Wire the generic store hooks at the registry dispatch.
+    this.connectors.init(this)
+    for (const d of CONNECTORS) this.connectors.register(d)
+    this.store.onTaskChanged = (project, task) => this.connectors.taskChanged(project, task)
+    this.store.onTaskDeleted = (project, task) => this.connectors.taskDeleted(project, task)
+    this.store.onProjectLoaded = (project) => void this.connectors.projectLoaded(project)
+    this.store.onProjectSaved = (project) => void this.connectors.projectSaved(project)
+    this.store.isConnectorKey = (key) => this.connectors.ownsKey(key)
     this.notifier = new Notifier(this)
     this.router = new PMViewRouter(this)
 
@@ -61,6 +74,10 @@ export default class PMPlugin extends Plugin {
     this.addRibbonIcon('chart-gantt', 'Project manager', async () => {
       await this.router.openDashboard()
     })
+
+    // Periodic connector sync: tick each minute, let each connector decide which
+    // of its enabled projects are due (interval lives in project.ext.<id>).
+    this.registerInterval(window.setInterval(() => void this.connectorTick(), 60_000))
 
     this.addCommand({
       id: 'open-projects',
@@ -310,6 +327,31 @@ export default class PMPlugin extends Plugin {
     for (const leaf of this.app.workspace.getLeavesOfType(PM_PROJECT_VIEW_TYPE)) {
       if (leaf.view instanceof ProjectView) void leaf.view.refreshProject()
     }
+  }
+
+  /**
+   * Periodic tick: give each connector a chance to sync its enabled projects.
+   * The connector's syncTick decides whether the project is actually due.
+   */
+  private async connectorTick(): Promise<void> {
+    if (!this.connectors.size) return
+    // Don't poll while Obsidian is hidden/minimized — resume on the next tick once visible.
+    if (activeDocument.hidden) return
+    const projects = await this.store.loadAllProjects(this.settings.projectsFolder)
+    let changed = false
+    for (const p of projects) {
+      // activeFor only builds connectors the project actually carries data for.
+      for (const c of this.connectors.activeFor(p)) {
+        if (typeof c.syncTick !== 'function' || !c.isEnabled(p)) continue
+        try {
+          const r = await c.syncTick(p)
+          if (r.changed) changed = true
+        } catch (e) {
+          console.error(`[PM] connector "${c.id}" sync failed for`, p.filePath, e)
+        }
+      }
+    }
+    if (changed) this.refreshProjectViews()
   }
 
   /** Show project picker, then open TaskModal to create a task (optionally pick parent for subtask) */

@@ -78,6 +78,7 @@ export function renderTaskRow(tbody: HTMLElement, task: Task, depth: number, ctx
   new TitleCell(row, {
     task,
     depth,
+    badges: ctx.plugin.connectors.taskBadges(ctx.project, task),
     onTitleClick: () => {
       openTaskModal(ctx.plugin, ctx.project, {
         task,
