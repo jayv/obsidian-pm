@@ -88,9 +88,22 @@ export class TableView implements SubView {
     handleTableKeyDown(e, this.makeTableContext())
   }
 
+  /** Focus the scroll container so arrow-nav / Insert work immediately (no tabbing in). */
+  focus(): void {
+    const wrapper = this.container.querySelector<HTMLElement>('.pm-table-wrapper')
+    if (!wrapper) return
+    if (!wrapper.hasAttribute('tabindex')) wrapper.setAttribute('tabindex', '-1')
+    wrapper.focus({ preventScroll: true })
+  }
+
   refresh(): void {
     this.doRefreshTable()
     this.updateBulkBar()
+  }
+
+  /** Rows the table just rendered (all filter matches when filtering; else collapse-aware). */
+  visibleCount(): number {
+    return this.state.visibleRows.length
   }
 
   private doRefreshTable(): void {

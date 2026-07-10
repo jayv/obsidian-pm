@@ -348,6 +348,18 @@ export function handleTableKeyDown(e: KeyboardEvent, ctx: TableContext): void {
       }
       break
     }
+    case 'Insert': {
+      // New task, as a subtask of the highlighted row (like its hover "add subtask"
+      // button); a plain top-level task when nothing is highlighted.
+      e.preventDefault()
+      openTaskModal(ctx.plugin, ctx.project, {
+        parentId: ctx.state.selectedTaskId ?? null,
+        onSave: async () => {
+          await ctx.onRefresh()
+        }
+      })
+      break
+    }
     case 'Delete':
     case 'Backspace': {
       e.preventDefault()

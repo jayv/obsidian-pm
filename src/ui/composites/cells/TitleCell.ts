@@ -6,6 +6,8 @@ import { makeInlineEdit } from './inlineEdit'
 export interface TitleCellProps {
   task: Task
   depth: number
+  /** Connector-contributed labels (e.g. the Jira issue key), shown as bordered pills. */
+  badges?: string[]
   onTitleClick: () => void
   onTitleSave: (newTitle: string) => Promise<void>
   onAddSubtask: () => void
@@ -40,6 +42,10 @@ export class TitleCell {
         e.stopPropagation()
         props.onAddSubtask()
       })
+
+    for (const badge of props.badges ?? []) {
+      new Chip(this.el).setLabel(badge).setVariant('outline').setSize('sm')
+    }
 
     if (task.type === 'milestone') {
       new Chip(this.el)
