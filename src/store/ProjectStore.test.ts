@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { makeFakeApp, type FakeVault } from '../../test/fakeVault'
 import { makeProject, makeTask, type StatusConfig, type Task } from '../types'
 import { ProjectStore } from './ProjectStore'
-import { buildTaskIndex } from './TaskIndex'
+import { buildTaskIndex, rebuildTaskIndex } from './TaskIndex'
 import { flattenTasks } from './TaskTreeOps'
 
 const expectDefined = <T>(value: T | null | undefined, message = 'expected value to be defined'): T => {
@@ -164,6 +164,42 @@ describe('ProjectStore dirty-set save efficiency', () => {
 
     expect(vault.trashCount.get(childPath)).toBe(1)
     expect(vault.modifyCount.get(expectDefined(parent.filePath))).toBe(1)
+  })
+
+  it('fires onTaskDeleted for a deleted task and its descendants', async () => {
+    const { store } = newStore()
+    const project = await store.createProject('Del', 'Projects')
+    const parent = await addNamed(store, project, 'Parent')
+    const child = await addNamed(store, project, 'Child', parent.id)
+    const deleted: string[] = []
+    store.onTaskDeleted = (_p, t) => deleted.push(t.id)
+
+    await store.deleteTask(project, parent.id)
+
+    expect(deleted).toEqual([parent.id, child.id]) // parent first, then its subtree
+  })
+
+  it('persists a description edited on a modal-style clone of the project', async () => {
+    const { store, app } = newStore()
+    const project = await store.createProject('Desc', 'Projects')
+    project.description = 'original'
+    await store.saveProject(project)
+    const path = project.filePath
+
+    // The project modal edits a deep JSON clone (so Cancel can discard) and saves that —
+    // the clone isn't tracked as "hydrated", which used to make the save re-read and
+    // restore the on-disk description, dropping the edit.
+    const clone = JSON.parse(JSON.stringify(project)) as typeof project
+    rebuildTaskIndex(clone) // JSON round-trip turns the taskIndex Map into a plain object (as the modal does)
+    clone.description = 'edited'
+    await store.saveProject(clone)
+
+    // Reload fresh (no cache) and confirm the edit stuck.
+    const store2 = new ProjectStore(app, () => STATUSES)
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile)) throw new Error('project file missing')
+    const reloaded = expectDefined(await store2.loadProject(file))
+    expect(reloaded.description).toBe('edited')
   })
 })
 
@@ -558,6 +594,33 @@ describe('ProjectStore task index', () => {
     expect(second?.title).toBe('Task (copy 2)')
   })
 
+  it('imports tasks with duplicate titles without a filename collision', async () => {
+    const { store, vault } = newStore()
+    const project = await store.createProject('DupImport', 'Projects')
+    const a = makeTask({ title: 'Same Title' })
+    const b = makeTask({ title: 'Same Title' })
+    await store.importTasks(project, [
+      { task: a, parentId: null },
+      { task: b, parentId: null }
+    ])
+    const paths = flattenTasks(project.tasks).map((f) => f.task.filePath)
+    expect(new Set(paths).size).toBe(paths.length) // distinct files, no collision
+    for (const p of paths) expect(vault.getAbstractFileByPath(expectDefined(p))).toBeInstanceOf(TFile)
+  })
+
+  it('imports a task whose title matches an existing note on disk without a collision', async () => {
+    const { store, vault } = newStore()
+    const project = await store.createProject('DupOnDisk', 'Projects')
+    // An already-saved task on disk (separate from the import batch below).
+    const existing = await addNamed(store, project, 'Same Title')
+    // A new import whose slug would collide with that file must get a unique name.
+    const b = makeTask({ title: 'Same Title' })
+    await store.importTasks(project, [{ task: b, parentId: null }])
+    expect(b.filePath).not.toBe(existing.filePath)
+    expect(vault.getAbstractFileByPath(expectDefined(existing.filePath))).toBeInstanceOf(TFile)
+    expect(vault.getAbstractFileByPath(expectDefined(b.filePath))).toBeInstanceOf(TFile)
+  })
+
   it('survives a reload: rebuilt index after load matches the in-memory tree', async () => {
     const { store, vault, app } = newStore()
     const project = await store.createProject('Reload', 'Projects')
@@ -730,5 +793,40 @@ describe('ProjectStore project name collisions', () => {
       title: 'Roadmap',
       filePath: 'Projects/Roadmap.md'
     })
+  })
+})
+
+describe('ProjectStore team membership follows assignment', () => {
+  it('adds a task assignee to the project team on save', async () => {
+    const { store } = newStore()
+    const project = await store.createProject('Team', 'Projects')
+    const task = await addNamed(store, project, 'Solo')
+
+    await store.updateTask(project, task.id, { assignees: ['Dave'] })
+
+    expect(project.teamMembers).toContain('Dave')
+  })
+
+  it('persists derived members to the project frontmatter', async () => {
+    const { store, vault } = newStore()
+    const project = await store.createProject('Team', 'Projects')
+    const task = await addNamed(store, project, 'Solo')
+    await store.updateTask(project, task.id, { assignees: ['Dave', 'Erin'] })
+
+    const file = vault.getAbstractFileByPath(project.filePath)
+    if (!(file instanceof TFile)) throw new Error('project file missing')
+    const reloaded = expectDefined(await store.loadProject(file))
+    expect(reloaded.teamMembers).toEqual(expect.arrayContaining(['Dave', 'Erin']))
+  })
+
+  it('does not duplicate an assignee already on the team', async () => {
+    const { store } = newStore()
+    const project = await store.createProject('Team', 'Projects')
+    project.teamMembers = ['Dave']
+    const task = await addNamed(store, project, 'Solo')
+
+    await store.updateTask(project, task.id, { assignees: ['Dave'] })
+
+    expect(project.teamMembers.filter((m) => m === 'Dave')).toHaveLength(1)
   })
 })

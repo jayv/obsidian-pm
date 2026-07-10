@@ -162,6 +162,7 @@ describe('project round-trip', () => {
         assignees: ['Alice'],
         tags: ['design'],
         dueDateFilter: 'overdue',
+        activeThisWeek: false,
         showArchived: false
       },
       sortKey: 'due',
@@ -264,5 +265,48 @@ describe('hydration does not alias the source frontmatter', () => {
 
     expect((fm.customFields as unknown[]).length).toBe(1)
     expect(fm.teamMembers).toEqual(['Alice'])
+  })
+})
+
+describe('connector ext round-trip', () => {
+  const isJira = (k: string) => k === 'jira'
+
+  it('writes the connector ext under a namespaced ext block and reads it back', () => {
+    const t = makeTask({ id: 'x', ext: { jira: { key: 'DEMO-1', sync: true } } })
+    const md = serializeTask(t, makeProject('Test', 'Projects/Test.md'), null)
+    expect(md).toContain('ext:') // nested, namespaced — not flat top-level keys
+
+    const { frontmatter, body } = parseFrontmatter(md)
+    if (!frontmatter) throw new Error('frontmatter missing')
+    // The ext block is read wholesale; no predicate needed.
+    const { task } = hydrateTaskFromFile(frontmatter, body, 'p')
+    expect(task.ext).toEqual({ jira: { key: 'DEMO-1', sync: true } })
+  })
+
+  it('round-trips connector ext on projects', () => {
+    const p = makeProject('P', 'Projects/P.md')
+    p.ext = { jira: { enabled: true, serverId: 's1', epicId: 'DEMO-1' } }
+    const md = serializeProject(p)
+    expect(md).toContain('ext:')
+    const { frontmatter, body } = parseFrontmatter(md)
+    if (!frontmatter) throw new Error('frontmatter missing')
+    const proj = hydrateProjectFromFrontmatter(frontmatter, body, p.filePath, 'P')
+    expect(proj.ext).toEqual({ jira: { enabled: true, serverId: 's1', epicId: 'DEMO-1' } })
+  })
+
+  it('migrates legacy flat connector keys into ext via the predicate', () => {
+    // Old documents stored connector data flat at the top level.
+    const legacy = { id: 'x', title: 'T', jira: { key: 'DEMO-1', sync: true } }
+    const { task } = hydrateTaskFromFile(legacy, '', 'p', isJira)
+    expect(task.ext).toEqual({ jira: { key: 'DEMO-1', sync: true } })
+
+    // Without the predicate, legacy flat keys aren't claimed.
+    const { task: none } = hydrateTaskFromFile(legacy, '', 'p')
+    expect(none.ext).toBeUndefined()
+  })
+
+  it('omits ext entirely for non-connector tasks', () => {
+    const md = serializeTask(makeTask({ id: 'plain' }), makeProject('Test', 'Projects/Test.md'), null)
+    expect(md).not.toContain('ext')
   })
 })

@@ -28,6 +28,8 @@ export function serializeProject(project: Project, statuses: StatusConfig[] = []
     createdAt: project.createdAt,
     updatedAt: project.updatedAt
   }
+  // Connector data lives in a single namespaced `ext` block (e.g. ext.jira).
+  if (project.ext) fm.ext = project.ext
 
   const yamlLines: string[] = ['---']
   appendYaml(yamlLines, fm, 0)
@@ -79,6 +81,7 @@ export function buildTaskFrontmatter(task: Task, project: Project, parentTask: T
   if (task.timeEstimate !== undefined) fm.timeEstimate = task.timeEstimate
   if (task.timeLogs?.length) fm.timeLogs = task.timeLogs
   if (Object.keys(task.customFields).length) fm.customFields = task.customFields
+  if (task.ext) fm.ext = task.ext
   return fm
 }
 
