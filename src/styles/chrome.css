@@ -51,18 +51,26 @@
 .pm-conflict-indicator:disabled {
   opacity: 0.55;
 }
-.pm-conflict-indicator--has {
+/* Double-classed so the border/box-shadow beat theme `button` rules (same specificity
+   trap as the filter pills). Same ring/glow feel as .pm-pill--active, but in red. */
+.pm-conflict-indicator.pm-conflict-indicator--has {
   color: var(--color-red);
-  border-color: color-mix(in srgb, var(--color-red) 45%, transparent);
+  border-color: var(--color-red);
+  font-weight: 600;
   cursor: pointer;
 }
 .pm-conflict-indicator--has:hover {
   background: color-mix(in srgb, var(--color-red) 12%, transparent);
 }
-.pm-conflict-indicator--active {
+.pm-conflict-indicator.pm-conflict-indicator--active {
   background: color-mix(in srgb, var(--color-red) 20%, transparent);
-  border-color: var(--color-red);
+  border-color: transparent;
+  color: var(--color-red);
   font-weight: 600;
+  box-shadow:
+    0 0 0 2px var(--background-primary),
+    0 0 0 5px var(--color-red),
+    0 0 12px 3px color-mix(in srgb, var(--color-red) 55%, transparent);
 }
 
 .pm-project-header-saved-views {
@@ -91,8 +99,9 @@
 .pm-project-header-filter {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 16px 8px;
+  /* Wide enough that adjacent active pills' floating accent rings/glow don't collide. */
+  gap: 14px;
+  padding: 4px 16px 10px;
   flex-wrap: wrap;
 }
 
@@ -121,6 +130,24 @@
   flex-shrink: 0;
 }
 
+/* Project description beside the title: smaller, muted, single line with ellipsis. */
+.pm-toolbar-desc {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pm-toolbar-desc p {
+  display: inline;
+  margin: 0;
+}
+.pm-toolbar-desc a {
+  color: var(--text-accent);
+}
+
 .pm-toolbar-icon {
   font-size: 24px;
   cursor: pointer;
@@ -131,6 +158,19 @@
 }
 .pm-toolbar-icon:hover {
   transform: scale(1.15);
+}
+
+/* A disabled toolbar icon (e.g. SVG export off the Gantt): grayed out, inert — no hover
+   highlight, no pointer. Kept in place so the button bar doesn't reflow between views.
+   Qualified with .clickable-icon so it beats the theme's .clickable-icon:hover. */
+.clickable-icon.pm-toolbar-icon--disabled,
+.clickable-icon.pm-toolbar-icon--disabled:hover {
+  opacity: 0.35;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
 }
 
 .pm-toolbar-title {
@@ -149,6 +189,16 @@
 .pm-toolbar-title:focus {
   background: var(--pm-bg3);
   box-shadow: 0 0 0 2px var(--pm-accent);
+}
+
+/* Task counter ("visible | total"), sits just left of the view switcher. */
+.pm-toolbar-count {
+  margin-right: 10px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+  user-select: none;
 }
 
 /* -- View switcher --------------------------------------------------------- */

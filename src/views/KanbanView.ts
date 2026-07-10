@@ -20,6 +20,12 @@ export class KanbanView implements SubView {
     private filter: FilterState
   ) {}
 
+  /** Focus the board container so view-level shortcuts (e.g. Insert) work after switching. */
+  focus(): void {
+    if (!this.container.hasAttribute('tabindex')) this.container.setAttribute('tabindex', '-1')
+    this.container.focus({ preventScroll: true })
+  }
+
   render(): void {
     this.renderBoard()
     if (this.plugin.settings.kanbanShowDescriptionPreview) {
@@ -80,6 +86,11 @@ export class KanbanView implements SubView {
     return this.cardTasks().filter(
       (t) => t.status === status && matchesFilter(t, this.filter, this.plugin.settings.statuses)
     )
+  }
+
+  /** Cards on the board across all columns — leaf tasks passing the active filter. */
+  visibleCount(): number {
+    return this.cardTasks().filter((t) => matchesFilter(t, this.filter, this.plugin.settings.statuses)).length
   }
 
   private buildCardData(task: Task): KanbanCardData {

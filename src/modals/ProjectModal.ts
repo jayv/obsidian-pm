@@ -31,6 +31,10 @@ const PROJECT_ICONS = ['📋', '🚀', '💡', '🎯', '🔬', '🏗', '📊', '
 export class ProjectModal extends Modal {
   private project: Project
   private isNew: boolean
+  /** Serialized project at open, to detect edits and auto-persist only when changed. */
+  private snapshot = ''
+  /** Set once the project has been written (explicit create, or auto-persist on close). */
+  private saved = false
 
   constructor(
     app: App,
@@ -48,6 +52,7 @@ export class ProjectModal extends Modal {
       this.project = makeProject('New Project', '')
       this.isNew = true
     }
+    this.snapshot = JSON.stringify(this.project)
   }
 
   onOpen(): void {
@@ -60,6 +65,24 @@ export class ProjectModal extends Modal {
 
   onClose(): void {
     this.contentEl.empty()
+    // Auto-persist edits to an existing project (no Save button). New projects use
+    // the explicit create action, so don't auto-create one on dismiss.
+    const changed = JSON.stringify(this.project) !== this.snapshot
+    if (!this.isNew && !this.saved && changed && this.project.title.trim()) {
+      void this.persist()
+    }
+  }
+
+  private async persist(): Promise<void> {
+    this.saved = true
+    await this.plugin.store.saveProject(this.project)
+    await this.onSave(this.project)
+  }
+
+  /** Re-render the whole modal (e.g. after a connector mutates shared project fields). */
+  private rerender(): void {
+    this.contentEl.empty()
+    this.buildForm(this.contentEl)
   }
 
   private buildForm(el: HTMLElement): void {
@@ -211,34 +234,37 @@ export class ProjectModal extends Modal {
     renderCFs()
 
     // ── Footer ────────────────────────────────────────────────────────────────
+    // Existing projects auto-persist on close (no Save button); new projects need
+    // an explicit create step.
     const footer = el.createDiv('pm-modal-footer')
     footer.createDiv('pm-footer-spacer')
 
-    new ButtonComponent(footer).setButtonText('Cancel').onClick(() => this.close())
-
-    new ButtonComponent(footer)
-      .setButtonText(this.isNew ? '+ Create project' : 'Save')
-      .setCta()
-      .onClick(
-        safeAsync(async () => {
-          const title = titleInput.value.trim()
-          if (!title) {
-            titleInput.addClass('pm-input-error')
-            titleInput.focus()
-            return
-          }
-          this.project.title = title
-
-          if (this.isNew) {
+    if (this.isNew) {
+      new ButtonComponent(footer).setButtonText('Cancel').onClick(() => this.close())
+      new ButtonComponent(footer)
+        .setButtonText('Create project')
+        .setCta()
+        .onClick(
+          safeAsync(async () => {
+            const title = titleInput.value.trim()
+            if (!title) {
+              titleInput.addClass('pm-input-error')
+              titleInput.focus()
+              return
+            }
+            this.project.title = title
             this.project.filePath = `${this.plugin.settings.projectsFolder}/${title.replace(/[\\/:*?"<>|]/g, '-')}.md`
             await this.plugin.store.ensureFolder(this.plugin.settings.projectsFolder)
-          }
-
-          await this.plugin.store.saveProject(this.project)
-          await this.onSave(this.project)
-          this.close()
-        })
-      )
+            await this.persist()
+            this.close()
+          })
+        )
+    } else {
+      new ButtonComponent(footer)
+        .setButtonText('Done')
+        .setCta()
+        .onClick(() => this.close())
+    }
   }
 
   private renderCustomFieldEditor(

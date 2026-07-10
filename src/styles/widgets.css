@@ -64,8 +64,17 @@
   border-color: color-mix(in srgb, var(--color-green) 40%, transparent);
   color: var(--color-green);
 }
-.pm-segmented-btn--active {
-  box-shadow: 0 0 0 2px var(--pm-accent);
+/* Bold selected state, matching the filter pills/avatars: a floating accent ring + glow so
+   the active segment is unmistakable. Double-classed so it beats theme `button` box-shadow.
+   Keeps each button's own background (Task/Subtask/Milestone stay colour-coded). */
+.pm-segmented-btn.pm-segmented-btn--active {
+  border-color: transparent;
+  font-weight: 700;
+  color: var(--text-accent);
+  box-shadow:
+    0 0 0 2px var(--background-primary),
+    0 0 0 4px var(--interactive-accent),
+    0 0 10px 2px color-mix(in srgb, var(--interactive-accent) 55%, transparent);
 }
 
 /* -- Recurrence picker --------------------------------------------------- */

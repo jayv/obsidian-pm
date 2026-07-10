@@ -2,7 +2,8 @@
    PROJECT MODAL
    --------------------------------------------------------------------------- */
 .pm-modal--project {
-  max-width: 560px;
+  max-width: 720px;
+  width: min(720px, 92vw);
 }
 
 .pm-project-modal {
