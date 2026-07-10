@@ -1,0 +1,369 @@
+/* JIRA connector styles — split out of project-modal.css to keep the Jira UI
+   isolated to its own file (only present on the Jira branch). */
+.pm-jira-enable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pm-jira-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.pm-jira-actions {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+.pm-jira-result {
+  font-size: 12px;
+  color: var(--pm-text-muted);
+  min-height: 16px;
+}
+.pm-jira-result--ok {
+  color: var(--color-green);
+}
+.pm-jira-result--err {
+  color: var(--color-red);
+}
+.pm-jira-map,
+.pm-jira-assignees {
+  margin-top: 10px;
+}
+.pm-jira-map-row,
+.pm-jira-am-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.pm-jira-map-from {
+  flex: 1;
+  font-size: 13px;
+}
+/* Pattern/value and the mapped-target dropdown share the row 50/50. min-width:0
+   lets the flex children shrink instead of the dropdown collapsing. */
+.pm-jira-map-row .pm-input,
+.pm-jira-map-row .pm-select,
+.pm-jira-am-row .pm-jira-am-name,
+.pm-jira-am-row .pm-jira-user {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.pm-jira-am-name {
+  font-size: 13px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pm-jira-am-summary {
+  font-size: 12px;
+  color: var(--color-orange, #c47070);
+  margin: 2px 0 8px;
+}
+.pm-jira-am-unmapped {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-orange, #c47070);
+  border: 1px solid var(--color-orange, #c47070);
+  border-radius: 999px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+/* "push to Jira" canonical-outbound toggle on a map row. */
+.pm-jira-push {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* Value-map validation: invalid rows + error messages. */
+.pm-jira-invalid {
+  outline: 1px solid var(--color-red, #c47070);
+}
+.pm-jira-map-error {
+  color: var(--color-red, #c47070);
+  font-size: 12px;
+  margin-top: 2px;
+}
+/* Reconciliation (limbo) warning on a task's Jira field. */
+.pm-jira-limbo-badge {
+  color: var(--color-orange, #c47070);
+  font-size: 12px;
+}
+.pm-jira-limbo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pm-jira-limbo-text {
+  font-size: 12px;
+  color: var(--color-orange, #c47070);
+}
+.pm-jira-limbo-actions {
+  display: flex;
+  gap: 8px;
+}
+/* Wide 3-way merge-conflict editor (sidebar + Obsidian | base | Jira diff). */
+.pm-jira-merge-modal {
+  width: min(1100px, 92vw);
+  max-width: 92vw;
+}
+.pm-jira-merge-body {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 16px;
+  min-height: 360px;
+  max-height: 68vh;
+}
+.pm-jira-merge-sidebar {
+  border-right: 1px solid var(--background-modifier-border);
+  padding-right: 12px;
+  overflow-y: auto;
+}
+.pm-jira-merge-sidebar-head {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.pm-jira-merge-task {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.pm-jira-merge-task:hover {
+  background: var(--background-modifier-hover);
+}
+.pm-jira-merge-task.is-active {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+}
+.pm-jira-merge-task-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pm-jira-merge-task-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.pm-jira-merge-detail {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.pm-jira-merge-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.pm-jira-merge-detail-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+.pm-jira-merge-bulk {
+  display: flex;
+  gap: 8px;
+}
+.pm-jira-merge-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pm-jira-merge-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 1fr 1fr;
+  align-items: stretch;
+  gap: 8px;
+}
+.pm-jira-merge-colhead {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+.pm-jira-merge-field {
+  align-self: center;
+  font-weight: 600;
+}
+.pm-jira-merge-cell {
+  display: flex;
+}
+.pm-jira-merge-cell.is-base {
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: var(--background-primary);
+}
+.pm-jira-merge-pick {
+  flex: 1;
+  text-align: left;
+  padding: 6px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+  cursor: pointer;
+  white-space: normal;
+  word-break: break-word;
+}
+.pm-jira-merge-cell.is-chosen .pm-jira-merge-pick {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+.pm-jira-merge-radio {
+  color: var(--interactive-accent);
+}
+.pm-jira-user {
+  position: relative;
+}
+.pm-jira-user .pm-input {
+  width: 100%;
+}
+.pm-jira-suggest {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 180px;
+  overflow-y: auto;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--pm-radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.pm-jira-suggest-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.pm-jira-suggest-item:hover {
+  background: var(--background-modifier-hover);
+}
+.pm-jira-suggest-id {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.pm-jira-danger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--pm-border);
+}
+/* Push the destructive Disconnect button away from the import/export actions. */
+.pm-jira-danger .mod-warning {
+  margin-left: auto;
+}
+
+/* Import/export picker table (shared by JiraImportModal + JiraExportModal). */
+/* Two-class selector beats `.pm-modal--project` (560px) so the picker gets room. */
+.pm-modal.pm-jira-pick-modal {
+  max-width: 920px;
+  width: min(920px, 92vw);
+}
+.pm-jira-import-body {
+  max-height: 60vh;
+  overflow-y: auto;
+  margin: 8px 0;
+}
+.pm-pick-assignee-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pm-jira-pick-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pm-jira-pick-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.pm-jira-pick-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  vertical-align: top;
+}
+.pm-jira-pick-table tbody tr:hover {
+  background: var(--background-modifier-hover);
+}
+.pm-jira-pick-table .pm-pick-cb {
+  width: 28px;
+  text-align: center;
+}
+.pm-jira-pick-table .pm-pick-title {
+  width: 100%;
+}
+.pm-jira-pick-table .pm-pick-key {
+  white-space: nowrap;
+}
+.pm-jira-pick-table .pm-pick-status,
+.pm-jira-pick-table .pm-pick-assignee,
+.pm-jira-pick-table .pm-pick-due {
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.pm-jira-pick-table .pm-pick-match {
+  white-space: nowrap;
+  text-align: center;
+  width: 1%;
+}
+/* The linked-task sub-row shown beneath a matched issue. */
+.pm-jira-match-subrow td {
+  padding-top: 0;
+}
+.pm-jira-match-linked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 4px 24px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+.pm-jira-match-linked-title {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+/* Search dialog results: whole row is a click target. */
+.pm-jira-match-results {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+.pm-jira-match-row {
+  cursor: pointer;
+}
+.pm-jira-pick-table .pm-pick-due {
+  font-variant-numeric: tabular-nums;
+}
