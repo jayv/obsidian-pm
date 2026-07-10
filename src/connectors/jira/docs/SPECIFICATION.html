@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>JIRA Connector — Specification</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      background-color: #1a1a1a;
+      border: none;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <style>
+    :root { --accent:#5b3fb0; --border:#e6e8eb; --muted:#687; }
+    body { font: 15px/1.65 -apple-system, system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1.2rem 4rem; color:#1d1f23; }
+    h1 { border-bottom:3px solid var(--accent); padding-bottom:.3rem; }
+    h2 { margin-top:2.2rem; border-bottom:1px solid var(--border); padding-bottom:.25rem; color:var(--accent); }
+    h3 { margin-top:1.6rem; }
+    code { background:#f4f2fb; padding:.1em .35em; border-radius:4px; font-size:.9em; }
+    pre { background:#f6f7f9; border:1px solid var(--border); border-radius:8px; padding:.8rem 1rem; overflow:auto; }
+    pre code { background:none; padding:0; }
+    table { border-collapse:collapse; width:100%; margin:1rem 0; }
+    th,td { border:1px solid var(--border); padding:.4rem .6rem; text-align:left; vertical-align:top; }
+    th { background:#f6f4fe; }
+    a { color:var(--accent); }
+    blockquote { border-left:3px solid var(--accent); margin:1rem 0; padding:.2rem 1rem; color:var(--muted); }
+    #TOC { background:#faf9fe; border:1px solid var(--border); border-radius:10px; padding:1rem 1.4rem; font-size:.92em; }
+    #TOC::before { content:"Contents"; font-weight:700; color:var(--accent); display:block; margin-bottom:.4rem; }
+    #TOC ul { margin:.2rem 0; } #TOC a { text-decoration:none; }
+    hr { border:0; border-top:1px solid var(--border); margin:2rem 0; }
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">JIRA Connector — Specification</h1>
+</header>
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#jira-connector-specification"
+id="toc-jira-connector-specification">JIRA Connector — Specification</a>
+<ul>
+<li><a href="#goals" id="toc-goals">1. Goals</a></li>
+<li><a href="#architecture" id="toc-architecture">2. Architecture</a>
+<ul>
+<li><a href="#connector-interface-registry.ts"
+id="toc-connector-interface-registry.ts">2.1 Connector interface
+(<code>registry.ts</code>)</a></li>
+<li><a href="#ext-persistence" id="toc-ext-persistence">2.2
+<code>ext</code> persistence</a></li>
+</ul></li>
+<li><a href="#data-model-types.ts" id="toc-data-model-types.ts">3. Data
+model (<code>types.ts</code>)</a>
+<ul>
+<li><a href="#jiravaluemap" id="toc-jiravaluemap">3.1
+<code>JiraValueMap</code></a></li>
+<li><a href="#jiraserver-global-in-plugin-settings"
+id="toc-jiraserver-global-in-plugin-settings">3.2
+<code>JiraServer</code> (global, in plugin settings)</a></li>
+<li><a href="#jiraprojectconfig-project.ext.jira"
+id="toc-jiraprojectconfig-project.ext.jira">3.3
+<code>JiraProjectConfig</code> (<code>project.ext.jira</code>)</a></li>
+<li><a href="#jirataskext-task.ext.jira"
+id="toc-jirataskext-task.ext.jira">3.4 <code>JiraTaskExt</code>
+(<code>task.ext.jira</code>)</a></li>
+<li><a href="#entity-property-bags-stored-on-jira-issues"
+id="toc-entity-property-bags-stored-on-jira-issues">3.5 Entity-property
+bags (stored on JIRA issues)</a></li>
+<li><a href="#settings-accessors" id="toc-settings-accessors">3.6
+Settings accessors</a></li>
+</ul></li>
+<li><a href="#value-maps-jiramodel.ts"
+id="toc-value-maps-jiramodel.ts">4. Value maps
+(<code>JiraModel.ts</code>)</a>
+<ul>
+<li><a href="#inbound-mapinboundentries-jiravalue-fallback"
+id="toc-inbound-mapinboundentries-jiravalue-fallback">4.1 Inbound —
+<code>mapInbound(entries, jiraValue, fallback)</code></a></li>
+<li><a href="#outbound-mapoutboundentryentries-targetid-mapoutbound..."
+id="toc-outbound-mapoutboundentryentries-targetid-mapoutbound...">4.2
+Outbound — <code>mapOutboundEntry(entries, targetId)</code> /
+<code>mapOutbound(...)</code></a></li>
+<li><a href="#guessing-prefill" id="toc-guessing-prefill">4.3 Guessing
+(prefill)</a></li>
+<li><a href="#merge-prefill-from-discovered-values"
+id="toc-merge-prefill-from-discovered-values">4.4 Merge (prefill from
+discovered values)</a></li>
+<li><a href="#merge-adopt-shared-epic-config-mergeepicconfigcfg-remote"
+id="toc-merge-adopt-shared-epic-config-mergeepicconfigcfg-remote">4.5
+Merge (adopt shared epic config) —
+<code>mergeEpicConfig(cfg, remote)</code></a></li>
+<li><a href="#validation-validatevaluemapentries-kind-targetsidlabel"
+id="toc-validation-validatevaluemapentries-kind-targetsidlabel">4.6
+Validation —
+<code>validateValueMap(entries, kind, targets[{id,label}])</code></a></li>
+<li><a href="#jql-builders" id="toc-jql-builders">4.7 JQL
+builders</a></li>
+</ul></li>
+<li><a href="#rest-client-jiraclient.ts"
+id="toc-rest-client-jiraclient.ts">5. REST client
+(<code>JiraClient.ts</code>)</a>
+<ul>
+<li><a href="#reqmethod-path-body" id="toc-reqmethod-path-body">5.1
+<code>req(method, path, body?)</code></a></li>
+<li><a href="#methods-exact-paths" id="toc-methods-exact-paths">5.2
+Methods (exact paths)</a></li>
+</ul></li>
+<li><a href="#issue-normalization-normalizeissueraw-startfieldid"
+id="toc-issue-normalization-normalizeissueraw-startfieldid">6. Issue
+normalization (<code>normalizeIssue(raw, startFieldId?)</code>)</a></li>
+<li><a href="#local-server-jiramock.ts-jiramockserver.ts"
+id="toc-local-server-jiramock.ts-jiramockserver.ts">7. Local server
+(<code>JiraMock.ts</code>, <code>JiraMockServer.ts</code>)</a>
+<ul>
+<li><a href="#server" id="toc-server">7.1 Server</a></li>
+<li><a href="#routes-faithful-to-5.2"
+id="toc-routes-faithful-to-5.2">7.2 Routes (faithful to §5.2)</a></li>
+<li><a href="#data-store-jiramockstore"
+id="toc-data-store-jiramockstore">7.3 Data store
+(<code>JiraMockStore</code>)</a></li>
+<li><a href="#seeding-lifecycle" id="toc-seeding-lifecycle">7.4 Seeding
+&amp; lifecycle</a></li>
+</ul></li>
+<li><a href="#sync-engine-sync.ts" id="toc-sync-engine-sync.ts">8. Sync
+engine (<code>sync.ts</code>)</a>
+<ul>
+<li><a href="#helpers" id="toc-helpers">8.1 Helpers</a></li>
+<li><a href="#runsyncplugin-project-opts-full-boolean-syncresult"
+id="toc-runsyncplugin-project-opts-full-boolean-syncresult">8.2
+<code>runSync(plugin, project, opts?: { full?: boolean }) → SyncResult</code></a></li>
+<li><a href="#threewaymine-base-theirs-reconcile.ts"
+id="toc-threewaymine-base-theirs-reconcile.ts">8.3
+<code>threeWay(mine, base, theirs)</code>
+(<code>reconcile.ts</code>)</a></li>
+<li><a href="#a-resolveconflictplugin-project-task-taketheirs-syncfield"
+id="toc-a-resolveconflictplugin-project-task-taketheirs-syncfield">8.3a
+<code>resolveConflict(plugin, project, task, takeTheirs: SyncField[])</code></a></li>
+<li><a href="#reconcilelinksclient-blockedkey-currentlinks-desired"
+id="toc-reconcilelinksclient-blockedkey-currentlinks-desired">8.4
+<code>reconcileLinks(client, blockedKey, currentLinks, desired)</code></a></li>
+<li><a href="#resolveassigneeproject-issue"
+id="toc-resolveassigneeproject-issue">8.5
+<code>resolveAssignee(project, issue)</code></a></li>
+<li><a href="#synctick-interval-gate"
+id="toc-synctick-interval-gate">8.6 <code>syncTick</code> / interval
+gate</a></li>
+<li><a href="#deletes-ontaskdeleted-ignoreondelete"
+id="toc-deletes-ontaskdeleted-ignoreondelete">8.7 Deletes
+(<code>onTaskDeleted</code> → <code>ignoreOnDelete</code>)</a></li>
+</ul></li>
+<li><a href="#import-export-linking" id="toc-import-export-linking">9.
+Import / Export / linking</a>
+<ul>
+<li><a href="#opt-in-linking-tasklink.ts"
+id="toc-opt-in-linking-tasklink.ts">9.1 Opt-in linking
+(<code>taskLink.ts</code>)</a></li>
+<li><a href="#import-importstories-fetchepicstories"
+id="toc-import-importstories-fetchepicstories">9.2 Import
+(<code>importStories</code>, <code>fetchEpicStories</code>)</a></li>
+<li><a href="#export-exporttasks-exportabletasks"
+id="toc-export-exporttasks-exportabletasks">9.3 Export
+(<code>exportTasks</code>, <code>exportableTasks</code>)</a></li>
+<li><a href="#loadmappingvalues-load-project-settings"
+id="toc-loadmappingvalues-load-project-settings">9.4
+<code>loadMappingValues</code> (“Load project settings”)</a></li>
+</ul></li>
+<li><a href="#ui" id="toc-ui">10. UI</a>
+<ul>
+<li><a href="#global-settings-renderjiraglobalsettings"
+id="toc-global-settings-renderjiraglobalsettings">10.1 Global settings
+(<code>renderJiraGlobalSettings</code>)</a></li>
+<li><a href="#project-panel-renderjiraprojectpanel"
+id="toc-project-panel-renderjiraprojectpanel">10.2 Project panel
+(<code>renderJiraProjectPanel</code>)</a></li>
+<li><a href="#task-field-rendertaskfield"
+id="toc-task-field-rendertaskfield">10.3 Task field
+(<code>renderTaskField</code>)</a></li>
+<li><a href="#merge-conflict-editor-jiramergemodal"
+id="toc-merge-conflict-editor-jiramergemodal">10.4 Merge-conflict editor
+(<code>JiraMergeModal</code>)</a></li>
+<li><a href="#toolbar" id="toc-toolbar">10.5 Toolbar</a></li>
+</ul></li>
+<li><a href="#persistence-auto-save" id="toc-persistence-auto-save">11.
+Persistence &amp; auto-save</a></li>
+<li><a href="#guarantees-limitations"
+id="toc-guarantees-limitations">12. Guarantees &amp;
+limitations</a></li>
+<li><a href="#testing" id="toc-testing">13. Testing</a></li>
+<li><a href="#implementation-history"
+id="toc-implementation-history">Implementation history</a></li>
+</ul></li>
+</ul>
+</nav>
+<h1 id="jira-connector-specification">JIRA Connector —
+Specification</h1>
+<p>A precise, implementation-level specification of the JIRA connector
+for the Obsidian Project Manager plugin. It is detailed enough to
+reproduce the current behavior without ambiguity. JIRA-specific code
+lives entirely under <code>src/connectors/jira/</code>; the core plugin
+knows only the generic connector interface.</p>
+<blockquote>
+<p>Terminology: the <strong>local server</strong> is an in-process HTTP
+server that speaks the JIRA REST subset for development/testing. It is
+an implementation detail — never surfaced to users as a “mock”. In this
+document it is called the <em>local server</em>.</p>
+</blockquote>
+<p>Contents: <a href="#1-goals">Goals</a> · <a
+href="#2-architecture">Architecture</a> · <a href="#3-data-model">Data
+model</a> · <a href="#4-value-maps">Value maps</a> · <a
+href="#5-rest-client">REST client</a> · <a
+href="#6-issue-normalization">Normalization</a> · <a
+href="#7-local-server">Local server</a> · <a href="#8-sync-engine">Sync
+engine</a> · <a href="#9-import--export--linking">Import/Export</a> · <a
+href="#10-ui">UI</a> · <a
+href="#11-persistence--auto-save">Persistence</a> · <a
+href="#12-guarantees--limitations">Guarantees</a> · <a
+href="#13-testing">Testing</a> · <a
+href="#implementation-history">History</a></p>
+<hr />
+<h2 id="goals">1. Goals</h2>
+<ol type="1">
+<li><strong>Two-way sync</strong> of a project’s tasks ↔︎ a JIRA epic’s
+child issues.</li>
+<li><strong>No data loss on a shared instance</strong>: a local edit
+never clobbers a field a teammate changed; a rejected write is never
+silently dropped.</li>
+<li><strong>Minimal writes</strong>; per-user state (reconciliation,
+watermark) stays local.</li>
+<li><strong>One I/O path</strong> (<code>JiraClient</code>) exercised
+identically against the local server and real JIRA.</li>
+<li><strong>Connector isolation</strong>: core has zero JIRA
+knowledge.</li>
+</ol>
+<hr />
+<h2 id="architecture">2. Architecture</h2>
+<h3 id="connector-interface-registry.ts">2.1 Connector interface
+(<code>registry.ts</code>)</h3>
+<pre><code>interface Connector {
+  id; name
+  isEnabled(project): boolean
+  onload?(plugin)
+  onTaskChanged?(project, task)
+  onTaskDeleted?(project, task)
+  onProjectLoaded?/onProjectSaved?(project)
+  syncTick?(project): Promise&lt;{changed}&gt;
+  syncNow?(project): Promise&lt;void&gt;
+  renderGlobalSettings?(el)
+  renderProjectPanel?(el, project, onClose, onChange?)
+  renderTaskField?(el, task, project)
+  toolbarActions?(project): {label,onClick}[]
+}
+interface ConnectorDescriptor { id; name; frontmatterKeys?; create(plugin): Connector }</code></pre>
+<p><code>ConnectorRegistry</code>:</p>
+<ul>
+<li><code>register(descriptor)</code>, <code>all()</code> (instantiate
+every connector — for explicit UI), <code>activeFor(project)</code>
+(instantiate only connectors whose <code>id</code> is a key in
+<code>project.ext</code>), <code>ownsKey(key)</code> (descriptor-only,
+never instantiates).</li>
+<li>Instances are built lazily once and cached; <code>onload</code> runs
+on first build.</li>
+<li><code>taskChanged</code>/<code>projectLoaded</code>/<code>projectSaved</code>
+fan out to <code>activeFor</code> only.</li>
+</ul>
+<p>The JIRA descriptor: <code>id = "jira"</code>,
+<code>frontmatterKeys = { keys: ["jira"] }</code>,
+<code>create = (plugin) =&gt; new JiraConnector(plugin)</code>.</p>
+<h3 id="ext-persistence">2.2 <code>ext</code> persistence</h3>
+<p>Connector data round-trips through a namespaced <code>ext</code>
+block in note frontmatter. The store serializes/hydrates
+<code>ext.jira</code> opaquely and migrates legacy top-level
+<code>jira</code> keys into <code>ext</code> on read. Core never
+interprets the contents.</p>
+<hr />
+<h2 id="data-model-types.ts">3. Data model (<code>types.ts</code>)</h2>
+<p>Constants: <code>JIRA_ID = "jira"</code>,
+<code>ISSUE_PROP = "obsidian-pm"</code>,
+<code>CONFIG_PROP = "obsidian-pm-config"</code>.</p>
+<h3 id="jiravaluemap">3.1 <code>JiraValueMap</code></h3>
+<pre><code>{ jira: string; target: string; outbound?: boolean; id?: string }</code></pre>
+<p><code>id</code> is the JIRA-side identifier (priority id / status
+id), discovered once at mapping-load and persisted here so outbound
+writes/matches use the id, not the display name (robust against renames
++ duplicate names). Absent on legacy maps → writes fall back to
+<code>jira</code> (the name). Team-member ids need no analogue —
+<code>JiraAssignee.jiraUser</code> already stores the accountId, which
+is what assignee writes push.</p>
+<h3 id="jiraserver-global-in-plugin-settings">3.2
+<code>JiraServer</code> (global, in plugin settings)</h3>
+<pre><code>{ id; name; site; email }     // token stored separately as a secret</code></pre>
+<h3 id="jiraprojectconfig-project.ext.jira">3.3
+<code>JiraProjectConfig</code> (<code>project.ext.jira</code>)</h3>
+<pre><code>enabled: boolean
+serverId: string
+epicId: string
+statusMap: JiraValueMap[]
+priorityMap: JiraValueMap[]
+assigneeMap: { jiraUser: string; name: string; jiraDisplay?: string }[]
+ignoredKeys: string[]
+dirtyQueue: string[]
+mappingsDirty?: boolean
+syncIntervalMin?: number
+lastSyncAt?: string
+lastSeenUpdated?: string</code></pre>
+<h3 id="jirataskext-task.ext.jira">3.4 <code>JiraTaskExt</code>
+(<code>task.ext.jira</code>)</h3>
+<pre><code>key?: string             // linked issue key; absent = unlinked
+sync?: boolean           // opt-in to sync
+reconciled?: boolean     // false ⇒ unresolved conflict (local &amp; JIRA both changed)
+conflict?: JiraConflict  // JIRA snapshot captured at conflict time; drives the resolve UI
+shadow?: JiraShadow      // last-synced values; the common base for the 3-way merge</code></pre>
+<pre><code>JiraShadow   = { title; status; priority; start; due; assignees: string[]; milestone: boolean; blockedBy: string[] }
+JiraConflict = { theirs: JiraShadow }   // JIRA side at detection; the live diff is recomputed in the UI</code></pre>
+<p><code>blockedBy</code> holds the JIRA keys the task is “blocked by”
+(its dependencies), so links are merged field-by-field like everything
+else.</p>
+<h3 id="entity-property-bags-stored-on-jira-issues">3.5 Entity-property
+bags (stored on JIRA issues)</h3>
+<ul>
+<li><code>ISSUE_PROP</code> on each issue —
+<code>{ milestone?: boolean }</code>. Shared fact only.</li>
+<li><code>CONFIG_PROP</code> on the epic —
+<code>{ statusMap, priorityMap, assigneeMap }</code>. The shared mapping
+config other Obsidian users adopt.</li>
+</ul>
+<h3 id="settings-accessors">3.6 Settings accessors</h3>
+<ul>
+<li><code>servers(plugin)</code>, <code>setServers</code> (preserves
+sibling keys), <code>serverById</code>.</li>
+<li><code>getToken/setToken</code> — secret keyed
+<code>jira:{serverId}</code> in <code>connectorSecrets</code>.</li>
+<li><code>getDebug/setDebug</code> — the API debug-logging flag.</li>
+<li><code>projectCfg(project)</code> /
+<code>ensureProjectCfg(project)</code> (creates a default config; runs
+<code>sanitizeValueMap</code> to drop legacy regex entries — entries
+lacking string <code>jira</code>/<code>target</code>).
+<code>clearProjectCfg</code>.</li>
+<li><code>taskExt(task)</code> / <code>ensureTaskExt(task)</code>.</li>
+</ul>
+<hr />
+<h2 id="value-maps-jiramodel.ts">4. Value maps
+(<code>JiraModel.ts</code>)</h2>
+<p><code>eq(a,b)</code> = case-insensitive trimmed equality.</p>
+<h3 id="inbound-mapinboundentries-jiravalue-fallback">4.1 Inbound —
+<code>mapInbound(entries, jiraValue, fallback)</code></h3>
+<p>Return the <code>target</code> of the first entry with
+<code>eq(e.jira, jiraValue)</code>, else <code>fallback</code>. (Many
+JIRA values → one target is allowed; first match wins.)</p>
+<h3 id="outbound-mapoutboundentryentries-targetid-mapoutbound...">4.2
+Outbound — <code>mapOutboundEntry(entries, targetId)</code> /
+<code>mapOutbound(...)</code></h3>
+<p><code>group</code> = entries with <code>e.jira</code> and
+<code>e.target === targetId</code>. <code>mapOutboundEntry</code>
+returns the rule <code>group.find(outbound) ?? group[0]</code>
+(undefined if none); callers read <code>.id</code> (preferred) with
+<code>.jira</code> (name) as the fallback. <code>mapOutbound(...)</code>
+= <code>mapOutboundEntry(...).jira</code> (the name only), kept for the
+value-mapping tests.</p>
+<h3 id="guessing-prefill">4.3 Guessing (prefill)</h3>
+<p><code>guessStatus({name, category}, statuses)</code>:</p>
+<ul>
+<li><code>firstComplete</code> = first status with
+<code>complete</code>, else last, else <code>'done'</code>.</li>
+<li><code>firstOpen</code> = first non-complete, else first, else
+<code>'todo'</code>.</li>
+<li>cat===‘done’ → firstComplete; name⊇‘review’ →
+<code>review</code>∥<code>in-progress</code>∥firstOpen; cat===‘in
+progress’ → <code>in-progress</code>∥firstOpen; else
+<code>todo</code>∥firstOpen. (<code>x∥y</code> = use id <code>x</code>
+if it exists in <code>statuses</code>, else <code>y</code>.)</li>
+</ul>
+<p><code>guessPriority(name, priorities)</code>: fallback
+<code>priorities[0] ?? 'medium'</code>;
+<code>/highest|blocker|critical|urgent/</code>→critical,
+<code>/high|major/</code>→high, <code>/low|minor|trivial/</code>→low,
+else medium — each mapped to that id if it exists, else fallback.</p>
+<h3 id="merge-prefill-from-discovered-values">4.4 Merge (prefill from
+discovered values)</h3>
+<p><code>mergeStatusMap(existing, jiraStatuses[{name,category,id?}], statuses)</code>:
+start from <code>existing</code>; for each <code>js</code>, if a rule
+for that name already exists <strong>backfill its
+<code>id</code></strong> when missing; otherwise push
+<code>{ jira: js.name, target: guessStatus(js), outbound: &lt;no outbound yet for that target&gt;, id: js.id }</code>.
+<code>mergePriorityMap(existing, jiraPriorities[{name,id?}], priorities)</code>
+is identical with <code>guessPriority</code>. So a second load backfills
+ids onto legacy (id-less) rules.</p>
+<h3 id="merge-adopt-shared-epic-config-mergeepicconfigcfg-remote">4.5
+Merge (adopt shared epic config) —
+<code>mergeEpicConfig(cfg, remote)</code></h3>
+<p>For status &amp; priority: for each remote rule whose <strong>jira
+value</strong> (ci) isn’t already present locally, append it (local rule
+wins → no conflicting duplicate). For assignees: append each remote
+entry whose <code>name</code> isn’t already present.</p>
+<h3 id="validation-validatevaluemapentries-kind-targetsidlabel">4.6
+Validation —
+<code>validateValueMap(entries, kind, targets[{id,label}])</code></h3>
+<p>Return human-readable errors; empty = valid:</p>
+<ol type="1">
+<li>any JIRA value in &gt;1 rule →
+<code>Jira {kind} "{name}" appears in {n} rules — each Jira {kind} may map only once.</code></li>
+<li>any target with &gt;1 outbound →
+<code>"{label}" has {n} rules flagged "→ Jira" — only one may write back.</code></li>
+<li>any target (from <code>targets</code>) with 0 outbound →
+<code>"{label}" has no rule flagged "→ Jira" — Obsidian can't write this {kind} back.</code></li>
+</ol>
+<p><code>mapInbound</code>/<code>mapOutbound</code> remain deterministic
+even if invalid (first match / first in group), so sync never crashes on
+an invalid map; the UI surfaces the errors.</p>
+<h3 id="jql-builders">4.7 JQL builders</h3>
+<ul>
+<li><code>projectKeyOf(key)</code> = substring before the last
+<code>-</code> (or the whole key).</li>
+<li><code>epicChildrenJql(epic)</code> =
+<code>(parent = "{k}" OR "Epic Link" = "{k}") ORDER BY created ASC</code>,
+<code>k</code> = epic with <code>"</code> stripped.</li>
+<li><code>parentInJql(keys)</code> =
+<code>parent in ("k1","k2",…) ORDER BY created ASC</code>.</li>
+<li><code>keyInJql(keys)</code> =
+<code>key in ("k1","k2",…) ORDER BY created ASC</code> — fetch specific
+issues (e.g. the issues behind locally-dirty tasks whose JIRA side is
+unchanged).</li>
+<li><code>subtreeChangedJql(trackedKeys, epic, since)</code> = the
+<strong>incremental tick</strong> query:
+<code>(key in (tracked) OR parent in (tracked, epic)) AND updated &gt; "{toJqlTime(since)}" ORDER BY updated ASC</code>.
+The <code>key in</code> clause re-pulls tracked issues; the
+<code>parent in</code> clause catches <strong>new children</strong> of
+any tracked issue or the epic. With no tracked keys it degrades to
+<code>parent in (epic) …</code>; with no <code>since</code> the time
+filter is omitted. Subtree-scoped via the known local keys, so it never
+scans the whole project.</li>
+<li><code>toJqlTime(iso)</code> = the JIRA ISO <code>updated</code>
+(<code>2026-04-20T10:00:00.000+0000</code>) collapsed to the
+<code>yyyy-MM-dd HH:mm</code> form JQL accepts.</li>
+<li><code>epicUpdatedSinceJql</code> also exists (legacy single-epic
+incremental form); the current <code>runSync</code> uses a full crawl
+(manual) or <code>subtreeChangedJql</code> (periodic tick).</li>
+</ul>
+<hr />
+<h2 id="rest-client-jiraclient.ts">5. REST client
+(<code>JiraClient.ts</code>)</h2>
+<p>Constructed with <code>{ site, email, token, baseUrl? }</code>.
+<code>base = baseUrl ?? https://{site}/rest/api/3</code>. Auth:
+<code>Basic base64(email:token)</code>.</p>
+<h3 id="reqmethod-path-body">5.1
+<code>req(method, path, body?)</code></h3>
+<ul>
+<li><code>requestUrl({ url: base+path, method, headers: { Authorization, Accept: json, [Content-Type: json if body] }, body: JSON.stringify(body)?, throw: false })</code>.</li>
+<li><code>ok = 200..299</code>. <strong>Parse <code>res.text</code>
+defensively</strong> (<code>parseJson</code>: empty/invalid → null);
+never read <code>res.json</code> (a getter that throws on empty
+<code>204</code>/<code>200</code> bodies).</li>
+<li>Returns
+<code>{ status, data: ok ? parseJson(res.text) : null }</code>.</li>
+<li>If API debug logging is on,
+<code>console.debug("[PM-JIRA] {method} {url} → {status}", {request, response})</code>.</li>
+</ul>
+<h3 id="methods-exact-paths">5.2 Methods (exact paths)</h3>
+<ul>
+<li><code>testConnection()</code> → <code>GET /myself</code>
+(<code>ok</code>/user, or auth/HTTP error).</li>
+<li><code>startFieldId(epicKey)</code>:
+<code>GET /issue/createmeta/{proj}/issuetypes</code> → first type id;
+<code>GET /issue/createmeta/{proj}/issuetypes/{id}</code> → field whose
+<code>name</code> (ci) === <code>"start date"</code>; cache its
+<code>fieldId</code> (or <code>''</code>). Returns cached value
+thereafter.</li>
+<li><code>projectStatuses(epicKey)</code> →
+<code>GET /project/{proj}/statuses</code> → unique
+<code>{name, category, id}</code>.</li>
+<li><code>priorities()</code> →
+<code>GET /priority/search?maxResults=100</code> →
+<code>{name, id}[]</code>.</li>
+<li><code>userPicker(query, max=10)</code> →
+<code>GET /user/picker?query=…&amp;maxResults=…</code> →
+<code>{accountId, displayName}[]</code> (empty query → []).</li>
+<li><code>search(jql, max=100)</code> (private):
+<code>GET /search/jql?jql=…&amp;fields={list}&amp;maxResults={max}[&amp;nextPageToken=…]</code>;
+<code>fields</code> =
+<code>summary,status,priority,assignee,duedate,issuetype,parent,issuelinks,updated</code>
+plus the start field id when known; loop appending
+<code>nextPageToken</code> until <code>isLast || !nextPageToken</code>;
+normalize each issue.
+<ul>
+<li><code>epicChildren(epic)</code>=search(epicChildrenJql);
+<code>subtasksOf(keys)</code>=search(parentInJql) (<code>[]</code> if no
+keys);
+<code>getIssue(key)</code>=<code>GET /issue/{key}?fields=*navigable</code>.</li>
+</ul></li>
+<li><code>createIssue(fields)</code> → <code>POST /issue</code> body
+<code>{fields}</code> → <code>{key}</code> or <code>{error}</code>.</li>
+<li><code>editIssue(key, fields)</code> → <code>PUT /issue/{key}</code>
+body <code>{fields}</code> → boolean ok.</li>
+<li><code>getTransitions(key)</code> →
+<code>GET /issue/{key}/transitions</code> →
+<code>{id, name, to:{id, name}}[]</code>.</li>
+<li><code>transitionTo(key, statusName, statusId?)</code>: find
+transition matching <code>to.id === statusId</code> (when given)
+<strong>else</strong> <code>to.name</code> (ci);
+<code>POST /issue/{key}/transitions {transition:{id}}</code>; false if
+none/!ok. (Callers pass the persisted status id so a rename/duplicate
+name doesn’t misfire.)</li>
+<li><code>getProperty(key, propKey)</code> →
+<code>GET …/properties/{propKey}</code> → <code>.value</code> or
+undefined.</li>
+<li><code>setProperty(key, propKey, value)</code> →
+<code>PUT …/properties/{propKey}</code> body = value → ok.</li>
+<li><code>createLink(blockedKey, blockerKey)</code> →
+<code>POST /issueLink {type:{name:'Blocks'}, inwardIssue:{key:blockedKey}, outwardIssue:{key:blockerKey}}</code>
+(blocked “is blocked by” blocker).</li>
+<li><code>deleteLink(id)</code> →
+<code>DELETE /issueLink/{id}</code>.</li>
+<li><code>setJiraApiDebug(on)</code> — module-level flag for §5.1
+logging.</li>
+</ul>
+<hr />
+<h2 id="issue-normalization-normalizeissueraw-startfieldid">6. Issue
+normalization (<code>normalizeIssue(raw, startFieldId?)</code>)</h2>
+<p>Maps a raw JIRA issue → <code>JiraIssue</code>:</p>
+<pre><code>key, summary, status (fields.status.name), statusCategory,
+priority (fields.priority.name), assigneeAccountId, assigneeName,
+start = fields[startFieldId] (if id known), due = fields.duedate,
+updated, parentKey = fields.parent.key,
+issueType = fields.issuetype.name,
+isSubtask = fields.issuetype.subtask === true || /sub-?task/i.test(name),
+blockedBy = keys of issuelinks where type.inward === &#39;is blocked by&#39; (inwardIssue.key),
+blockLinks = those links with their { id, key }</code></pre>
+<hr />
+<h2 id="local-server-jiramock.ts-jiramockserver.ts">7. Local server
+(<code>JiraMock.ts</code>, <code>JiraMockServer.ts</code>)</h2>
+<p>A faithful, hand-editable JIRA stand-in so all paths are tested
+without a real instance. <strong>Implementation detail; not
+user-facing.</strong></p>
+<h3 id="server">7.1 Server</h3>
+<ul>
+<li><code>node:http</code> server bound to <code>127.0.0.1</code>,
+OS-assigned port (<code>listen(0)</code>). Loaded via
+<code>window.require('node:http')</code> (desktop) with a dynamic-import
+fallback; null on mobile (server simply doesn’t start).</li>
+<li>Started only when a configured server’s site matches
+<code>localhost</code>/<code>127.0.0.1</code>, via
+<code>ensureMockServer</code> (idempotent singleton).
+<code>stopMockServer</code> tears it down.</li>
+<li><code>handle()</code>: reject non-loopback callers (403); parse path
+(strip <code>/rest/api/3</code>), read body, <code>loadStore()</code>,
+<code>route()</code>, <code>saveStore()</code> if mutated,
+<code>send()</code>.</li>
+<li><code>mockBaseUrl(site)</code> returns
+<code>http://127.0.0.1:{port}/rest/api/3</code> when running and the
+site is localhost; the client uses it as <code>baseUrl</code>.</li>
+</ul>
+<h3 id="routes-faithful-to-5.2">7.2 Routes (faithful to §5.2)</h3>
+<p><code>/myself</code>, <code>/search/jql</code> (token paging:
+<code>nextPageToken</code> = numeric offset, <code>isLast</code>),
+<code>/search</code> (legacy offset paging, kept for completeness),
+<code>/priority</code>, <code>/priority/search</code>,
+<code>/user/picker</code>, <code>/project/{k}/statuses</code>,
+<code>/issue/createmeta/{k}/issuetypes(/{id})</code> (the second returns
+<code>summary</code> required, <code>priority</code> with allowedValues,
+<code>duedate</code>, and the Start-date custom field),
+<code>/issue/{key}/transitions</code> (GET list / POST apply),
+<code>/issue/{key}/properties/{p}</code> (GET/PUT),
+<code>POST /issueLink</code>, <code>DELETE /issueLink/{id}</code>,
+<code>POST /issue</code>,
+<code>GET</code>/<code>PUT /issue/{key}</code>.</p>
+<p>JQL matching (<code>matchJql</code>): supports
+<code>parent = "X"</code>, <code>parent in (…)</code>, and
+<code>updated &gt; "X"</code>; sorts by <code>updated</code> asc.</p>
+<h3 id="data-store-jiramockstore">7.3 Data store
+(<code>JiraMockStore</code>)</h3>
+<ul>
+<li><code>MockDb = { project, meta, issues }</code>; issues in native
+<code>{id, key, fields, properties?}</code>.</li>
+<li><code>meta = { startFieldId, statuses[], priorities[], users[], seq, linkSeq? }</code>.</li>
+<li><code>createIssue(fields)</code> mints
+<code>{project}-{++seq}</code>, sets initial status (first/“To Do”),
+<code>normalizeFields</code> (resolves priority/assignee, stamps
+<code>issuetype.subtask</code> from the name),
+<code>updated = now</code>.</li>
+<li><code>ensureIssue(key, fields)</code> inserts with an explicit key
+if absent (used for the epic).</li>
+<li><code>editIssue</code>,
+<code>transitionsFor</code>/<code>applyTransition</code> (every status
+reachable; no workflow restrictions),
+<code>getProperty</code>/<code>setProperty</code>,
+<code>addBlockLink</code>/<code>removeLink</code> (links carry ids; both
+linked issues get <code>updated</code> bumped).</li>
+</ul>
+<h3 id="seeding-lifecycle">7.4 Seeding &amp; lifecycle</h3>
+<ul>
+<li><code>seedMeta(store, inputs)</code> populates statuses (name =
+settings label; <code>statusCategory</code> from <code>complete</code>),
+priorities (label), users
+(<code>globalTeamMembers ∪ project.teamMembers</code>, accountId =
+<code>mock:{slug(name)}</code>).</li>
+<li>On first <code>ready()</code>, <code>seedMockFile</code> seeds meta
+once and <code>ensureIssue</code>s the epic as a real issue
+(<code>summary = project.title</code>,
+<code>issuetype: Epic</code>).</li>
+<li>Persisted as <code>jira-mock.json</code> in the plugin data dir;
+reloaded per request so hand edits apply. Removing the last localhost
+server stops the server and <strong>deletes the file</strong>
+(<code>deleteMock</code>).</li>
+</ul>
+<hr />
+<h2 id="sync-engine-sync.ts">8. Sync engine (<code>sync.ts</code>)</h2>
+<h3 id="helpers">8.1 Helpers</h3>
+<ul>
+<li><code>projectKey(cfg)</code> = <code>projectKeyOf(epicId)</code> or
+<code>"MOCK"</code>.</li>
+<li><code>makeClient(plugin, project)</code>: requires
+<code>cfg.enabled</code> and a server with a site;
+<code>baseUrl = mockBaseUrl(site)</code>; requires a token unless
+<code>baseUrl</code> (localhost). Returns a <code>JiraClient</code> or
+null.</li>
+<li><code>ready(plugin, project)</code> = <code>ensureMockServer</code>
++ <code>seedMockFile</code> + <code>makeClient</code>.</li>
+<li><code>shadowOf(task, keyOf?)</code> = the <code>JiraShadow</code>
+fields from the task; <code>blockedBy</code> =
+<code>desiredBlockerKeys(task, keyOf)</code> when a key map is given,
+else <code>[]</code>.</li>
+<li><code>assigneeField(task, cfg)</code>: no assignee →
+<code>null</code> (unassign); mapped → <code>{accountId}</code>;
+assignee present but unmapped → <code>undefined</code> (omit — don’t
+clobber).</li>
+<li><code>withJiraKey(task, key, keyOf, cfg)</code> links a just-created
+task: <code>ext.jira = {key, sync:true,   shadow}</code>. The shadow
+records <strong>what was actually pushed</strong> — when
+<code>assigneeField(task,cfg)   === undefined</code> (unmapped) the
+assignee wasn’t sent, so <code>shadow.assignees = []</code> (not the
+local name). Otherwise the next reconcile would read Jira’s empty
+assignee as a remote deletion and drop the local one; instead the field
+stays “to push” and surfaces as a conflict until the member is
+mapped.</li>
+<li><code>priorityRef(entry)</code> =
+<code>entry.id ? {id} : {name: entry.jira}</code> — prefer the persisted
+priority id, fall back to the name.</li>
+<li><code>createFields(task, parentKey, typeName, cfg, startField)</code>:
+<code>{ project:{key}, issuetype:{name: typeName}, summary, parent:{key: parentKey} }</code>;
+<code>+ duedate (if due), + [startField]=start (if both), + priority: priorityRef(mapOutboundEntry(priority)) (if any), + assignee (if assigneeField !== undefined)</code>.</li>
+<li><code>pushNewIssue(...)</code>:
+<code>createIssue(createFields)</code>; on no key, log + return null;
+then <code>transitionTo(status.jira, status.id)</code> where
+<code>status = mapOutboundEntry(statusMap, …)</code> (if any);
+<code>setProperty(ISSUE_PROP, {milestone})</code>; return key.</li>
+</ul>
+<h3 id="runsyncplugin-project-opts-full-boolean-syncresult">8.2
+<code>runSync(plugin, project, opts?: { full?: boolean }) → SyncResult</code></h3>
+<p><code>SyncResult = { changed, jiraCreated, jiraUpdated, obsidianUpdated, membersAdded, conflicts, skippedTooDeep, newIssues }</code>.
+Requires <code>cfg.enabled</code> and <code>cfg.epicId</code>.</p>
+<p><strong>Full vs incremental.</strong> <code>opts.full</code> defaults
+to <code>true</code>. A <strong>full</strong> sync (manual
+<code>syncNow</code>, the import bootstrap) pulls the shared epic config
+and crawls the whole epic subtree. An <strong>incremental</strong> sync
+(<code>full:false</code>, the periodic <code>syncTick</code>) skips the
+epic-config pull and pulls only
+<code>subtreeChangedJql(trackedKeys, epic, watermark)</code> plus the
+issues behind locally-dirty tasks — so an idle tick fetches nothing and
+a busy one costs O(changes) requests, never O(tree) + type/config
+metadata every minute. The epic config has no <code>updated</code>
+watermark (entity-property writes don’t bump it), so it can’t be polled
+incrementally; ticks rely on the last full sync having adopted it.</p>
+<p>Steps, in order:</p>
+<ol start="0" type="1">
+<li><code>full = opts.full !== false</code>;
+<code>startField = client.startFieldId(epicId)</code>;
+<code>fallback = settings.statuses[0].id ?? 'todo'</code>.</li>
+<li><strong>(full only)</strong> <code>pullEpicConfig</code>:
+<code>getProperty(epic, CONFIG_PROP)</code>; if present →
+<code>mergeEpicConfig</code>; else if local maps exist → set
+<code>mappingsDirty</code> (bootstrap publish later).</li>
+<li>Index local tasks (by id, by key, parentOf,
+<code>keyOf</code>).</li>
+<li><strong>Create</strong> opted-in keyless tasks (parent-first, both
+modes): for each flat task with no <code>key</code> and
+<code>sync === true</code>, lazily <code>buildTypePlan</code> (so a
+no-create tick fetches no type metadata), resolve the child type via
+<code>childTypeFor</code> (skip + <code>skippedTooDeep</code> when
+nested below the lowest type), <code>pushNewIssue</code> with the
+parent’s key; record key; patch the task <code>ext</code> with
+<code>{key, sync:true, shadow}</code>. Then <code>reconcileLinks</code>
+per created task.</li>
+<li><strong>Fetch the JIRA side</strong> then <strong>reconcile</strong>
+every linked &amp; synced task with a single <strong>3-way
+merge</strong> against its issue (see 8.3).
+<ul>
+<li><strong>full</strong>: <code>all = epicDescendants(epic)</code> (BFS
+crawl, O(depth) <code>parent in</code> queries).</li>
+<li><strong>incremental</strong>:
+<code>all = changedInSubtree(trackedKeys, epic, watermark)</code>; for
+any locally-dirty tracked key (shadow diverged or
+<code>reconciled === false</code>) not already in that result, also
+<code>issuesByKeys(missing)</code> so a local-only edit still pushes.
+Index by key; track <code>maxUpdated</code>. Issues in <code>all</code>
+that are not a local task, not created this run, and not in
+<code>ignoredKeys</code> → <code>newIssues</code>. Then for each flat
+task with <code>sync</code> and <code>key</code> (issues absent from
+<code>all</code> are simply skipped — unchanged):</li>
+<li><code>mine = shadowOf(task, keyOf)</code>;
+<code>localDiverged = !ext.shadow || mine ≠ ext.shadow</code>. Skip (no
+HTTP) when
+<code>!localDiverged &amp;&amp; issue.updated ≤ prevWatermark &amp;&amp;   ext.reconciled !== false</code>.</li>
+<li><code>theirs</code> from the issue (<code>resolveAssignee</code> may
+auto-create a mapped member); <code>blockedBy = issue.blockedBy</code>.
+<code>base = ext.shadow ?? theirs</code>.</li>
+<li><code>tw = threeWay(mine, base, theirs)</code> (8.3). If
+<code>tw.conflicts</code> non-empty →
+<code>flagConflict(task, theirs)</code> (<code>reconciled:false</code>,
+<code>conflict:{theirs}</code>), keep local, <code>conflicts++</code>,
+continue. <strong>The shadow is NOT advanced</strong>, so the next sync
+re-examines it.</li>
+<li><strong>Push</strong> <code>tw.push</code> fields:
+<code>summary</code>/<code>duedate</code>/<code>[startField]</code>/<code>priority</code>
+via <code>editIssue</code> (<code>priority</code> =
+<code>priorityRef(mapOutboundEntry)</code> → id or name);
+<code>status</code> via
+<code>transitionTo(status.jira, status.id)</code> from
+<code>mapOutboundEntry</code>; <code>milestone</code> via
+<code>setProperty(ISSUE_PROP)</code>; <code>blockedBy</code> via
+<code>reconcileLinks(key, issue.blockLinks,   desiredBlockerKeys)</code>.
+A <code>priority</code>/<code>status</code> with no canonical outbound,
+an <code>assignee</code> whose local member has no JIRA-user mapping
+(<code>assigneeField === undefined</code>), or any rejected write sets
+<code>ok=false</code> — these are surfaced, never silently dropped. If
+<code>!ok</code> → <code>flagConflict(task, theirs)</code>,
+<code>conflicts++</code>, continue (no shadow advance). Else
+<code>jiraUpdated++</code> if <code>tw.push</code> non-empty.</li>
+<li><strong>Adopt</strong> <code>tw.adopt</code> fields into a task
+patch
+(<code>status</code>/<code>priority</code>/<code>title</code>/<code>start</code>/
+<code>due</code>/<code>assignees</code>/<code>type</code>;
+<code>blockedBy</code> → <code>dependencies</code> via key→id).
+<code>obsidianUpdated++</code> if <code>tw.adopt</code> non-empty.</li>
+<li>Advance the shadow to the <strong>merged baseline</strong> (adopted
+fields take JIRA’s value, the rest stay local) and clear
+<code>reconciled</code>/<code>conflict</code>.</li>
+</ul></li>
+<li><code>cfg.dirtyQueue = []</code>;
+<code>lastSeenUpdated = maxUpdated</code>;
+<code>lastSyncAt = now</code>.</li>
+<li><code>pushEpicConfig</code>: if <code>mappingsDirty</code>,
+<code>setProperty(epic, CONFIG_PROP, {maps})</code>, clear the
+flag.</li>
+<li><code>applyExternalUpdates(project, patches)</code> (store-level,
+persists).</li>
+</ol>
+<p>The dirty queue is now only a hint for <code>syncTick</code> (which
+tasks to look at first); the 3-way merge is what decides
+push/adopt/conflict, so a rejected push isn’t “lost” — the shadow stays
+behind and the next sync retries.</p>
+<h3 id="threewaymine-base-theirs-reconcile.ts">8.3
+<code>threeWay(mine, base, theirs)</code>
+(<code>reconcile.ts</code>)</h3>
+<p>The single reconcile primitive, applied per field over
+<code>SYNC_FIELDS</code> (the eight <code>JiraShadow</code> keys).
+<code>fieldsEqual</code> compares scalars by <code>===</code> and arrays
+(<code>assignees</code>, <code>blockedBy</code>) as unordered sets.</p>
+<table>
+<colgroup>
+<col style="width: 49%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>condition (per field)</th>
+<th>classification</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>mine == theirs</code></td>
+<td>already agree — nothing to do</td>
+</tr>
+<tr class="even">
+<td><code>mine == base</code> (we didn’t touch it)</td>
+<td><strong>adopt</strong> JIRA’s value</td>
+</tr>
+<tr class="odd">
+<td><code>theirs == base</code> (they didn’t)</td>
+<td><strong>push</strong> our value</td>
+</tr>
+<tr class="even">
+<td>otherwise (both changed)</td>
+<td><strong>conflict</strong> <code>{field, mine, theirs}</code></td>
+</tr>
+</tbody>
+</table>
+<p>Returns
+<code>{ push: SyncField[], adopt: SyncField[], conflicts: FieldConflict[] }</code>.</p>
+<h3 id="a-resolveconflictplugin-project-task-taketheirs-syncfield">8.3a
+<code>resolveConflict(plugin, project, task, takeTheirs: SyncField[])</code></h3>
+<p>User-driven conflict resolution. For each field in
+<code>takeTheirs</code>, apply JIRA’s captured value
+(<code>ext.conflict.theirs</code>) to the task (<code>blockedBy</code> →
+<code>dependencies</code> via key→id); every other field keeps its local
+value. Reset <code>shadow = theirs</code> (the new baseline) and clear
+<code>reconciled</code>/<code>conflict</code>. Persist via
+<code>applyExternalUpdates</code>. Because the baseline is now JIRA’s
+snapshot, kept-local fields differ from it and the next sync
+<strong>pushes</strong> them, while taken fields already match and stay
+put.</p>
+<h3 id="reconcilelinksclient-blockedkey-currentlinks-desired">8.4
+<code>reconcileLinks(client, blockedKey, currentLinks, desired)</code></h3>
+<p>For each <code>k</code> in <code>desired</code> not in
+<code>current</code> → <code>createLink(blockedKey, k)</code>. For each
+<code>l</code> in <code>current</code> not in <code>desired</code> →
+<code>deleteLink(l.id)</code>. Returns true iff all succeeded.
+<code>desiredBlockerKeys(task, keyOf)</code> =
+<code>task.dependencies</code> mapped to keys that exist.</p>
+<h3 id="resolveassigneeproject-issue">8.5
+<code>resolveAssignee(project, issue)</code></h3>
+<p>Find a mapping by
+<code>jiraUser === assigneeAccountId || assigneeName</code>.
+<code>name = found?.name ?? assigneeName ?? assigneeAccountId</code>. If
+not found, push a new mapping <code>{name, jiraUser, jiraDisplay}</code>
+and set <code>mappingsDirty</code>. <strong>Always</strong> ensure
+<code>name</code> is in <code>project.teamMembers</code>. Return name
+(or null when the issue has no assignee).</p>
+<h3 id="synctick-interval-gate">8.6 <code>syncTick</code> / interval
+gate</h3>
+<p><code>dueForSync(cfg, now)</code> =
+<code>now - (lastSyncAt?Date.parse:0) &gt;= (syncIntervalMin ?? 5)*60000</code>.
+<code>onTaskChanged</code> → <code>queueDirty(cfg, task)</code>: only
+when <code>cfg.enabled</code> and <code>taskExt(task).sync</code>;
+append the id if absent.</p>
+<p><code>JiraConnector.syncTick</code> runs an
+<strong>incremental</strong>
+<code>runSync(plugin, project, {full:false})</code> when due;
+<code>syncNow</code> always runs a <strong>full</strong> sync. The
+plugin’s 60 s <code>connectorTick</code> (<code>main.ts</code>) is the
+driver: it <strong>pauses while Obsidian is hidden/minimized</strong>
+(<code>activeDocument.hidden</code> → early return, resumes on the next
+tick once visible), then for each loaded project calls each connector’s
+<code>syncTick</code>. So nothing polls JIRA while the app isn’t on
+screen.</p>
+<h3 id="deletes-ontaskdeleted-ignoreondelete">8.7 Deletes
+(<code>onTaskDeleted</code> → <code>ignoreOnDelete</code>)</h3>
+<p>Deleting a task in Obsidian <strong>never deletes the JIRA
+issue</strong>. <code>ProjectStore.deleteTask</code>/
+<code>deleteTasks</code> fire the <code>onTaskDeleted</code> connector
+hook once per removed task <strong>and each of its descendants</strong>
+(pre-order, before the subtree leaves the tree), then persist the
+project. <code>JiraConnector.onTaskDeleted</code> →
+<code>ignoreOnDelete(cfg, task)</code>: if the task had a
+<code>key</code>, add it to <code>ignoredKeys</code>. So the next sync
+leaves the issue alone and, crucially, does <strong>not</strong>
+re-offer it as a <code>newIssue</code> (the bounce-back a plain tree
+removal would cause). Inbound is intentionally asymmetric: a linked task
+whose issue is no longer found is left untouched (a missing issue may be
+out-of-scope or transient — never delete local data on JIRA
+absence).</p>
+<hr />
+<h2 id="import-export-linking">9. Import / Export / linking</h2>
+<h3 id="opt-in-linking-tasklink.ts">9.1 Opt-in linking
+(<code>taskLink.ts</code>)</h3>
+<ul>
+<li><code>defaultNewTaskSync(task, isNew)</code>: a new task with no key
+and <code>sync === undefined</code> gets <code>sync = true</code>.</li>
+<li><code>isLinkChecked(task, isNew)</code> =
+<code>isNew || !!key || sync === true</code>.</li>
+<li><code>linkTask</code> sets <code>sync = true</code>.
+<code>unlinkTask</code> removes <code>ext.jira</code> and adds the key
+(if any) to <code>ignoredKeys</code>.</li>
+<li><code>stripJira(ext)</code> removes the whole <code>jira</code>
+block (Disconnect). A conflict is cleared through
+<code>resolveConflict</code> (8.3a), not a standalone helper.</li>
+</ul>
+<h3 id="import-importstories-fetchepicstories">9.2 Import
+(<code>importStories</code>, <code>fetchEpicStories</code>)</h3>
+<p><code>fetchEpicStories</code> = <code>ready</code> +
+<code>startFieldId</code> + <code>epicChildren</code>.
+<code>importStories(plugin, project, stories)</code>:
+<code>pullEpicConfig</code>; <code>startFieldId</code>;
+<code>picked</code> = stories not already imported (by key);
+<code>subs</code> = <code>subtasksOf(picked keys)</code> not already
+imported; build a task per issue via <code>issueToTask</code>
+(resolves+creates assignees, sets type/status/ priority/start/due,
+<code>ext.jira = {key, sync:true, shadow}</code>); wire
+<code>dependencies</code> from <code>blockedBy</code> via the key→id
+map; nest subtasks under their parent
+(<code>isSubtask &amp;&amp; parentKey</code>); advance
+<code>lastSeenUpdated</code>; <code>store.importTasks</code> (persists).
+Returns <code>{created}</code>. Duplicate-title tasks get unique
+<code>&lt;slug&gt;-&lt;id8&gt;</code> file names.</p>
+<h3 id="export-exporttasks-exportabletasks">9.3 Export
+(<code>exportTasks</code>, <code>exportableTasks</code>)</h3>
+<p><code>exportableTasks</code> = flattened tasks with no key.
+<code>exportTasks(plugin, project, taskIds)</code>:
+<code>pullEpicConfig</code>; <code>startFieldId</code>; for each
+selected keyless task, parent-first, <code>pushNewIssue</code> and patch
+<code>ext = {key, sync:true, shadow}</code>; then
+<code>reconcileLinks(key, [], desiredBlockerKeys)</code> for created
+ones; <code>pushEpicConfig</code>; <code>applyExternalUpdates</code>.
+Returns <code>{created}</code>.</p>
+<h3 id="loadmappingvalues-load-project-settings">9.4
+<code>loadMappingValues</code> (“Load project settings”)</h3>
+<p><code>pullEpicConfig</code>; add every <code>assigneeMap.name</code>
+to <code>project.teamMembers</code>;
+<code>mergeStatusMap</code>/<code>mergePriorityMap</code> from
+<code>projectStatuses</code>/<code>priorities</code>; mark dirty if maps
+grew; <code>store.saveProject</code> (persist immediately). Returns
+<code>{statusesAdded, prioritiesAdded, membersAdded}</code>.</p>
+<hr />
+<h2 id="ui">10. UI</h2>
+<h3 id="global-settings-renderjiraglobalsettings">10.1 Global settings
+(<code>renderJiraGlobalSettings</code>)</h3>
+<p>Server cards (name/site/email/token, <strong>Test
+connection</strong>, <strong>Remove</strong>), <strong>+ add
+server</strong>, and a <strong>Debug log Jira API calls</strong> toggle
+(writes <code>setDebug</code> + <code>setJiraApiDebug</code>). Removing
+the last localhost server stops the local server and deletes its data
+file (notice).</p>
+<h3 id="project-panel-renderjiraprojectpanel">10.2 Project panel
+(<code>renderJiraProjectPanel</code>)</h3>
+<p>Enable toggle; server select; <strong>Epic key</strong>; <strong>Load
+project settings</strong> (§9.4); status &amp; priority map editors —
+each row = JIRA value input + target select + exclusive “→ Jira”
+outbound checkbox + delete + “add rule”; inline validation
+(<code>validateValueMap</code>) with messages + red-outlined offending
+rows; assignee map (one row per team member with a JIRA user-picker
+autocomplete); sync interval; and the <strong>Jira import / Jira export
+/ Disconnect</strong> actions. Editing a map sets
+<code>mappingsDirty</code>. Load/import/export re-render the
+<strong>whole</strong> modal (via the host <code>onChange</code>) so
+newly created team members appear.</p>
+<h3 id="task-field-rendertaskfield">10.3 Task field
+(<code>renderTaskField</code>)</h3>
+<p>A “Jira” row: a sync checkbox (state = <code>isLinkChecked</code>;
+check → <code>linkTask</code>, uncheck → <code>unlinkTask</code>) and,
+when linked, the issue-key link. When <code>reconciled === false</code>,
+an “Out of sync” row with a <strong>Resolve…</strong> button that opens
+the merge editor (10.4) focused on that task.</p>
+<h3 id="merge-conflict-editor-jiramergemodal">10.4 Merge-conflict editor
+(<code>JiraMergeModal</code>)</h3>
+<p>A wide, two-pane 3-way merge editor (like vscode/meld), opened by
+<code>syncNow</code> whenever <code>hasConflicts(project)</code> after a
+manual sync (conflicts take priority over the import dialog), and by the
+per-task <strong>Resolve…</strong> button (with that task
+pre-selected).</p>
+<ul>
+<li><strong>Left sidebar</strong>: every conflicted task
+(<code>reconciled === false</code> with a stored <code>conflict</code>),
+showing title, issue key, and the count of fields needing a
+decision.</li>
+<li><strong>Detail pane</strong>:
+<code>conflictFields(mine, base, theirs)</code> is split by
+<code>defaultTakeTheirs</code> (which is <code>mine == base</code>):
+<ul>
+<li><strong>decisions</strong> (<code>mine != base</code>) — fields WE
+changed that still differ from Jira (a genuine conflict, or a push Jira
+rejected). Only these are shown, one row with three columns:
+<strong>Obsidian</strong> (<code>mine = shadowOf(task, keyOf)</code>),
+<strong>Base</strong> (<code>ext.shadow</code>, read-only common
+ancestor), <strong>Jira</strong> (<code>ext.conflict.theirs</code>).
+Obsidian/Jira cells are selectable (default: keep Obsidian, since we
+changed it); base is reference only. <strong>Use all Obsidian</strong> /
+<strong>Use all Jira</strong> flip every decision.</li>
+<li><strong>auto-merge</strong> (<code>mine == base</code>, only Jira
+changed) — adopted automatically, never a decision; listed in an “Also
+merging from Jira: …” note so the merge isn’t a black box.</li>
+</ul></li>
+<li><strong>Resolve &amp; next</strong> calls
+<code>resolveConflict(task, takeTheirs)</code> (8.3a) with
+<code>autoTheirs ∪ {decisions whose Jira cell is selected}</code>, then
+rescans and advances; the editor closes once the list is empty. (A
+flagged task whose fields now all agree is a stale flag — skipped here,
+self-healed on the next sync.) Values render with their labels via
+<code>conflictFormat.ts</code>, shared with the diff logic.</li>
+</ul>
+<h3 id="toolbar">10.5 Toolbar</h3>
+<p>A Sync icon button (<code>refresh-cw</code>, matching the settings
+gear) shown only for connectors that are <code>isEnabled</code> and
+expose <code>syncNow</code>; click runs <code>syncNow</code>. A command
+“Jira: sync active project now” does the same.</p>
+<hr />
+<h2 id="persistence-auto-save">11. Persistence &amp; auto-save</h2>
+<ul>
+<li>The project settings modal has <strong>no Save button</strong>.
+Existing projects auto-persist on close <em>iff</em> something changed
+and the title is non-empty (snapshot compare). New projects use an
+explicit <strong>Create project</strong> action; dismissing doesn’t
+create one.</li>
+<li>Import, Export, and Load project settings persist immediately.</li>
+<li>The store writes the project note on every save (so
+<code>teamMembers</code>/config persist even with no task changes).
+New-task file names are disambiguated on collision.</li>
+</ul>
+<hr />
+<h2 id="guarantees-limitations">12. Guarantees &amp; limitations</h2>
+<p><strong>Guaranteed (tested):</strong> per-field 3-way merge over the
+common shadow (disjoint changes auto-merge, both-sided changes surface
+as a conflict — no clobber); a rejected push keeps the shadow behind and
+surfaces a conflict (no silent drop); conflicts resolve field-by-field
+(keep mine re-pushes, take theirs adopts); two-way create/edit/status/
+assignee/unassign/dependencies/milestone/dates/hierarchy; map
+validation; merges never duplicate a JIRA value; all I/O over HTTP.</p>
+<p><strong>Validated against a real Jira Cloud instance:</strong> the
+multi-level <code>parent</code> hierarchy, both the full
+<code>(parent OR "Epic Link")</code> and incremental
+<code>subtreeChangedJql</code> queries, createmeta start-field
+discovery, issue-type level resolution, the <code>Blocks</code>/“is
+blocked by” link type, and screenless/global status transitions across
+all issue types. All instance-specific ids and names are discovered at
+runtime — none are hardcoded.</p>
+<p><strong>Residual (still unproven without a real instance):</strong>
+company- vs team-managed <code>parent</code>/“Epic Link” on other
+project styles; permissions/rate-limits (failures surface as conflict,
+no backoff); nesting below the lowest issue type (skipped + flagged);
+<code>setProperty</code> entity-property round-trip end-to-end.</p>
+<hr />
+<h2 id="testing">13. Testing</h2>
+<ul>
+<li><strong>Unit</strong>: <code>JiraModel</code>,
+<code>JiraMock</code>, <code>taskLink</code>, value-map validation.</li>
+<li><strong>HTTP integration</strong>: real <code>JiraClient</code> ↔︎
+local server (<code>JiraMockServer.test</code>).</li>
+<li><strong>End-to-end</strong> (<code>sync.test</code>): a fake
+plugin/store over an in-memory vault drives
+<code>runSync</code>/import/export against the live local server over
+HTTP, including a second <code>JiraClient</code> acting as a teammate
+working solely in JIRA.</li>
+<li><strong>Coverage report</strong>:
+<code>scripts/coverage-report.mjs</code> (under the connector) derives
+the report from the test files — one area per <code>describe</code>, one
+row per <code>it</code> → <code>docs/coverage.html</code> (interaction
+matrix + confidence score + residual-risk audit).</li>
+<li><strong>Drift guards</strong>: the test <code>FakeStore</code> is
+<code>implements Pick&lt;ProjectStore, …&gt;</code> (signature drift
+fails the build), and <code>integration.test.ts</code> drives the
+connector through the <strong>real <code>ProjectStore</code></strong>
+over the in-memory vault (behavioral drift fails a test).</li>
+</ul>
+<hr />
+<h2 id="implementation-history">Implementation history</h2>
+<ol type="1">
+<li><strong>Model + persistence</strong> — optional model &amp;
+<code>ext</code> persistence; read-only client + pure model + dry-run
+writer; settings/import/sync (dry-run).</li>
+<li><strong>Connector abstraction</strong> — generic connector +
+<code>ext</code>; JIRA self-contained; lazy descriptor registry.</li>
+<li><strong>Mapping UX</strong> — prefill from live fetch; namespaced
+<code>ext</code> w/ migration; assignee picker; string-match maps (N→1,
+canonical outbound).</li>
+<li><strong>Writes via the local server</strong> — entity-property
+reconciliation; obsidian-free sync core; in-process HTTP server;
+localhost gating; create-issue workflow; store mints keys; start-date
+mapping; auto-seed on connect; all I/O over HTTP.</li>
+<li><strong>Robust two-way + safety</strong> — local reconcile, minimal
+writes, shared epic config; defensive JSON/export/epic-issue/two-way
+links; two-way assignee; field-level shadow diff; never drop a rejected
+push; migrate to <code>/search/jql</code>.</li>
+<li><strong>Validation &amp; UX</strong> — map validation (one rule per
+JIRA value, ≥1/≤1 write-back per target); duplicate-mapping fix;
+import/export in the panel; toolbar Sync icon; Load project settings
+adopts config + creates members; modal re-render after Load/ import;
+client-side <code>console.debug</code> API logging; auto-persist (Save
+removed); delete the local data file on last-server removal.</li>
+<li><strong>Testing &amp; docs</strong> — HTTP integration suite;
+teammate scenarios; filename-collision &amp; team-member fixes; coverage
+report; this spec.</li>
+<li><strong>Per-field 3-way reconcile</strong> — replaced the
+status-only reconcile with <code>threeWay</code> over the full shadow
+(closing the gap where non-status fields were silent last-writer-wins);
+folded dependencies into the merge via <code>blockedBy</code>; capture
+JIRA’s snapshot on conflict and resolve field-by-field
+(<code>resolveConflict</code>); reassessed the confidence score.</li>
+<li><strong>Merge-conflict editor</strong> — a wide, two-pane
+<code>JiraMergeModal</code> (sidebar of conflicted tasks + 3-way
+Obsidian|base|Jira diff) that opens after a manual sync when conflicts
+exist; supersedes the per-task <code>JiraConflictModal</code>.</li>
+<li><strong>Incremental sync</strong> — split <code>runSync</code> into
+full (manual/import) vs incremental (periodic tick): subtree+watermark
+query plus a key-in fetch for dirty issues, no epic-config/type-metadata
+per tick; polling pauses while Obsidian is hidden.</li>
+<li><strong>Persisted Jira ids</strong> — <code>JiraValueMap.id</code>
+(priority/status id) discovered at mapping-load and used on outbound
+writes (<code>priorityRef</code> → <code>{id}</code>;
+<code>transitionTo</code> matches <code>to.id</code>), backfilled onto
+legacy rules; team-member ids already covered by
+<code>assigneeMap.jiraUser</code>.</li>
+</ol>
+</body>
+</html>

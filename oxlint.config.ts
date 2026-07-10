@@ -4,6 +4,7 @@ import { defineConfig } from 'oxlint'
 export default defineConfig({
   extends: [axiom],
   jsPlugins: ['eslint-plugin-obsidianmd'],
+  ignorePatterns: ['src/connectors/jira/scripts/**'], // Node build tooling, not plugin source
   rules: {
     'no-new': 'off',
     'import/no-default-export': 'off',

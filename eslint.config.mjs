@@ -3,6 +3,7 @@ import { defineConfig } from 'eslint/config'
 import obsidianmd from 'eslint-plugin-obsidianmd'
 
 export default defineConfig([
+  { ignores: ['src/connectors/jira/scripts/**'] }, // Node build tooling, not plugin source
   ...obsidianmd.configs.recommended,
   {
     files: ['src/**/*.ts'],

@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>JIRA connector — coverage</title>
+<style>
+  body { font: 14px/1.5 -apple-system, system-ui, sans-serif; margin: 2rem auto; max-width: 1040px; color: #1d1f23; padding: 0 1rem; }
+  h1 { margin-bottom: .2rem; } .sub { color: #687; margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0 2rem; }
+  td, th { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #e6e8eb; vertical-align: top; }
+  tr.group td { background: #efeafc; font-weight: 700; color: #5b3fb0; }
+  .muted { color: #8a7fb0; font-weight: 400; } .file { color: #889; font-size: 12px; white-space: nowrap; }
+  .dir { font-size: 11px; font-weight: 700; padding: .08rem .4rem; border-radius: 999px; }
+  .dir-OJ { background: #dcefe0; color: #1c7a37; } .dir-JO { background: #dbe8ff; color: #1f5bd6; }
+  .dir-both { background: #fdebcf; color: #9a6212; } .dir-Obsidian { background: #ece7fb; color: #5b3fb0; }
+  .dir-HTTP { background: #e6e8eb; color: #444; } .dir-unit { background: #f0f0f0; color: #666; } .dir-setup { background: #e8f0ee; color: #2a6b5e; }
+  .stat { display: inline-block; background: #f6f7f9; border: 1px solid #e6e8eb; border-radius: 8px; padding: .4rem .7rem; margin-right: .5rem; }
+  .score { display: flex; gap: 1.2rem; align-items: flex-start; background: #f6f4fe; border: 1px solid #e0d8fb; border-radius: 12px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .score-num { font-size: 3rem; font-weight: 800; color: #5b3fb0; line-height: 1; } .score-num span { font-size: 1.1rem; color: #8a7fb0; }
+  .conf { width: 100%; } .conf td { border: 0; padding: .15rem .4rem; } .conf td:nth-child(2) { color: #5b3fb0; text-align: right; width: 3rem; }
+  .sev { font-size: 11px; font-weight: 700; padding: .08rem .4rem; border-radius: 4px; }
+  .sev-HIGH { background: #f7d4d4; color: #a12; } .sev-MED { background: #fde8c8; color: #95610f; }
+  footer { color: #889; margin-top: 2rem; font-size: 12px; }
+</style></head>
+<body>
+  <h1>JIRA connector — coverage</h1>
+  <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
+  <p>
+    <span class="stat"><strong>161</strong> tests</span>
+    <span class="stat"><strong>40</strong> areas</span>
+    <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
+  </p>
+
+  <div class="score">
+    <div class="score-num">8.9<span>/10</span></div>
+    <div>
+      <strong>Confidence for live testing</strong>
+      <table class="conf"><tr><td>Core sync (CRUD, import/export, links, assignees, milestone)</td><td><b>9.5</b></td><td>Exercised end-to-end over HTTP: parent-first create, hierarchy, dependencies via issuelinks, dates, assignees, milestone bag. Deleting a task in Obsidian ignores its key (never deletes the Jira issue, no re-import bounce-back).</td></tr><tr><td>Reconciliation — 3-way merge &amp; no data loss</td><td><b>9.5</b></td><td>Every synced field (incl. dependencies) merges against a per-task shadow base: disjoint edits auto-merge, both-sided edits surface as conflicts, rejected pushes hold the shadow and retry. Closes the earlier status-only gap where non-status fields were silent last-writer-wins.</td></tr><tr><td>Conflict resolution UI</td><td><b>9.0</b></td><td>Per-field Obsidian⇄Jira resolver with keep-all + per-field picks. The engine (threeWay / conflictFields / resolveConflict) is unit-tested; the modal is not yet covered by an automated DOM test but was manually validated end-to-end (both-sided status edit → JiraMergeModal → take-Jira → local adopts and the shadow settles with no re-push).</td></tr><tr><td>HTTP API faithfulness vs Jira Cloud docs</td><td><b>8.5</b></td><td>Endpoints aligned incl. /search/jql, issueLink, entity properties, createmeta, the key-in / OR-combined subtree JQL, and id-based priority writes + transition matching. Cross-checked live against a real Jira Cloud instance: hierarchy, both JQL forms, createmeta start field, issue-type levels, link types, and screenless/global transitions all matched.</td></tr><tr><td>Outbound writes by id (priority/status/assignee)</td><td><b>9.0</b></td><td>Priority written by persisted id (name fallback), status transitions matched by to.id, assignees by accountId — ids discovered once and stored in ext.jira, backfilled onto legacy maps. Covered by model + integration tests (incl. resolve-by-id-despite-stale-name).</td></tr><tr><td>Incremental polling &amp; request economy</td><td><b>9.0</b></td><td>The periodic tick is a subtree+watermark query (key in tracked OR parent in tracked/epic, updated &gt; watermark) plus a key-in fetch for locally-dirty issues; instance metadata (issue types, start field) is cached per base, the epic config is pulled only on a full sync, and polling pauses while Obsidian is hidden. An idle tick issues no fetch. Covered end-to-end (incremental.test.ts).</td></tr><tr><td>Live-instance readiness</td><td><b>8.0</b></td><td>Validated against a real Jira Cloud instance: multi-level parent hierarchy, full + incremental JQL, createmeta start-field discovery, issue-type level resolution, the Blocks link type, and screenless/global transitions across all issue types. Remaining unknowns: permissions/rate-limits and the entity-property round-trip.</td></tr></table>
+      <p>Ready for a staged live trial. Core sync and reconciliation (full per-field 3-way merge, closing the earlier non-status data-loss gap), incremental polling, and id-based outbound writes are strongly covered and tested, and the connector's key assumptions were cross-checked live against a real Jira Cloud instance (multi-level parent hierarchy, full + incremental JQL, createmeta/start field, issue-type levels, link types, screenless/global transitions). Do a one-time status/priority map tune after Load settings to match the instance's value names. Open items: the conflict-resolver dialog (engine tested, UI not e2e), the entity-property round-trip, and permissions/rate-limits.</p>
+    </div>
+  </div>
+
+  <h2>Residual risks before live</h2>
+  <table><thead><tr><th>Sev</th><th>Risk &amp; mitigation</th></tr></thead><tbody>
+    <tr><td><span class="sev sev-LOW">LOW</span></td><td><strong>Company- vs team-managed projects</strong> — Validated on a real company-managed project: the full (parent OR "Epic Link") and incremental (key-in OR parent-in) JQL run clean and "Epic Link" resolves. Other project styles still worth a first-run check.</td></tr><tr><td><span class="sev sev-LOW">LOW</span></td><td><strong>Transition screens / required fields</strong> — Validated live: transitions across every issue type had no screen, no required fields, and were global. (If one ever does, the push is held and surfaces as a resolvable conflict, not lost.)</td></tr><tr><td><span class="sev sev-LOW">LOW</span></td><td><strong>Entity-property round-trip (obsidian-pm / -config)</strong> — Confirmed live: the plugin-written obsidian-pm-config sits on the real epic (same setProperty/getProperty path the per-issue milestone bag uses). Milestone bag itself only re-exercises that mechanism.</td></tr><tr><td><span class="sev sev-MED">MED</span></td><td><strong>Permissions / rate limits (429)</strong> — Failed writes surface as a conflict and retry next sync; no backoff yet. The incremental tick (subtree+watermark, cached metadata, paused while hidden) keeps request volume low, reducing 429 exposure.</td></tr><tr><td><span class="sev sev-LOW">LOW</span></td><td><strong>Conflict resolver UI (no automated DOM test)</strong> — The 3-way engine, default picks, and resolveConflict are unit-tested, and the Resolve… flow was manually validated end-to-end (conflict detected → modal → per-field resolve → settled). Still no automated DOM test, so keep an eye on it after modal changes.</td></tr><tr><td><span class="sev sev-LOW">LOW</span></td><td><strong>Deep hierarchies</strong> — Validated 4 levels deep on a real instance; create resolves the issue type by discovered hierarchy level and skips + flags anything nested below the lowest type. Status/priority maps need a one-time tune to the instance's own value names.</td></tr>
+  </tbody></table>
+
+  <h2>Recommended live rollout</h2>
+  <ol><li>Start on a throwaway/low-stakes epic.</li><li>Connect and Load project settings; confirm statuses, priorities, assignees, and the epic look right.</li><li>Import read-only; confirm hierarchy, dependencies, assignees, and dates.</li><li>Export ONE new task; verify type/parent/fields; then edit on both sides and sync.</li><li>Confirm a status transition works for your workflow (an "out of sync" flag means it was rejected — open Resolve… to see why).</li><li>Deliberately create a conflict: change the SAME field on both sides, sync, then open Resolve… and confirm both "keep mine" and "take Jira" behave.</li><li>Only then enable interval sync for the project.</li></ol>
+
+  <h2>Coverage by area</h2>
+  <table><thead><tr><th>Interaction (test)</th><th>Source</th></tr></thead><tbody>
+    <tr class="group"><td colspan="2">JiraMockStore <span class="dir dir-unit">unit</span> <span class="muted">8</span></td></tr>
+    <tr><td>generates and keeps a start custom-field id</td><td class="file">JiraMock.test.ts</td></tr>
+<tr><td>creates issues with a minted key, initial status, and registered priority</td><td class="file">JiraMock.test.ts</td></tr>
+<tr><td>transitions to a registered status</td><td class="file">JiraMock.test.ts</td></tr>
+<tr><td>seeds statuses/priorities/users from settings inputs</td><td class="file">JiraMock.test.ts</td></tr>
+<tr><td>ensures an epic issue with an explicit key and accepts entity properties</td><td class="file">JiraMock.test.ts</td></tr>
+<tr><td>marks sub-task issuetype with the subtask boolean on create</td><td class="file">JiraMock.test.ts</td></tr>
+<tr><td>records a block link readable as blockedBy on the blocked issue (idempotent), then removes it</td><td class="file">JiraMock.test.ts</td></tr>
+<tr><td>edits fields and stores entity properties</td><td class="file">JiraMock.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">JiraMockServer + real JiraClient (full HTTP path) <span class="dir dir-HTTP">HTTP</span> <span class="muted">4</span></td></tr>
+    <tr><td>round-trips create / read / transition / edit / properties / search over HTTP</td><td class="file">JiraMockServer.test.ts</td></tr>
+<tr><td>round-trips a dependency link (createLink → blockedBy) over HTTP</td><td class="file">JiraMockServer.test.ts</td></tr>
+<tr><td>paginates GET /search/jql via nextPageToken (current Cloud endpoint)</td><td class="file">JiraMockServer.test.ts</td></tr>
+<tr><td>nests imported sub-tasks under their parent (isSubtask from issuetype name)</td><td class="file">JiraMockServer.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">issue-type hierarchy (create-type resolution) <span class="dir dir-unit">unit</span> <span class="muted">4</span></td></tr>
+    <tr><td>levelOfType matches by name, case-insensitively</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>typeForLevel picks one type per level, preferring Task over Story at level 0</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>returns null when no type exists at a level (e.g. below Sub-task → too deep)</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>prefers Task when several types share level 0 (real instances have Bug/others there)</td><td class="file">JiraModel.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">normalizeIssue <span class="dir dir-unit">unit</span> <span class="muted">6</span></td></tr>
+    <tr><td>maps the fields we care about</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>infers isSubtask from the issuetype name when the boolean is absent</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>reads an assignee that has an accountId + displayName but no email</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>keeps a non-UTC updated timestamp verbatim (offset preserved)</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>reads the milestone flag from the inline obsidian-pm entity property</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>tolerates missing fields</td><td class="file">JiraModel.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">JQL builders <span class="dir dir-unit">unit</span> <span class="muted">5</span></td></tr>
+    <tr><td>builds epic children + incremental JQL and strips quotes from the key</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>derives the project key</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>builds key-in and incremental subtree JQL</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>subtree JQL with no tracked keys scopes to the epic children only</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>toJqlTime collapses an ISO timestamp to the JQL minute form, tz offset and all</td><td class="file">JiraModel.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">mapInbound <span class="dir dir-unit">unit</span> <span class="muted">2</span></td></tr>
+    <tr><td>matches case-insensitively and falls back</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>supports N→1 (many JIRA values to one target)</td><td class="file">JiraModel.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">mapOutbound <span class="dir dir-unit">unit</span> <span class="muted">3</span></td></tr>
+    <tr><td>returns the outbound-flagged value for a target</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>falls back to the first entry when none is flagged</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>returns undefined when nothing maps to the target</td><td class="file">JiraModel.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">mergeStatusMap <span class="dir dir-unit">unit</span> <span class="muted">3</span></td></tr>
+    <tr><td>adds a string-match rule per JIRA status, first per target is outbound</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>keeps existing rules and skips JIRA names already present (case-insensitive)</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>maps an arbitrarily-named status by its category (name has no keyword)</td><td class="file">JiraModel.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">mergePriorityMap <span class="dir dir-unit">unit</span> <span class="muted">3</span></td></tr>
+    <tr><td>guesses our priority and flags the first per target as outbound</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>guesses P0–P4 style priority names (and collapses collisions to one outbound)</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>attaches discovered ids and backfills them onto existing id-less rules</td><td class="file">JiraModel.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">validateValueMap <span class="dir dir-unit">unit</span> <span class="muted">5</span></td></tr>
+    <tr><td>passes a valid N→1 map (many Jira values → one target, one flagged to write)</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>fails when a Jira value appears in more than one rule</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>fails when a target has more than one outbound rule</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>fails when an Obsidian target has no outbound (write-back) rule</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>passes when every target has exactly one write-back rule</td><td class="file">JiraModel.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">reconcileStatus <span class="dir dir-unit">unit</span> <span class="muted">3</span></td></tr>
+    <tr><td>is in sync when local and JIRA already agree</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>JIRA wins when we did not change locally (teammate update)</td><td class="file">JiraModel.test.ts</td></tr>
+<tr><td>flags limbo when we changed locally but JIRA does not reflect it</td><td class="file">JiraModel.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — assignee conflicts <span class="dir dir-both">both</span> <span class="muted">6</span></td></tr>
+    <tr><td>two projects edit the assignee from a shared baseline → conflict (A→Bob, B→Carol)</td><td class="file">assignee.test.ts</td></tr>
+<tr><td>assigning an UNMAPPED member surfaces as a conflict instead of silently vanishing</td><td class="file">assignee.test.ts</td></tr>
+<tr><td>does NOT drop a new task’s unmapped assignee on a later sync (create-path regression)</td><td class="file">assignee.test.ts</td></tr>
+<tr><td>pushes the assignee once the member is mapped, clearing the pending conflict</td><td class="file">assignee.test.ts</td></tr>
+<tr><td>an assignee conflict alongside a Jira-only change shows ONLY the assignee as a decision</td><td class="file">assignee.test.ts</td></tr>
+<tr><td>a team member added after the first sync is findable in the Jira user picker (mock)</td><td class="file">assignee.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira clean (cleanJira) <span class="dir dir-both">both</span> <span class="muted">2</span></td></tr>
+    <tr><td>deletes issue + epic properties, keeps the issues, and resets all local state</td><td class="file">clean.test.ts</td></tr>
+<tr><td>returns null when the project is not connected</td><td class="file">clean.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira delete handling <span class="dir dir-OJ">O→J</span> <span class="muted">4</span></td></tr>
+    <tr><td>ignoreOnDelete adds a linked task’s key to ignoredKeys</td><td class="file">delete.test.ts</td></tr>
+<tr><td>ignoreOnDelete is a no-op for an unlinked task</td><td class="file">delete.test.ts</td></tr>
+<tr><td>a deleted synced task is not re-offered as a new issue on the next sync</td><td class="file">delete.test.ts</td></tr>
+<tr><td>without the ignore the orphaned issue bounces back (guards the regression)</td><td class="file">delete.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira id mapping — persisted ids <span class="dir dir-OJ">O→J</span> <span class="muted">3</span></td></tr>
+    <tr><td>loadMappingValues persists Jira ids for statuses and priorities</td><td class="file">id-mapping.test.ts</td></tr>
+<tr><td>pushes priority by id — resolves even when the stored name is stale</td><td class="file">id-mapping.test.ts</td></tr>
+<tr><td>transitionTo matches by status id even when the given name is wrong</td><td class="file">id-mapping.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — incremental tick <span class="dir dir-JO">J→O</span> <span class="muted">6</span></td></tr>
+    <tr><td>adopts a teammate change to a tracked issue since the watermark</td><td class="file">incremental.test.ts</td></tr>
+<tr><td>pushes a locally-dirty task even when its JIRA side is unchanged</td><td class="file">incremental.test.ts</td></tr>
+<tr><td>detects a new child of the epic that appeared on the JIRA side</td><td class="file">incremental.test.ts</td></tr>
+<tr><td>detects a new child of a tracked task (subtree-scoped, not just the epic)</td><td class="file">incremental.test.ts</td></tr>
+<tr><td>still creates opted-in keyless tasks on an incremental tick</td><td class="file">incremental.test.ts</td></tr>
+<tr><td>does not pull the shared epic config on an incremental tick, but a full sync does</td><td class="file">incremental.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira ↔ core store integration (real ProjectStore) <span class="dir dir-both">both</span> <span class="muted">2</span></td></tr>
+    <tr><td>export persists the linked JIRA key to the task .md (round-trips from disk)</td><td class="file">integration.test.ts</td></tr>
+<tr><td>import persists nested subtasks and a new team member to disk</td><td class="file">integration.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira match-to-existing (linkStoriesToTasks) <span class="dir dir-JO">J→O</span> <span class="muted">6</span></td></tr>
+    <tr><td>links the task and flags differing fields as a conflict (local kept, Jira captured)</td><td class="file">link.test.ts</td></tr>
+<tr><td>links cleanly (no conflict) when the task already matches the issue</td><td class="file">link.test.ts</td></tr>
+<tr><td>autoMatchByTitle links same-title issues unambiguously (no dupes on re-import)</td><td class="file">link.test.ts</td></tr>
+<tr><td>autoMatchByTitle leaves ambiguous titles and already-linked tasks for the user</td><td class="file">link.test.ts</td></tr>
+<tr><td>autoMatchByTitle claims each task at most once</td><td class="file">link.test.ts</td></tr>
+<tr><td>skips a task that is already linked</td><td class="file">link.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">threeWay merge (single shadow base) <span class="dir dir-unit">unit</span> <span class="muted">9</span></td></tr>
+    <tr><td>does nothing when both sides match the base</td><td class="file">reconcile.test.ts</td></tr>
+<tr><td>pushes a field only the local side changed</td><td class="file">reconcile.test.ts</td></tr>
+<tr><td>adopts a field only JIRA changed</td><td class="file">reconcile.test.ts</td></tr>
+<tr><td>merges disjoint changes without conflict (push mine, adopt theirs)</td><td class="file">reconcile.test.ts</td></tr>
+<tr><td>flags a conflict when both change the same field differently</td><td class="file">reconcile.test.ts</td></tr>
+<tr><td>does not conflict when both changed a field to the SAME value</td><td class="file">reconcile.test.ts</td></tr>
+<tr><td>treats assignees as an unordered set</td><td class="file">reconcile.test.ts</td></tr>
+<tr><td>treats blockedBy (dependencies) as an unordered set, push and adopt</td><td class="file">reconcile.test.ts</td></tr>
+<tr><td>handles multiple fields at once</td><td class="file">reconcile.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">conflictFields (resolver field list + default pick) <span class="dir dir-unit">unit</span> <span class="muted">3</span></td></tr>
+    <tr><td>lists only differing fields</td><td class="file">reconcile.test.ts</td></tr>
+<tr><td>defaults to taking JIRA for fields we did not change locally (mine == base)</td><td class="file">reconcile.test.ts</td></tr>
+<tr><td>keeps ours by default when there is no base (legacy task)</td><td class="file">reconcile.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — setup &amp; metadata <span class="dir dir-setup">setup</span> <span class="muted">4</span></td></tr>
+    <tr><td>seeds mock meta from settings + creates the epic issue on first sync</td><td class="file">sync.test.ts</td></tr>
+<tr><td>loadMappingValues prefills status + priority maps and marks them dirty</td><td class="file">sync.test.ts</td></tr>
+<tr><td>loadMappingValues adopts the epic assignee map and creates team members</td><td class="file">sync.test.ts</td></tr>
+<tr><td>userPicker autocompletes assignees by query</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — export (Obsidian → JIRA) <span class="dir dir-OJ">O→J</span> <span class="muted">6</span></td></tr>
+    <tr><td>exportableTasks lists only keyless tasks</td><td class="file">sync.test.ts</td></tr>
+<tr><td>creates issues parent-first and links tasks back with key + sync</td><td class="file">sync.test.ts</td></tr>
+<tr><td>creates each level one type below its parent (Epic root → Task → Sub-task), skipping too-deep</td><td class="file">sync.test.ts</td></tr>
+<tr><td>uses the configured root issue type as the top (Initiative → Epic → Task → Sub-task)</td><td class="file">sync.test.ts</td></tr>
+<tr><td>writes the milestone flag to the issue property bag</td><td class="file">sync.test.ts</td></tr>
+<tr><td>writes a dependency as an "is blocked by" link</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — import (JIRA → Obsidian) <span class="dir dir-JO">J→O</span> <span class="muted">7</span></td></tr>
+    <tr><td>creates tasks for epic children + subtasks, nested</td><td class="file">sync.test.ts</td></tr>
+<tr><td>crawls + imports a deep parent chain (epic → L1 → L2 → L3 → L4), nested at every level</td><td class="file">sync.test.ts</td></tr>
+<tr><td>auto-creates an unknown assignee as a project team member during import</td><td class="file">sync.test.ts</td></tr>
+<tr><td>adds assignees to team members even when the mapping is adopted from the epic config</td><td class="file">sync.test.ts</td></tr>
+<tr><td>wires dependencies from blockedBy links</td><td class="file">sync.test.ts</td></tr>
+<tr><td>skips already-imported and ignored keys</td><td class="file">sync.test.ts</td></tr>
+<tr><td>pulls the epic config first and adopts custom mapping targets</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — outbound dirty push <span class="dir dir-OJ">O→J</span> <span class="muted">7</span></td></tr>
+    <tr><td>pushes summary, due, priority and a status transition for a dirty task</td><td class="file">sync.test.ts</td></tr>
+<tr><td>updates the milestone property on push</td><td class="file">sync.test.ts</td></tr>
+<tr><td>pushes an assignee change and a later unassign</td><td class="file">sync.test.ts</td></tr>
+<tr><td>pushes a start-date change to the discovered custom field</td><td class="file">sync.test.ts</td></tr>
+<tr><td>clears the milestone flag when toggled off</td><td class="file">sync.test.ts</td></tr>
+<tr><td>adds and removes dependency links two-way on push</td><td class="file">sync.test.ts</td></tr>
+<tr><td>only creates opted-in keyless tasks (sync === true)</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — inbound reconcile <span class="dir dir-JO">J→O</span> <span class="muted">4</span></td></tr>
+    <tr><td>adopts a teammate status change (JIRA wins when not locally changed)</td><td class="file">sync.test.ts</td></tr>
+<tr><td>flags limbo when local diverges and JIRA has no outbound mapping for it</td><td class="file">sync.test.ts</td></tr>
+<tr><td>adopts JIRA links inbound and clears a removed dependency</td><td class="file">sync.test.ts</td></tr>
+<tr><td>advances the watermark and skips unchanged issues</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — assignees <span class="dir dir-both">both</span> <span class="muted">2</span></td></tr>
+    <tr><td>resolves a known assignee mapping inbound</td><td class="file">sync.test.ts</td></tr>
+<tr><td>auto-creates an unknown assignee (member + mapping) and propagates to the epic config</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — epic config sharing (multi-user) <span class="dir dir-both">both</span> <span class="muted">3</span></td></tr>
+    <tr><td>publishes dirty maps to the epic config property</td><td class="file">sync.test.ts</td></tr>
+<tr><td>merging a conflicting epic config does not create duplicate JIRA-status rules</td><td class="file">sync.test.ts</td></tr>
+<tr><td>a second vault on the same epic adopts the first vault's maps without clobber</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — result stats <span class="dir dir-both">both</span> <span class="muted">1</span></td></tr>
+    <tr><td>reports a created/updated/members/conflicts breakdown</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — new-issue detection <span class="dir dir-JO">J→O</span> <span class="muted">2</span></td></tr>
+    <tr><td>surfaces new epic issues and excludes ignored ones</td><td class="file">sync.test.ts</td></tr>
+<tr><td>updateIgnoredKeys adds, removes, and no-ops without duplicating</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — milestone &amp; end-to-end <span class="dir dir-both">both</span> <span class="muted">4</span></td></tr>
+    <tr><td>round-trips a milestone export → import</td><td class="file">sync.test.ts</td></tr>
+<tr><td>full export (vault A) → import (vault B): hierarchy, deps, assignees</td><td class="file">sync.test.ts</td></tr>
+<tr><td>a teammate working solely in JIRA: a full multi-change cycle reconciles into Obsidian</td><td class="file">sync.test.ts</td></tr>
+<tr><td>reflects a hand-edited mock JSON on the next sync</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — a JIRA-only teammate (2nd client over real HTTP) <span class="dir dir-JO">J→O</span> <span class="muted">12</span></td></tr>
+    <tr><td>teammate transitions an issue → Obsidian adopts (JIRA wins)</td><td class="file">sync.test.ts</td></tr>
+<tr><td>teammate edits summary + priority → Obsidian adopts</td><td class="file">sync.test.ts</td></tr>
+<tr><td>teammate reassigns to a new user → Obsidian auto-creates the member</td><td class="file">sync.test.ts</td></tr>
+<tr><td>teammate creates and later removes a blocks link → Obsidian deps follow</td><td class="file">sync.test.ts</td></tr>
+<tr><td>teammate unassigns an issue → Obsidian clears the assignee</td><td class="file">sync.test.ts</td></tr>
+<tr><td>teammate edits due + start dates → Obsidian adopts both</td><td class="file">sync.test.ts</td></tr>
+<tr><td>teammate flags an issue as a milestone via entity property → Obsidian sets type</td><td class="file">sync.test.ts</td></tr>
+<tr><td>teammate creates a brand-new story+subtask → surfaced as new, then imported nested</td><td class="file">sync.test.ts</td></tr>
+<tr><td>a rejected status push is not silently marked synced (stays dirty + limbo)</td><td class="file">sync.test.ts</td></tr>
+<tr><td>a status-only local edit does NOT wipe a teammate-set due date (no data loss)</td><td class="file">sync.test.ts</td></tr>
+<tr><td>concurrent edits to DIFFERENT fields do not clobber (field-level shadow diff)</td><td class="file">sync.test.ts</td></tr>
+<tr><td>a teammate field edit with NO competing local change is adopted cleanly</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — per-field conflict resolution <span class="dir dir-both">both</span> <span class="muted">3</span></td></tr>
+    <tr><td>flags a both-sided field clash and captures the JIRA snapshot</td><td class="file">sync.test.ts</td></tr>
+<tr><td>resolve "take Jira" adopts JIRA's value, advances the shadow, clears the flag</td><td class="file">sync.test.ts</td></tr>
+<tr><td>resolve "keep mine" holds local, then the next sync pushes it to JIRA</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">task link — new-task default + checkbox state <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">3</span></td></tr>
+    <tr><td>defaults a brand-new task to synced</td><td class="file">taskLink.test.ts</td></tr>
+<tr><td>does not override an explicit choice or a linked task</td><td class="file">taskLink.test.ts</td></tr>
+<tr><td>checkbox is checked for new, linked, or opted-in tasks; unchecked otherwise</td><td class="file">taskLink.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">task link — opt in / opt out <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">4</span></td></tr>
+    <tr><td>linkTask opts a task in</td><td class="file">taskLink.test.ts</td></tr>
+<tr><td>unlinkTask drops the jira block and ignores the key</td><td class="file">taskLink.test.ts</td></tr>
+<tr><td>unlinkTask on a keyless task just removes the block (nothing to ignore)</td><td class="file">taskLink.test.ts</td></tr>
+<tr><td>unlinkTask does not duplicate an already-ignored key</td><td class="file">taskLink.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">task link — dirty queue <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">3</span></td></tr>
+    <tr><td>queues a synced task in an enabled project</td><td class="file">taskLink.test.ts</td></tr>
+<tr><td>does not queue twice</td><td class="file">taskLink.test.ts</td></tr>
+<tr><td>ignores non-synced tasks and disabled projects</td><td class="file">taskLink.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">task link — interval gate <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">2</span></td></tr>
+    <tr><td>is due when never synced</td><td class="file">taskLink.test.ts</td></tr>
+<tr><td>respects the interval since lastSyncAt</td><td class="file">taskLink.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">task link — disconnect <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">1</span></td></tr>
+    <tr><td>stripJira removes the jira block, preserving other connectors</td><td class="file">taskLink.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">mapping panel — outbound radio <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">1</span></td></tr>
+    <tr><td>setOutbound makes the entry the sole write-back for its target</td><td class="file">taskLink.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">mapping panel — assignee picker <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">3</span></td></tr>
+    <tr><td>appends a new member mapping</td><td class="file">taskLink.test.ts</td></tr>
+<tr><td>updates an existing member in place</td><td class="file">taskLink.test.ts</td></tr>
+<tr><td>removes the mapping when the jira user is cleared</td><td class="file">taskLink.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — two projects, one backend issue <span class="dir dir-both">both</span> <span class="muted">2</span></td></tr>
+    <tr><td>both edit the same field from a shared baseline → sync A then B flags a conflict</td><td class="file">two-project.test.ts</td></tr>
+<tr><td>if B re-syncs first it adopts A’s value, so a later B edit is a clean push (no conflict)</td><td class="file">two-project.test.ts</td></tr></tbody></table>
+  <footer>Auto-generated by src/connectors/jira/scripts/coverage-report.mjs during build — do not edit by hand.</footer>
+</body></html>
