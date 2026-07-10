@@ -189,9 +189,23 @@ export default class PMPlugin extends Plugin {
     if (!this.settings.collapsedTasks) this.settings.collapsedTasks = {}
 
     let migrated = false
+    // Upgrade the default status icons to the clearer pictograph set — but only for
+    // statuses that still carry the exact old default icon, so any custom icon is kept.
+    const ICON_UPGRADE: Record<string, { from: string; to: string }> = {
+      'in-progress': { from: '♻️', to: '🚧' },
+      blocked: { from: '🛑', to: '⛔' },
+      review: { from: '✏️', to: '👀' },
+      done: { from: '🟢', to: '✅' },
+      cancelled: { from: '⚫', to: '❌' }
+    }
     for (const s of this.settings.statuses) {
       if (s.complete === undefined) {
         s.complete = s.id === 'done' || s.id === 'cancelled'
+        migrated = true
+      }
+      const up = ICON_UPGRADE[s.id]
+      if (up && s.icon === up.from) {
+        s.icon = up.to
         migrated = true
       }
     }
@@ -203,7 +217,7 @@ export default class PMPlugin extends Plugin {
       const nonTerminal = this.settings.statuses.filter((s) => !s.complete).map((s) => s.id)
       for (const entry of Object.values(this.settings.projectFilters)) {
         if (entry.filter.statuses.length === 0) {
-          entry.filter.statuses = nonTerminal
+          entry.filter.statuses = [...nonTerminal] // a fresh array per entry — never a shared ref
         }
       }
       migrated = true

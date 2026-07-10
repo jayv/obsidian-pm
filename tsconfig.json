@@ -6,6 +6,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
+    "types": ["node"],
     "inlineSourceMap": true,
     "inlineSources": true,
     "isolatedModules": true,

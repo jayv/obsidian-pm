@@ -54,6 +54,8 @@ export interface Task {
   updatedAt: string
   filePath?: string // vault path to this task's .md file
   archived?: boolean // runtime only — derived from file location in Archive/ subfolder
+  /** Namespaced connector data, e.g. { jira: { key, sync } }. Round-tripped opaquely. */
+  ext?: Record<string, unknown>
 }
 
 export interface Project {
@@ -69,6 +71,8 @@ export interface Project {
   updatedAt: string
   filePath: string // resolved vault path
   savedViews: SavedView[]
+  /** Namespaced connector config, e.g. { jira: { enabled, serverId, … } }. Round-tripped opaquely. */
+  ext?: Record<string, unknown>
   /** Transient id → {task, parentId} index. Rebuilt on load, maintained by store mutators. Not serialized. */
   taskIndex: TaskIndex
 }
@@ -80,6 +84,8 @@ export interface FilterState {
   assignees: string[]
   tags: string[]
   dueDateFilter: DueDateFilter
+  /** Show only tasks whose start…due span overlaps the current week (Mon–Sun). */
+  activeThisWeek: boolean
   showArchived: boolean
 }
 
@@ -131,17 +137,21 @@ export interface PMSettings {
   projectFilters: Record<string, PerProjectFilter>
   /** Collapsed task ids per project file path. UI state — lives here so toggles don't rewrite task files. */
   collapsedTasks: Record<string, string[]>
+  /** Per-connector global config, e.g. { jira: { servers: [...] } }. */
+  connectors?: Record<string, unknown>
+  /** Connector secrets (API tokens) keyed by "<connectorId>:<serverId>". Kept in data.json. */
+  connectorSecrets?: Record<string, string>
 }
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
 
 export const DEFAULT_STATUSES: StatusConfig[] = [
   { id: 'todo', label: 'To Do', color: '#8a94a0', icon: '📋', complete: false },
-  { id: 'in-progress', label: 'In Progress', color: '#8b72be', icon: '♻️', complete: false },
-  { id: 'blocked', label: 'Blocked', color: '#c47070', icon: '🛑', complete: false },
-  { id: 'review', label: 'In Review', color: '#b8a06b', icon: '✏️', complete: false },
-  { id: 'done', label: 'Done', color: '#79b58d', icon: '🟢', complete: true },
-  { id: 'cancelled', label: 'Cancelled', color: '#767491', icon: '⚫', complete: true }
+  { id: 'in-progress', label: 'In Progress', color: '#8b72be', icon: '🚧', complete: false },
+  { id: 'blocked', label: 'Blocked', color: '#c47070', icon: '⛔', complete: false },
+  { id: 'review', label: 'In Review', color: '#b8a06b', icon: '👀', complete: false },
+  { id: 'done', label: 'Done', color: '#79b58d', icon: '✅', complete: true },
+  { id: 'cancelled', label: 'Cancelled', color: '#767491', icon: '❌', complete: true }
 ]
 
 export const DEFAULT_PRIORITIES: PriorityConfig[] = [
@@ -228,6 +238,7 @@ export function makeDefaultFilter(): FilterState {
     assignees: [],
     tags: [],
     dueDateFilter: 'any',
+    activeThisWeek: false,
     showArchived: false
   }
 }
