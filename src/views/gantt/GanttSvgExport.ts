@@ -3,7 +3,7 @@ import { flattenTasks, collectAllAssignees } from '../../store/TaskTreeOps'
 import { getStatusConfig, getPriorityConfig, stringToColor } from '../../utils'
 import { displayName, initialsFor } from '../../ui/primitives/Avatar'
 import { parsePlainDate, today } from '../../dates'
-import { buildTimelineConfig, dateToX } from './TimelineConfig'
+import { buildTimelineConfig, dateToX, PRIORITY_MARK } from './TimelineConfig'
 
 // ── Layout constants (base, zoom = 1) ───────────────────────────────────────
 const LABEL_W = 240
@@ -197,10 +197,9 @@ export function buildGanttSvg(
             `<rect class="prog" data-x0="${r.barX0}" data-w0="${pw}" x="${bx}" y="${barY}" width="${pw}" height="${barH}" rx="5" fill="${fill}" fill-opacity="0.9"/>`
           )
         }
-        if (priority) {
-          parts.push(
-            `<rect class="pout" data-x0="${r.barX0}" data-w0="${r.barW0}" x="${bx}" y="${barY}" width="${r.barW0}" height="${barH}" rx="5" fill="none" stroke="${priority}" stroke-width="2"/>`
-          )
+        const pmark = PRIORITY_MARK[task.priority]
+        if (pmark && priority) {
+          parts.push(`<text class="pmark" x="${bx + 5}" y="${cy}" fill="${priority}">${esc(pmark)}</text>`)
         }
         if (task.assignees.length) {
           const names = task.assignees.map(displayName)
@@ -226,7 +225,7 @@ export function buildGanttSvg(
     }
     const msAttr = r.msX0 !== null ? ' data-ms="1"' : ''
     bodyParts.push(
-      `<g class="row"${msAttr} data-id="${esc(task.id)}" data-depth="${r.depth}" data-title="${esc(name)}" data-assignees="${esc(JSON.stringify(task.assignees.map(displayName)))}" transform="translate(0,${y})">${parts.join('')}</g>`
+      `<g class="row"${msAttr} data-id="${esc(task.id)}" data-depth="${r.depth}" data-status="${esc(task.status)}" data-title="${esc(name)}" data-assignees="${esc(JSON.stringify(task.assignees.map(displayName)))}" transform="translate(0,${y})">${parts.join('')}</g>`
     )
   })
 
@@ -260,6 +259,16 @@ export function buildGanttSvg(
     })
     .join('')
 
+  // Status filter chips — only the statuses actually present on tasks, in settings order.
+  const usedStatuses = new Set(flat.map((f) => f.task.status))
+  const statusChips = statuses
+    .filter((s) => usedStatuses.has(s.id))
+    .map(
+      (s) =>
+        `<div class="stf" data-status="${esc(s.id)}" title="${esc(s.label)}"><span class="stfdot" style="background:${s.color ?? ACCENT}"></span>${esc(s.label)}</div>`
+    )
+    .join('')
+
   const initialH = CHART_TOP + rows.length * ROW_H + 8
   const initialW = LABEL_W + BASE_W + RIGHT_PAD
   const fillH = initialH - CHART_TOP
@@ -283,6 +292,7 @@ export function buildGanttSvg(
     .dlabel { font-size: 9px; fill: var(--muted); text-anchor: middle; }
     .rlabel { font-size: 12px; dominant-baseline: middle; }
     .blabel { font-size: 11px; dominant-baseline: middle; fill: var(--label); }
+    .pmark { font-size: 11px; dominant-baseline: central; letter-spacing: -0.06em; paint-order: stroke; stroke: rgba(0,0,0,0.5); stroke-width: 2px; stroke-linejoin: round; }
     .ctoggle { font-size: 10px; dominant-baseline: middle; fill: var(--muted); cursor: pointer; }
     .ctoggle:hover { fill: var(--text); }
     .mspilltext { font-size: 10px; font-weight: 700; fill: #0b3d24; text-anchor: middle; dominant-baseline: central; }
@@ -303,7 +313,14 @@ export function buildGanttSvg(
           font-size:9px; font-weight:700; color:#fff; cursor:pointer; opacity:0.5; border:2px solid transparent;
           flex:0 0 auto; user-select:none; box-sizing:border-box; }
     .avf:hover { opacity:0.8; }
-    .avf.on { opacity:1; border-color:var(--text); }`
+    .avf.on { opacity:1; border-color:var(--text); }
+    .stfrow { display:flex; gap:4px; align-items:center; max-width:38%; overflow-x:auto; }
+    .stf { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; font-size:10px;
+          font-weight:600; color:var(--text); background:var(--field); border:2px solid var(--border); cursor:pointer;
+          opacity:0.5; flex:0 0 auto; user-select:none; white-space:nowrap; box-sizing:border-box; }
+    .stf:hover { opacity:0.85; }
+    .stf.on { opacity:1; border-color:var(--text); background:var(--panel); }
+    .stfdot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }`
 
   const cfgJson = JSON.stringify({
     LABEL_W,
@@ -323,6 +340,7 @@ var deps=[].slice.call(svg.querySelectorAll('.dep'));
 var lrowmap={};[].slice.call(svg.querySelectorAll('.lrow')).forEach(function(l){lrowmap[l.getAttribute('data-id')]=l;});
 var search=document.getElementById('pm-search');
 var chips=[].slice.call(svg.querySelectorAll('.avf'));
+var stchips=[].slice.call(svg.querySelectorAll('.stf'));
 var toggles=[].slice.call(svg.querySelectorAll('.ctoggle'));
 var header=document.getElementById('pm-header');
 var toolbar=document.getElementById('pm-toolbar');
@@ -330,7 +348,7 @@ var left=document.getElementById('pm-left');
 var corner=document.getElementById('pm-corner');
 var leftbg=document.getElementById('pm-leftbg');
 var days=document.getElementById('pm-days');
-var selected=[];var collapsed={};
+var selected=[];var selStatus=[];var collapsed={};
 function sx(x0){return C.LABEL_W + x0*zoom;}
 function recollapse(){var hideBelow=Infinity;
   for(var r=0;r<rows.length;r++){var row=rows[r];var dep=parseInt(row.getAttribute('data-depth')||'0',10);
@@ -373,7 +391,8 @@ function filt(){var q=(search.value||'').toLowerCase();
     var as=[];try{as=JSON.parse(row.getAttribute('data-assignees')||'[]');}catch(e){}
     var okA=selected.length===0;
     if(!okA){for(var k=0;k<as.length;k++){if(selected.indexOf(as[k])>=0){okA=true;break;}}}
-    row.setAttribute('data-fhid',(okT&&okA)?'0':'1');}
+    var okS=selStatus.length===0||selStatus.indexOf(row.getAttribute('data-status'))>=0;
+    row.setAttribute('data-fhid',(okT&&okA&&okS)?'0':'1');}
   layout();}
 function sticky(){var sy=window.pageYOffset||0;var sx2=window.pageXOffset||0;
   if(header)header.setAttribute('transform','translate(0,'+sy+')');
@@ -385,6 +404,10 @@ for(var ci=0;ci<chips.length;ci++){(function(c){c.addEventListener('click',funct
   c.classList.toggle('on');selected=[];
   for(var j=0;j<chips.length;j++){if(chips[j].classList.contains('on'))selected.push(chips[j].getAttribute('data-name'));}
   filt();});})(chips[ci]);}
+for(var si=0;si<stchips.length;si++){(function(c){c.addEventListener('click',function(){
+  c.classList.toggle('on');selStatus=[];
+  for(var j=0;j<stchips.length;j++){if(stchips[j].classList.contains('on'))selStatus.push(stchips[j].getAttribute('data-status'));}
+  filt();});})(stchips[si]);}
 for(var ti=0;ti<toggles.length;ti++){(function(t){t.addEventListener('click',function(){
   var id=t.getAttribute('data-id');collapsed[id]=!collapsed[id];t.textContent=collapsed[id]?'▸':'▾';
   recollapse();layout();});})(toggles[ti]);}
@@ -432,6 +455,7 @@ recollapse();layout();`
   <body xmlns="http://www.w3.org/1999/xhtml" style="margin:0">
     <div class="tb">
       <input id="pm-search" type="text" placeholder="Search tasks…"/>
+      <div class="stfrow" id="pm-statuses">${statusChips}</div>
       <div class="avfrow" id="pm-assignees">${assigneeChips}</div>
       <button id="pm-zout" title="Zoom out">−</button>
       <button id="pm-zreset" title="Reset zoom">1×</button>

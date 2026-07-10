@@ -67,6 +67,12 @@ export class GanttView implements SubView {
     this.conflictsOnly = plugin.settings.ganttConflictsOnly
   }
 
+  /** Focus the chart container so view-level shortcuts (e.g. Insert) work after switching. */
+  focus(): void {
+    if (!this.container.hasAttribute('tabindex')) this.container.setAttribute('tabindex', '-1')
+    this.container.focus({ preventScroll: true })
+  }
+
   destroy(): void {
     if (this.zoomRaf !== null) {
       window.cancelAnimationFrame(this.zoomRaf)
@@ -151,6 +157,8 @@ export class GanttView implements SubView {
   /** Export a self-contained interactive SVG of this chart (driven from the toolbar). */
   exportSvg(): void {
     try {
+      // Export the whole tree — status/assignee/search filtering happens interactively
+      // inside the exported SVG, so nothing needs to be decided at export time.
       const svg = buildGanttSvg(
         this.project,
         this.plugin.settings.statuses,
@@ -393,6 +401,11 @@ export class GanttView implements SubView {
 
   private getVisibleTasks(): Task[] {
     return applyTaskFilterPromote(this.project.tasks, this.filter, this.plugin.settings.statuses)
+  }
+
+  /** The rows the chart just laid out (promoted tree, collapse-aware) — matches the screen. */
+  visibleCount(): number {
+    return this.flatTasks.length
   }
 
   private scrollToToday(): void {

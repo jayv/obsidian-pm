@@ -9,6 +9,7 @@ import {
   HEADER_HEIGHT,
   BAR_PADDING,
   BAR_BORDER_RADIUS,
+  PRIORITY_MARK,
   dateToX,
   xToDate,
   getSnapPoints,
@@ -131,29 +132,6 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
     )
   }
 
-  // Priority outline — a colored border so priority reads at a glance. Drawn
-  // over the fill/progress (fill: none) so progress never covers it.
-  if (!isSummary) {
-    const priorityColor = getPriorityConfig(ctx.plugin.settings.priorities, task.priority)?.color
-    if (priorityColor) {
-      barGroup.appendChild(
-        svgEl('rect', {
-          x,
-          y,
-          width,
-          height,
-          rx: BAR_BORDER_RADIUS,
-          ry: BAR_BORDER_RADIUS,
-          fill: 'none',
-          stroke: priorityColor,
-          'stroke-width': 2,
-          class: 'pm-gantt-bar-priority',
-          'pointer-events': 'none'
-        })
-      )
-    }
-  }
-
   // Resource-conflict hatch: red diagonal stripes over each span where this
   // task overlaps another task sharing an assignee.
   if (conflict && conflict.segments.length) {
@@ -196,12 +174,29 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   // Rendered before the label so the label can reserve room and avoid overlap.
   const avatarZone = renderAssigneeAvatars(barGroup, task, x, width, y, height, conflict?.assignees)
 
+  const labelY = y + height / 2
+
+  // Priority marker: a light tinted arrowhead at the bar's left, before the label
+  // (Jira-style). Summaries roll up children, so they carry no priority mark.
+  const priorityMark = isSummary ? '' : (PRIORITY_MARK[task.priority] ?? '')
+  const markW = priorityMark ? (priorityMark.length > 1 ? 15 : 9) : 0
+  if (priorityMark) {
+    const mark = svgEl('text', {
+      x: x + 5,
+      y: labelY,
+      fill: getPriorityConfig(ctx.plugin.settings.priorities, task.priority)?.color ?? 'currentColor',
+      class: 'pm-gantt-bar-priority',
+      'pointer-events': 'none'
+    })
+    mark.textContent = priorityMark
+    barGroup.appendChild(mark)
+  }
+
   // Label: inside the bar only when the full title fits; otherwise render it in
   // full to the right of the bar. Never truncate with an ellipsis.
-  const labelY = y + height / 2
-  const innerChars = Math.floor((width - 16 - avatarZone) / 7.5)
-  if (width - avatarZone > 55 && task.title.length <= innerChars) {
-    const label = svgEl('text', { x: x + 8, y: labelY, class: 'pm-gantt-bar-label' })
+  const innerChars = Math.floor((width - 16 - markW - avatarZone) / 7.5)
+  if (width - avatarZone - markW > 55 && task.title.length <= innerChars) {
+    const label = svgEl('text', { x: x + 8 + markW, y: labelY, class: 'pm-gantt-bar-label' })
     label.textContent = task.title
     barGroup.appendChild(label)
   } else {

@@ -326,6 +326,19 @@
   text-shadow: none;
 }
 
+/* Priority arrowhead marker at the bar's left — light weight, tinted (fill set inline). */
+.pm-gantt-bar-priority {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: -0.06em; /* tuck the double-up chevron tight */
+  dominant-baseline: central;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+
 /* Assignee avatars on the bar */
 .pm-gantt-bar-avatars {
   pointer-events: none;
