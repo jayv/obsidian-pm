@@ -4,13 +4,17 @@ import { collectAllAssignees, collectAllTags } from '../../../store'
 import { countActiveFilters } from '../../../store/TaskFilter'
 import { renderFilterDropdown } from '../../FilterDropdown'
 import { Pill } from '../../primitives/Pill'
+import { Avatar } from '../../primitives/Avatar'
 import { formatBadgeText } from '../../../utils'
+import type { HeaderUiState } from './ProjectHeader'
 
 export interface FilterRowProps {
   project: Project
   statuses: StatusConfig[]
   priorities: PriorityConfig[]
   filter: FilterState
+  /** Persisted UI state — the assignee zone open flag survives view switches. */
+  uiState: HeaderUiState
   onFilterChange: () => void
   onClear: () => void
 }
@@ -26,6 +30,7 @@ const DUE_LABELS: Record<DueDateFilter, string> = {
 export class FilterRow {
   el: HTMLElement
   private clearBtn: ButtonComponent | null = null
+  private assigneeZoneEl: HTMLElement | null = null
 
   constructor(
     parentEl: HTMLElement,
@@ -37,6 +42,7 @@ export class FilterRow {
 
   private render(): void {
     this.el.empty()
+    this.assigneeZoneEl = null
     const { filter, statuses, priorities, project } = this.props
 
     const notify = () => {
@@ -67,18 +73,7 @@ export class FilterRow {
     )
 
     const allAssignees = collectAllAssignees(project.tasks)
-    if (allAssignees.length) {
-      renderFilterDropdown(
-        this.el,
-        'Assignee',
-        filter.assignees,
-        allAssignees.map((a) => ({ id: a, label: a })),
-        (selected) => {
-          filter.assignees = selected
-          notify()
-        }
-      )
-    }
+    if (allAssignees.length) this.renderAssigneeFilter(notify, allAssignees)
 
     const allTags = collectAllTags(project.tasks)
     if (allTags.length) {
@@ -95,8 +90,58 @@ export class FilterRow {
     }
 
     this.renderDueDatePill(notify)
+    this.renderActiveThisWeekPill(notify)
     this.renderArchivedPill(notify)
     this.renderClearButton()
+    // The avatar zone spans the full width, so keep it as the last child — it wraps onto
+    // its own row below the pills rather than pushing later pills around.
+    if (this.assigneeZoneEl) this.el.appendChild(this.assigneeZoneEl)
+  }
+
+  /**
+   * Assignee filter as a toggle pill that reveals a zone of colored initial-circles
+   * (the same avatars shown on tasks/gantt). Clicking an avatar selects/deselects that
+   * assignee; selected ones get a bold accent ring while the rest dim, so the active
+   * selection reads clearly even on a projector.
+   */
+  private renderAssigneeFilter(notify: () => void, names: string[]): void {
+    const { filter } = this.props
+    const pill = new Pill(this.el).setAriaLabel('Filter by assignee')
+    const zone = createDiv('pm-assignee-filter')
+
+    const sync = () => {
+      const n = filter.assignees.length
+      pill.setLabel(n ? `Assignee: ${n}` : 'Assignee').setActive(n > 0)
+      pill.el.toggleClass('pm-pill--open', this.props.uiState.assigneeZoneOpen)
+      zone.style.display = this.props.uiState.assigneeZoneOpen ? 'flex' : 'none'
+    }
+
+    pill.onClick(() => {
+      this.props.uiState.assigneeZoneOpen = !this.props.uiState.assigneeZoneOpen
+      sync()
+    })
+
+    for (const name of names) {
+      const btn = zone.createEl('button', { cls: 'pm-assignee-pick' })
+      new Avatar(btn).setName(name).setSize('sm')
+      const paint = () => {
+        const on = filter.assignees.includes(name)
+        btn.toggleClass('is-selected', on)
+        btn.setAttribute('aria-pressed', String(on))
+      }
+      paint()
+      btn.addEventListener('click', () => {
+        const i = filter.assignees.indexOf(name)
+        if (i >= 0) filter.assignees.splice(i, 1)
+        else filter.assignees.push(name)
+        paint()
+        sync()
+        notify()
+      })
+    }
+
+    sync()
+    this.assigneeZoneEl = zone
   }
 
   private renderDueDatePill(notify: () => void): void {
@@ -123,6 +168,16 @@ export class FilterRow {
         )
       }
       menu.showAtMouseEvent(e)
+    })
+  }
+
+  private renderActiveThisWeekPill(notify: () => void): void {
+    const { filter } = this.props
+    const pill = new Pill(this.el).setLabel('Active this week').setActive(filter.activeThisWeek)
+    pill.onClick(() => {
+      filter.activeThisWeek = !filter.activeThisWeek
+      pill.setActive(filter.activeThisWeek)
+      notify()
     })
   }
 

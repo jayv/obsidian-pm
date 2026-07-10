@@ -1,7 +1,16 @@
 import type { Project, FilterState, StatusConfig, PriorityConfig, ViewMode } from '../../../types'
-import { isFilterActive } from '../../../store/TaskFilter'
 import { PrimaryRow } from './PrimaryRow'
 import { FilterRow } from './FilterRow'
+
+/**
+ * Header UI state that must survive header rebuilds (view switches). Owned by the
+ * ProjectView and passed by reference so the filter bar and the assignee avatar zone
+ * re-open in the same state after switching between table/gantt/board.
+ */
+export interface HeaderUiState {
+  filterOpen: boolean
+  assigneeZoneOpen: boolean
+}
 
 export interface ProjectHeaderProps {
   project: Project
@@ -9,6 +18,8 @@ export interface ProjectHeaderProps {
   priorities: PriorityConfig[]
   filter: FilterState
   activeSavedViewId: string | null
+  /** Persisted, by-reference UI state (filter bar / assignee zone open flags). */
+  uiState: HeaderUiState
   onFilterChange: () => void
   onClearFilter: () => void
   onSavedViewSelect: (id: string | null) => void
@@ -22,7 +33,6 @@ export interface ProjectHeaderProps {
 
 export class ProjectHeader {
   el: HTMLElement
-  private filterRowExpanded = false
   private primaryRow: PrimaryRow | null = null
   private filterRow: FilterRow | null = null
 
@@ -35,7 +45,13 @@ export class ProjectHeader {
   }
 
   /** Re-render after a filter or activeSavedViewId replacement (e.g., apply saved view, clear). */
-  refresh(): void {
+  /**
+   * Re-render. Pass the current `activeSavedViewId` so the saved-view pills reflect it —
+   * the value in props is a snapshot from construction and would otherwise be stale (which
+   * left "All" highlighted after selecting a view).
+   */
+  refresh(activeSavedViewId?: string | null): void {
+    if (activeSavedViewId !== undefined) this.props.activeSavedViewId = activeSavedViewId
     this.render()
   }
 
@@ -67,7 +83,7 @@ export class ProjectHeader {
       project: this.props.project,
       filter: this.props.filter,
       activeSavedViewId: this.props.activeSavedViewId,
-      filterRowExpanded: this.filterRowExpanded,
+      filterRowExpanded: this.props.uiState.filterOpen,
       onSearchChange: this.props.onFilterChange,
       onSavedViewSelect: this.props.onSavedViewSelect,
       onSavedViewSave: this.props.onSavedViewSave,
@@ -76,9 +92,12 @@ export class ProjectHeader {
       viewMode: this.props.viewMode,
       onToggleConflicts: this.props.onToggleConflicts,
       onToggleFilterRow: () => {
-        this.filterRowExpanded = !this.filterRowExpanded
+        this.props.uiState.filterOpen = !this.props.uiState.filterOpen
         this.syncFilterRowVisibility()
-        this.primaryRow?.refreshVolatile()
+        // Push the new state into PrimaryRow's props — refreshVolatile() alone would
+        // re-render with the (stale) value captured at construction, leaving the button
+        // highlighted after the bar is collapsed.
+        this.primaryRow?.setFilterRowExpanded(this.props.uiState.filterOpen)
       }
     })
 
@@ -103,12 +122,20 @@ export class ProjectHeader {
       statuses: this.props.statuses,
       priorities: this.props.priorities,
       filter: this.props.filter,
+      uiState: this.props.uiState,
       onFilterChange: this.props.onFilterChange,
-      onClear: this.props.onClearFilter
+      onClear: () => {
+        // Clearing empties the filters but must NOT collapse the bar — keep it expanded
+        // so it stays open until the user explicitly toggles it off.
+        this.props.uiState.filterOpen = true
+        this.props.onClearFilter()
+      }
     })
   }
 
   private shouldShowFilterRow(): boolean {
-    return this.filterRowExpanded || isFilterActive(this.props.filter) || this.props.filter.showArchived
+    // Visibility is purely the explicit toggle — never coupled to whether filters are
+    // active. (Active filters stay discoverable via the count on the Filter button.)
+    return this.props.uiState.filterOpen
   }
 }

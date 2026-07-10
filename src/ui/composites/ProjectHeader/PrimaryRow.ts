@@ -1,7 +1,7 @@
 import { ButtonComponent, Menu } from 'obsidian'
 import type { Project, FilterState, SavedView, ViewMode } from '../../../types'
 import { Pill } from '../../primitives/Pill'
-import { isFilterActive } from '../../../store/TaskFilter'
+import { countActiveFilters, isFilterActive } from '../../../store/TaskFilter'
 import { safeAsync } from '../../../utils'
 
 export interface PrimaryRowProps {
@@ -63,6 +63,12 @@ export class PrimaryRow {
     this.renderVolatile()
   }
 
+  /** Keep the filter-toggle highlight in sync when the bar is opened/closed. */
+  setFilterRowExpanded(expanded: boolean): void {
+    this.props.filterRowExpanded = expanded
+    this.renderVolatile()
+  }
+
   refreshVolatile(): void {
     this.renderVolatile()
   }
@@ -117,7 +123,9 @@ export class PrimaryRow {
       .setShape('pill')
       .setActive(this.props.activeSavedViewId === sv.id)
       .onClick(() => {
-        this.props.onSavedViewSelect(sv.id)
+        // Toggle: clicking the already-active view clears back to "All".
+        const active = this.props.activeSavedViewId === sv.id
+        this.props.onSavedViewSelect(active ? null : sv.id)
       })
       .onContextMenu((e) => {
         e.preventDefault()
@@ -186,11 +194,13 @@ export class PrimaryRow {
   }
 
   private renderFilterToggle(parent: HTMLElement): void {
-    const isFilterRowVisible =
-      this.props.filterRowExpanded || isFilterActive(this.props.filter) || this.props.filter.showArchived
+    // The toggle purely shows/hides the filter bar — its highlight reflects whether the
+    // bar is open, NOT whether filters are active. The count keeps active filters
+    // discoverable even while the bar is collapsed.
+    const count = countActiveFilters(this.props.filter)
     const pill = new Pill(parent)
-      .setLabel('Filter')
-      .setActive(isFilterRowVisible)
+      .setLabel(count ? `Filter (${count})` : 'Filter')
+      .setActive(this.props.filterRowExpanded)
       .setAriaLabel('Toggle filter row')
       .onClick(() => {
         this.props.onToggleFilterRow()

@@ -4,7 +4,9 @@ import {
   applyTaskFilter,
   applyTaskFilterFlat,
   applyTaskFilterPromote,
+  cloneFilter,
   countActiveFilters,
+  filterEquals,
   isFilterActive,
   matchesFilter
 } from './TaskFilter'
@@ -38,6 +40,10 @@ describe('isFilterActive', () => {
     expect(isFilterActive(filter({ dueDateFilter: 'overdue' }))).toBe(true)
   })
 
+  it('returns true when activeThisWeek is on', () => {
+    expect(isFilterActive(filter({ activeThisWeek: true }))).toBe(true)
+  })
+
   it('ignores showArchived (matches legacy semantics)', () => {
     expect(isFilterActive(filter({ showArchived: true }))).toBe(false)
   })
@@ -66,6 +72,36 @@ describe('countActiveFilters', () => {
   })
 })
 
+describe('cloneFilter', () => {
+  it('copies scalars and clones arrays (no shared references)', () => {
+    const src = filter({ statuses: ['todo'], assignees: ['Zoe'], text: 'x', activeThisWeek: true })
+    const copy = cloneFilter(src)
+    expect(copy).toEqual(src)
+    expect(copy.statuses).not.toBe(src.statuses)
+    expect(copy.assignees).not.toBe(src.assignees)
+    // Mutating the clone's arrays (as the avatar filter does with splice/push) must not
+    // leak back into the source — this is what corrupted saved views before.
+    copy.assignees.push('Bob')
+    expect(src.assignees).toEqual(['Zoe'])
+  })
+})
+
+describe('filterEquals', () => {
+  it('is true for equal filters regardless of list order', () => {
+    const a = filter({ statuses: ['todo', 'done'], priorities: ['high'] })
+    const b = filter({ statuses: ['done', 'todo'], priorities: ['high'] })
+    expect(filterEquals(a, b)).toBe(true)
+  })
+
+  it('detects differences in any field', () => {
+    const base = filter({ statuses: ['todo'], text: 'x', activeThisWeek: true })
+    expect(filterEquals(base, filter({ statuses: ['todo'], text: 'y', activeThisWeek: true }))).toBe(false)
+    expect(filterEquals(base, filter({ statuses: ['todo', 'done'], text: 'x', activeThisWeek: true }))).toBe(false)
+    expect(filterEquals(base, filter({ statuses: ['todo'], text: 'x', activeThisWeek: false }))).toBe(false)
+    expect(filterEquals(makeDefaultFilter(), makeDefaultFilter())).toBe(true)
+  })
+})
+
 describe('matchesFilter', () => {
   it('hides archived tasks when showArchived is false', () => {
     const t = task({ id: 'a', archived: true })
@@ -79,6 +115,13 @@ describe('matchesFilter', () => {
     expect(matchesFilter(t, filter({ text: 'BOB' }))).toBe(true)
     expect(matchesFilter(t, filter({ text: 'cleanup' }))).toBe(true)
     expect(matchesFilter(t, filter({ text: 'unrelated' }))).toBe(false)
+  })
+
+  it('matches text against a connector ext string (e.g. the Jira key)', () => {
+    const t = task({ id: 'a', title: 'Build', ext: { jira: { key: 'ENG-1234', sync: true } } })
+    expect(matchesFilter(t, filter({ text: 'eng-1234' }))).toBe(true) // case-insensitive
+    expect(matchesFilter(t, filter({ text: 'eng-1' }))).toBe(true) // substring
+    expect(matchesFilter(t, filter({ text: 'eng-9999' }))).toBe(false)
   })
 
   it('filters by status, priority, assignees, tags', () => {
@@ -112,6 +155,33 @@ describe('matchesFilter', () => {
       expect(m('2026-07-05')).toBe(true) // Sunday (end of week)
       expect(m('2026-06-28')).toBe(false) // last week's Sunday
       expect(m('2026-07-06')).toBe(false) // next Monday
+    })
+  })
+
+  describe('activeThisWeek matches tasks whose span overlaps the current week', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('overlaps by span, not just the due date', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-07-01T12:00:00Z')) // Wednesday; week = Mon 06-29 … Sun 07-05
+      const f = filter({ activeThisWeek: true })
+      const m = (start: string, due: string) => matchesFilter(task({ id: `${start}/${due}`, start, due }), f)
+
+      expect(m('2026-06-20', '2026-07-10')).toBe(true) // spans across the whole week
+      expect(m('2026-07-03', '2026-07-03')).toBe(true) // single day inside the week
+      expect(m('2026-06-25', '2026-06-30')).toBe(true) // starts before, ends inside
+      expect(m('2026-07-04', '2026-07-20')).toBe(true) // starts inside, ends after
+      expect(m('2026-06-01', '2026-06-28')).toBe(false) // ends before the week starts
+      expect(m('2026-07-06', '2026-07-09')).toBe(false) // starts after the week ends
+    })
+
+    it('uses whichever single date exists, and excludes dateless tasks', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-07-01T12:00:00Z'))
+      const f = filter({ activeThisWeek: true })
+      expect(matchesFilter(task({ id: 'due-only', due: '2026-07-02' }), f)).toBe(true)
+      expect(matchesFilter(task({ id: 'start-only', start: '2026-07-02' }), f)).toBe(true)
+      expect(matchesFilter(task({ id: 'no-dates', start: '', due: '' }), f)).toBe(false)
     })
   })
 })
@@ -194,6 +264,36 @@ describe('applyTaskFilterPromote', () => {
     ]
     const out = applyTaskFilterPromote(tasks, filter({ statuses: ['todo'] }), DEFAULT_STATUSES)
     expect(out.map((t) => t.id)).toEqual(['b'])
+  })
+
+  it('hides a matching parent when all its subtasks are filtered out (no childless summary)', () => {
+    // Parent matches, but its only subtask doesn't → the parent would otherwise render
+    // as a lone normal bar in the gantt, so it's dropped too.
+    const tasks = [task({ id: 'p', status: 'todo', subtasks: [task({ id: 'c', status: 'done' })] })]
+    const out = applyTaskFilterPromote(tasks, filter({ statuses: ['todo'] }), DEFAULT_STATUSES)
+    expect(out).toEqual([])
+  })
+
+  it('keeps a matching parent when at least one subtask survives', () => {
+    const tasks = [
+      task({
+        id: 'p',
+        status: 'todo',
+        subtasks: [task({ id: 'c1', status: 'todo' }), task({ id: 'c2', status: 'done' })]
+      })
+    ]
+    const out = applyTaskFilterPromote(tasks, filter({ statuses: ['todo'] }), DEFAULT_STATUSES)
+    expect(out.map((t) => t.id)).toEqual(['p'])
+    expect(out[0].subtasks.map((t) => t.id)).toEqual(['c1'])
+  })
+
+  it('keeps a matching leaf (no subtasks) — the drop only applies to real parents', () => {
+    const out = applyTaskFilterPromote(
+      [task({ id: 'leaf', status: 'todo' })],
+      filter({ statuses: ['todo'] }),
+      DEFAULT_STATUSES
+    )
+    expect(out.map((t) => t.id)).toEqual(['leaf'])
   })
 })
 
