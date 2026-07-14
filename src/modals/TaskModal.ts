@@ -115,6 +115,9 @@ export class TaskModal extends Modal {
 
   private async runPersist(): Promise<void> {
     if (this.isNew) {
+      // A new task with a start but no due defaults to a same-day due date, so it has a
+      // span (shows on the gantt / counts as dated) instead of an open-ended start.
+      if (this.task.start && !this.task.due) this.task.due = this.task.start
       await this.plugin.store.insertTask(this.project, this.task, this.parentId)
     } else if (this.parentId !== this.originalParentId) {
       await this.plugin.store.updateTask(this.project, this.task.id, this.task)
