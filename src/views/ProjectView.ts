@@ -157,6 +157,8 @@ export class ProjectView extends ItemView {
       this.keydownHandler = null
     }
     this.fileModifyRef = null
+    // Never leave Obsidian's chrome hidden behind a view that no longer exists.
+    this.containerEl.ownerDocument.body.removeClass('pm-maximized')
     this.subview?.destroy?.()
     this.subview = null
     return Promise.resolve()
@@ -584,6 +586,10 @@ export class ProjectView extends ItemView {
     if (next === this.maximized) return
     this.maximized = next
     this.contentEl.toggleClass('pm-root--maximized', this.maximized)
+    // Obsidian's own chrome (this pane's title bar and its tab bar) is outside our view,
+    // so it's driven by a body class. Scoped to the document that owns this leaf, which
+    // may be a pop-out window.
+    this.containerEl.ownerDocument.body.toggleClass('pm-maximized', this.maximized)
     this.renderCurrentView()
     this.subview?.focus?.() // keep the toggle working without clicking back in
     // Every control just disappeared, so say how to get back.
