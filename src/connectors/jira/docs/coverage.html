@@ -23,8 +23,8 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>161</strong> tests</span>
-    <span class="stat"><strong>40</strong> areas</span>
+    <span class="stat"><strong>169</strong> tests</span>
+    <span class="stat"><strong>45</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
 
@@ -145,6 +145,24 @@
 <tr><td>detects a new child of a tracked task (subtree-scoped, not just the epic)</td><td class="file">incremental.test.ts</td></tr>
 <tr><td>still creates opted-in keyless tasks on an incremental tick</td><td class="file">incremental.test.ts</td></tr>
 <tr><td>does not pull the shared epic config on an incremental tick, but a full sync does</td><td class="file">incremental.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira instance shape — priority schemes <span class="dir dir-OJ">O→J</span> <span class="muted">2</span></td></tr>
+    <tr><td>offers only the priorities the project scheme allows, not the whole instance</td><td class="file">instance-shape.test.ts</td></tr>
+<tr><td>surfaces a scheme-invalid priority as a held conflict instead of losing the task</td><td class="file">instance-shape.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira instance shape — the "Start date" field <span class="dir dir-OJ">O→J</span> <span class="muted">2</span></td></tr>
+    <tr><td>holds the start date (never advances the shadow) when the project has no such field</td><td class="file">instance-shape.test.ts</td></tr>
+<tr><td>writes the start date once the project has the field</td><td class="file">instance-shape.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira instance shape — response envelopes <span class="dir dir-setup">setup</span> <span class="muted">1</span></td></tr>
+    <tr><td>discovers metadata when createmeta uses named collections instead of "values"</td><td class="file">instance-shape.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira instance shape — XSRF-refused writes <span class="dir dir-OJ">O→J</span> <span class="muted">1</span></td></tr>
+    <tr><td>retries a write Jira refuses with a non-JSON "XSRF check failed" 403</td><td class="file">instance-shape.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira instance shape — access diagnosis <span class="dir dir-setup">setup</span> <span class="muted">2</span></td></tr>
+    <tr><td>reports the account and its project permissions</td><td class="file">instance-shape.test.ts</td></tr>
+<tr><td>returns null when the project is not connected</td><td class="file">instance-shape.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">jira ↔ core store integration (real ProjectStore) <span class="dir dir-both">both</span> <span class="muted">2</span></td></tr>
     <tr><td>export persists the linked JIRA key to the task .md (round-trips from disk)</td><td class="file">integration.test.ts</td></tr>

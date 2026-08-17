@@ -61,7 +61,7 @@ export class JiraMockServer {
       const store = await this.loadStore()
       const result = route(store, method, path, url, body)
       if (result.mutated) await this.saveStore(store)
-      send(res, result.status, result.body)
+      send(res, result.status, result.body, result.headers)
     } catch (e) {
       console.error('[PM-JIRA mock] request failed', e)
       send(res, 500, { error: 'mock server error' })
@@ -73,6 +73,8 @@ interface RouteResult {
   status: number
   body: unknown
   mutated?: boolean
+  /** Extra response headers (e.g. Jira's XSRF token cookie). */
+  headers?: Record<string, string | string[]>
 }
 
 /** This project's issue types, as project-scoped createmeta reports them. */
@@ -94,6 +96,12 @@ const FOREIGN_ISSUE_TYPES = [
   { id: '91', name: 'Epic', hierarchyLevel: 0, subtask: false }
 ]
 
+/** Wrap a createmeta page in the configured envelope (documented `values`, or named). */
+function page(envelope: 'values' | 'named' | undefined, name: string, items: unknown[]): Record<string, unknown> {
+  const meta = { startAt: 0, maxResults: 50, total: items.length, isLast: true }
+  return envelope === 'named' ? { ...meta, [name]: items } : { ...meta, values: items }
+}
+
 /**
  * Jira rejects a priority outside the project's scheme, even though the instance knows
  * it — the 400 that revealed we were mapping from the instance-wide list.
@@ -112,6 +120,18 @@ function invalidPriority(store: JiraMockStore, fields: Record<string, unknown>):
 /** Dispatch a request to a faithful JIRA endpoint handler. */
 function route(store: JiraMockStore, method: string, path: string, url: URL, body: string): RouteResult {
   const m = store.data.meta
+
+  // Armed XSRF refusal: Jira answers a write with a 403 whose body is plain text (not
+  // JSON) and hands back the token cookie. Cleared after one hit, so a retry succeeds.
+  if (m.xsrfOnce && method !== 'GET') {
+    m.xsrfOnce = false
+    return {
+      status: 403,
+      body: 'XSRF check failed',
+      mutated: true,
+      headers: { 'set-cookie': ['atlassian.xsrf.token=mock-xsrf-token; Path=/'] }
+    }
+  }
 
   if (path === '/myself') return ok({ accountId: 'mock-user', displayName: 'Mock User' })
 
@@ -157,7 +177,7 @@ function route(store: JiraMockStore, method: string, path: string, url: URL, bod
     // Real Jira reports the project's types here WITH their hierarchy level — the
     // connector reads levels from this (project-scoped) list, because the instance-wide
     // /issuetype repeats names across projects at different levels.
-    return ok({ startAt: 0, maxResults: 50, total: ISSUE_TYPES.length, isLast: true, values: ISSUE_TYPES })
+    return ok(page(m.envelope, 'issueTypes', ISSUE_TYPES))
   }
   const cmFields = path.match(/^\/issue\/createmeta\/([^/]+)\/issuetypes\/([^/]+)$/)
   if (cmFields) {
@@ -185,7 +205,7 @@ function route(store: JiraMockStore, method: string, path: string, url: URL, bod
           ]
         : [])
     ]
-    return ok({ startAt: 0, maxResults: 50, total: values.length, isLast: true, values })
+    return ok(page(m.envelope, 'fields', values))
   }
 
   // The instance-wide field list (the connector's fallback when createmeta has no match).
@@ -374,9 +394,17 @@ function readBody(req: IncomingMessage): Promise<string> {
   })
 }
 
-function send(res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { 'Content-Type': 'application/json' })
-  res.end(body === null ? '' : JSON.stringify(body))
+function send(
+  res: ServerResponse,
+  status: number,
+  body: unknown,
+  headers: Record<string, string | string[]> = {}
+): void {
+  // A plain string is sent as-is: some Jira failures (XSRF) return text, not JSON, and
+  // the client has to cope with that.
+  const isText = typeof body === 'string'
+  res.writeHead(status, { 'Content-Type': isText ? 'text/plain' : 'application/json', ...headers })
+  res.end(body === null ? '' : isText ? body : JSON.stringify(body))
 }
 
 // ── Plugin-level singleton (one server per plugin instance) ───────────────────

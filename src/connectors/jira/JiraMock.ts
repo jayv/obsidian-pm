@@ -33,6 +33,14 @@ export interface MockMeta {
   priorities: JiraPriority[]
   /** Priority names this project's scheme allows; unset = all of them. */
   priorityScheme?: string[]
+  /**
+   * How createmeta wraps its pages: the documented `values` envelope, or the named
+   * collections (`issueTypes` / `fields`) Cloud also returns. Reading only one of them
+   * is what silently disabled start-date discovery on a real site.
+   */
+  envelope?: 'values' | 'named'
+  /** When set, the next write is refused with Jira's XSRF 403 (then cleared). */
+  xsrfOnce?: boolean
   users: JiraUser[]
   seq: number
   /** Monotonic counter for minting issue-link ids. */
@@ -99,6 +107,14 @@ export class JiraMockStore {
   /** Model a project with no "Start date" field by clearing it (''), as some sites have. */
   setStartFieldId(id: string): void {
     this.data.meta.startFieldId = id
+  }
+  /** Serve createmeta in the named-collection envelope instead of the paginated one. */
+  setEnvelope(style: 'values' | 'named'): void {
+    this.data.meta.envelope = style
+  }
+  /** Refuse the next write once with Jira's XSRF 403. */
+  armXsrfFailure(): void {
+    this.data.meta.xsrfOnce = true
   }
 
   /**

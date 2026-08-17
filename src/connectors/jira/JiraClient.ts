@@ -234,7 +234,9 @@ export class JiraClient {
     // so escalate this site to the cookie-free Node transport. One retry either way.
     if (res.status === 403 && /XSRF check failed/i.test(res.text ?? '')) {
       logApi(method, url, body, res.status, res.text, res.headers)
-      if (!issued && !nodeTransportBases.has(this.base)) {
+      // Only a real (https) site can be behind Electron's cookie jar; the localhost mock
+      // speaks plain http and just needs the retry.
+      if (!issued && url.startsWith('https://') && !nodeTransportBases.has(this.base)) {
         nodeTransportBases.add(this.base)
         console.warn(`[PM] Jira: ${this.base} rejects writes as XSRF — switching to the direct Node transport.`)
       }

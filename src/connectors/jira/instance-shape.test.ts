@@ -97,6 +97,46 @@ describe('jira instance shape — the "Start date" field [O→J]', () => {
   })
 })
 
+describe('jira instance shape — response envelopes [setup]', () => {
+  it('discovers metadata when createmeta uses named collections instead of "values"', async () => {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    // Reading only the paginated `values` envelope is what left startField empty live,
+    // silently disabling start-date sync.
+    await mutateMock(plugin, (s) => s.setEnvelope('named'))
+    await runSync(plugin, project)
+
+    const client = must(makeClient(plugin, project))
+    expect(await client.startFieldId(EPIC)).toMatch(/^customfield_/)
+    // The hierarchy comes from the same pages, so it must survive the shape too.
+    const levels = new Map((await client.issueTypes(EPIC)).map((t) => [t.name, t.level]))
+    expect(levels.get('Initiative')).toBe(2)
+    expect(levels.get('Sub-task')).toBe(-1)
+
+    const t = localTask(project, { title: 'Dated', start: '2026-08-17', due: '2026-08-20' })
+    await exportTasks(plugin, project, [t.id])
+    const mock = await readMock(plugin)
+    expect(mock.getIssue(must(taskExt(t).key))?.fields[mock.startFieldId]).toBe('2026-08-17')
+  })
+})
+
+describe('jira instance shape — XSRF-refused writes [O→J]', () => {
+  it('retries a write Jira refuses with a non-JSON "XSRF check failed" 403', async () => {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    await runSync(plugin, project)
+    await mutateMock(plugin, (s) => s.armXsrfFailure())
+
+    const t = localTask(project, { title: 'Refused once' })
+    const { created } = await exportTasks(plugin, project, [t.id])
+
+    expect(created).toBe(1) // the retry got through
+    expect(taskExt(must(findTask(project.tasks, t.id))).key).toBeTruthy()
+  })
+})
+
 describe('jira instance shape — access diagnosis [setup]', () => {
   it('reports the account and its project permissions', async () => {
     const { plugin } = harness()
