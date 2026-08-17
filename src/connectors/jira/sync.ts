@@ -954,7 +954,9 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       continue
     }
 
-    // Push the fields only we changed.
+    // Push the fields only we changed. `held` names anything we couldn't write, so a
+    // task stuck re-conflicting every sync says why instead of just reappearing.
+    const held: string[] = []
     let ok = true
     const fields: Record<string, unknown> = {}
     if (tw.push.includes('title')) fields.summary = t.title
@@ -964,12 +966,12 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       // would advance the shadow as if synced and lose the change) — hold it, same as an
       // unmapped assignee below.
       if (startField) fields[startField] = t.start || null
-      else ok = false
+      else held.push('start (no "Start date" field on this Jira project)')
     }
     if (tw.push.includes('priority')) {
       const p = mapOutboundEntry(cfg.priorityMap, t.priority)
       if (p) fields.priority = priorityRef(p)
-      else ok = false // no canonical JIRA value to write → hold it
+      else held.push(`priority "${t.priority}" (no Jira value mapped with "→ Jira")`)
     }
     if (tw.push.includes('assignees')) {
       const a = assigneeField(t, cfg)
@@ -977,12 +979,17 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       // it (that would advance the shadow as if synced); surface it as a conflict so
       // the user maps the member instead of losing the change.
       if (a !== undefined) fields.assignee = a
-      else ok = false
+      else held.push(`assignee "${t.assignees[0] ?? ''}" (no Jira user mapped)`)
     }
-    if (Object.keys(fields).length) ok = (await client.editIssue(ext.key, fields)) && ok
+    if (Object.keys(fields).length && !(await client.editIssue(ext.key, fields))) {
+      held.push(`fields ${Object.keys(fields).join(', ')} (Jira rejected the edit)`)
+    }
     if (tw.push.includes('status')) {
       const s = mapOutboundEntry(cfg.statusMap, t.status)
-      ok = s ? (await client.transitionTo(ext.key, s.jira, s.id)) && ok : false
+      if (!s) held.push(`status "${t.status}" (no Jira status mapped with "→ Jira")`)
+      else if (!(await client.transitionTo(ext.key, s.jira, s.id))) {
+        held.push(`status "${t.status}" (no transition to "${s.jira}" available)`)
+      }
     }
     if (tw.push.includes('milestone')) {
       const milestone = t.type === 'milestone'
@@ -995,8 +1002,9 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       ok = (await reconcileLinks(client, ext.key, issue.blockLinks, desiredBlockerKeys(t, keyOf))) && ok
     }
 
-    if (!ok) {
+    if (!ok || held.length) {
       conflicts++
+      if (held.length) console.warn(`[PM] Jira: ${ext.key} held back — ${held.join('; ')}`)
       patches.push({ taskId: t.id, patch: { ext: flagConflict(t, theirs) } }) // a write was rejected — surface it
       continue
     }
