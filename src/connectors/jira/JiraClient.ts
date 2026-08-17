@@ -72,6 +72,8 @@ export interface JiraTransition {
 // shouldn't re-discover these every time. Keyed by base so mock/real stay isolated.
 const startFieldByBase = new Map<string, string>()
 const issueTypesByBase = new Map<string, JiraIssueType[]>()
+/** Priorities a project's scheme allows, keyed "<base>|<projectKey>". */
+const prioritiesByProject = new Map<string, { name: string; id: string }[]>()
 
 /**
  * Jira's XSRF token per base URL. Cloud hands one back as `atlassian.xsrf.token` and then
@@ -318,11 +320,45 @@ export class JiraClient {
     return [...out].map(([name, v]) => ({ name, category: v.category, id: v.id }))
   }
 
-  /** Priorities available in this JIRA instance (name + id), for the mapping UI + outbound writes. */
-  async priorities(): Promise<{ name: string; id: string }[]> {
+  /**
+   * Priorities this project actually accepts, for the mapping UI + outbound writes.
+   *
+   * A project only accepts the priorities in its priority scheme, which is usually a
+   * subset of the instance's list — writing one from outside it fails with "The priority
+   * selected is invalid". createmeta reports the per-project allowed values, so ask it
+   * first (union across the project's issue types) and fall back to the instance-wide
+   * list only when createmeta yields nothing.
+   */
+  async priorities(projectHint?: string): Promise<{ name: string; id: string }[]> {
+    const scoped = projectHint ? await this.projectPriorities(projectKeyOf(projectHint)) : []
+    if (scoped.length) return scoped
     const { data } = await this.req('GET', '/priority/search?maxResults=100')
     const page = (data ?? {}) as { values?: { id?: string; name?: string }[] }
     return (page.values ?? []).flatMap((p) => (p.name ? [{ name: p.name, id: p.id ?? '' }] : []))
+  }
+
+  /** Allowed `priority` values from createmeta, unioned over the project's issue types. */
+  private async projectPriorities(project: string): Promise<{ name: string; id: string }[]> {
+    if (!project) return []
+    const cached = prioritiesByProject.get(this.base + '|' + project)
+    if (cached) return cached
+    const types = (await this.req('GET', `/issue/createmeta/${encodeURIComponent(project)}/issuetypes`)).data as {
+      values?: { id?: string }[]
+    } | null
+    const out = new Map<string, string>() // name → id
+    for (const t of types?.values ?? []) {
+      if (!t.id) continue
+      const fields = (
+        await this.req('GET', `/issue/createmeta/${encodeURIComponent(project)}/issuetypes/${encodeURIComponent(t.id)}`)
+      ).data as { values?: { fieldId?: string; allowedValues?: { id?: string; name?: string }[] }[] } | null
+      const field = fields?.values?.find((f) => f.fieldId === 'priority')
+      for (const v of field?.allowedValues ?? []) {
+        if (v.name && !out.has(v.name)) out.set(v.name, v.id ?? '')
+      }
+    }
+    const list = [...out].map(([name, id]) => ({ name, id }))
+    if (list.length) prioritiesByProject.set(this.base + '|' + project, list)
+    return list
   }
 
   /** User autocomplete for the assignee mapping UI. */

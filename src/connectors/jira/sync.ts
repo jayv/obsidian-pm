@@ -414,7 +414,9 @@ export async function loadMappingValues(
     if (e.name && !project.teamMembers.includes(e.name)) project.teamMembers.push(e.name)
   }
   const jiraStatuses = cfg.epicId ? await client.projectStatuses(cfg.epicId) : []
-  const jiraPriorities = await client.priorities()
+  // Scope to the mapped project: its priority scheme may expose only a subset of the
+  // instance's priorities, and writing one outside it is rejected on create/edit.
+  const jiraPriorities = await client.priorities(cfg.epicId)
   const beforeStatuses = cfg.statusMap.length
   const beforePriorities = cfg.priorityMap.length
   cfg.statusMap = mergeStatusMap(cfg.statusMap, jiraStatuses, plugin.settings.statuses)
