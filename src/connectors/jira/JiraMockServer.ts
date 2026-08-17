@@ -94,6 +94,21 @@ const FOREIGN_ISSUE_TYPES = [
   { id: '91', name: 'Epic', hierarchyLevel: 0, subtask: false }
 ]
 
+/**
+ * Jira rejects a priority outside the project's scheme, even though the instance knows
+ * it — the 400 that revealed we were mapping from the instance-wide list.
+ */
+function invalidPriority(store: JiraMockStore, fields: Record<string, unknown>): RouteResult | null {
+  const p = fields.priority as { id?: string; name?: string } | undefined
+  // Only enforced when a test configures a scheme; otherwise the mock keeps registering
+  // priorities on demand as issues reference them.
+  if (!p || !store.data.meta.priorityScheme?.length) return null
+  const allowed = store.schemePriorities
+  const hit = allowed.find((a) => (p.id ? a.id === p.id : a.name.toLowerCase() === (p.name ?? '').toLowerCase()))
+  if (hit) return null
+  return { status: 400, body: { errorMessages: [], errors: { priority: 'The priority selected is invalid.' } } }
+}
+
 /** Dispatch a request to a faithful JIRA endpoint handler. */
 function route(store: JiraMockStore, method: string, path: string, url: URL, body: string): RouteResult {
   const m = store.data.meta
@@ -101,8 +116,9 @@ function route(store: JiraMockStore, method: string, path: string, url: URL, bod
   if (path === '/myself') return ok({ accountId: 'mock-user', displayName: 'Mock User' })
 
   // /mypermissions?projectKey=X&permissions=A,B — the mock user may do everything.
-  if (path.startsWith('/mypermissions')) {
-    const asked = new URLSearchParams(path.split('?')[1] ?? '').get('permissions') ?? ''
+  if (path === '/mypermissions') {
+    // `path` is the pathname only — the query lives on `url`.
+    const asked = url.searchParams.get('permissions') ?? ''
     const permissions: Record<string, { havePermission: boolean }> = {}
     for (const p of asked.split(',').filter(Boolean)) permissions[p] = { havePermission: true }
     return ok({ permissions })
@@ -145,31 +161,40 @@ function route(store: JiraMockStore, method: string, path: string, url: URL, bod
   }
   const cmFields = path.match(/^\/issue\/createmeta\/([^/]+)\/issuetypes\/([^/]+)$/)
   if (cmFields) {
-    return ok({
-      startAt: 0,
-      maxResults: 50,
-      total: 4,
-      isLast: true,
-      values: [
-        { fieldId: 'summary', name: 'Summary', required: true, hasDefaultValue: false, schema: { type: 'string' } },
-        {
-          fieldId: 'priority',
-          name: 'Priority',
-          required: false,
-          hasDefaultValue: true,
-          schema: { type: 'priority' },
-          allowedValues: m.priorities
-        },
-        { fieldId: 'duedate', name: 'Due date', required: false, hasDefaultValue: false, schema: { type: 'date' } },
-        {
-          fieldId: m.startFieldId,
-          name: 'Start date',
-          required: false,
-          hasDefaultValue: false,
-          schema: { type: 'date', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:datepicker' }
-        }
-      ]
-    })
+    const values = [
+      { fieldId: 'summary', name: 'Summary', required: true, hasDefaultValue: false, schema: { type: 'string' } },
+      {
+        fieldId: 'priority',
+        name: 'Priority',
+        required: false,
+        hasDefaultValue: true,
+        schema: { type: 'priority' },
+        // Only the project's scheme — the instance may know priorities this project rejects.
+        allowedValues: store.schemePriorities
+      },
+      { fieldId: 'duedate', name: 'Due date', required: false, hasDefaultValue: false, schema: { type: 'date' } },
+      ...(m.startFieldId
+        ? [
+            {
+              fieldId: m.startFieldId,
+              name: 'Start date',
+              required: false,
+              hasDefaultValue: false,
+              schema: { type: 'date', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:datepicker' }
+            }
+          ]
+        : [])
+    ]
+    return ok({ startAt: 0, maxResults: 50, total: values.length, isLast: true, values })
+  }
+
+  // The instance-wide field list (the connector's fallback when createmeta has no match).
+  if (path === '/field') {
+    return ok([
+      { id: 'summary', name: 'Summary', custom: false, schema: { type: 'string' } },
+      { id: 'duedate', name: 'Due date', custom: false, schema: { type: 'date' } },
+      ...(m.startFieldId ? [{ id: m.startFieldId, name: 'Start date', custom: true, schema: { type: 'date' } }] : [])
+    ])
   }
 
   // /issue/{key}/transitions
@@ -227,6 +252,8 @@ function route(store: JiraMockStore, method: string, path: string, url: URL, bod
   // POST /issue (create)
   if (method === 'POST' && path === '/issue') {
     const fields = (safeParse(body) as { fields?: Record<string, unknown> } | null)?.fields ?? {}
+    const bad = invalidPriority(store, fields)
+    if (bad) return bad
     const rec = store.createIssue(fields)
     return { status: 201, body: { id: rec.id, key: rec.key, self: `/rest/api/3/issue/${rec.key}` }, mutated: true }
   }
@@ -237,6 +264,8 @@ function route(store: JiraMockStore, method: string, path: string, url: URL, bod
     const key = decodeURIComponent(issue[1])
     if (method === 'PUT') {
       const fields = (safeParse(body) as { fields?: Record<string, unknown> } | null)?.fields ?? {}
+      const bad = invalidPriority(store, fields)
+      if (bad) return bad
       return store.editIssue(key, fields) ? { status: 204, body: null, mutated: true } : notFound(key)
     }
     const rec = store.getIssue(key)

@@ -27,9 +27,12 @@ export interface JiraUser {
 }
 
 export interface MockMeta {
+  /** '' models a project with no "Start date" field at all. */
   startFieldId: string
   statuses: JiraStatus[]
   priorities: JiraPriority[]
+  /** Priority names this project's scheme allows; unset = all of them. */
+  priorityScheme?: string[]
   users: JiraUser[]
   seq: number
   /** Monotonic counter for minting issue-link ids. */
@@ -92,6 +95,25 @@ export class JiraMockStore {
 
   get startFieldId(): string {
     return this.data.meta.startFieldId
+  }
+  /** Model a project with no "Start date" field by clearing it (''), as some sites have. */
+  setStartFieldId(id: string): void {
+    this.data.meta.startFieldId = id
+  }
+
+  /**
+   * Restrict which priorities this project's scheme accepts (names). The instance-wide
+   * list still reports them all — that gap is what makes an unscoped priority invalid.
+   */
+  setPriorityScheme(names: string[]): void {
+    this.data.meta.priorityScheme = names
+  }
+  /** The priorities the project's scheme allows, defaulting to every instance priority. */
+  get schemePriorities(): JiraPriority[] {
+    const names = this.data.meta.priorityScheme
+    if (!names?.length) return this.data.meta.priorities
+    const want = new Set(names.map((n) => n.toLowerCase()))
+    return this.data.meta.priorities.filter((p) => want.has(p.name.toLowerCase()))
   }
 
   // ── Instance metadata, seeded from settings + grown as issues reference values ─
