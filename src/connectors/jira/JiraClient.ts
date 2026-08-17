@@ -35,10 +35,29 @@ export function setJiraApiDebug(on: boolean): void {
   apiDebug = on
 }
 
-/** Log one JIRA API exchange to the console (only when debug logging is on). Works for mock and real. */
-function logApi(method: string, url: string, reqBody: unknown, status: number, resText: string | undefined): void {
+/**
+ * Log one JIRA API exchange to the console (only when debug logging is on). Works for mock
+ * and real. A failure whose body isn't JSON (empty, or an HTML page from a proxy/WAF in
+ * front of Jira) would log as `null` and hide the reason, so the raw text and the response
+ * headers are included too — Jira puts its refusal reason in `x-seraph-loginreason` /
+ * `x-authentication-denied-reason`.
+ */
+function logApi(
+  method: string,
+  url: string,
+  reqBody: unknown,
+  status: number,
+  resText: string | undefined,
+  resHeaders?: Record<string, string>
+): void {
   if (!apiDebug) return
-  console.debug(`[PM-JIRA] ${method} ${url} → ${status}`, { request: reqBody, response: parseJson(resText) })
+  const parsed = parseJson(resText)
+  const ok = status >= 200 && status < 300
+  console.debug(`[PM-JIRA] ${method} ${url} → ${status}`, {
+    request: reqBody,
+    response: parsed,
+    ...(parsed === null && !ok ? { rawBody: resText?.slice(0, 2000) ?? '(empty)', headers: resHeaders } : {})
+  })
 }
 
 export interface JiraTransition {
@@ -87,7 +106,7 @@ export class JiraClient {
       throw: false
     })
     const ok = res.status >= 200 && res.status < 300
-    logApi(method, this.base + path, body, res.status, res.text)
+    logApi(method, this.base + path, body, res.status, res.text, res.headers)
     // NB: don't touch res.json — in real Obsidian it's a getter that JSON.parses
     // and throws on an empty body (204/empty 200, e.g. transitions, PUT edits,
     // property writes). Parse res.text defensively instead.
