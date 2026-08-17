@@ -245,9 +245,19 @@ export class ProjectView extends ItemView {
       onSavedViewUpdate: (id) => this.handleSavedViewUpdate(id),
       onSavedViewDelete: (id) => this.handleSavedViewDelete(id),
       viewMode: this.currentView,
-      onToggleConflicts: () => this.handleToggleConflicts()
+      onToggleConflicts: () => this.handleToggleConflicts(),
+      ganttControlsVisible: this.plugin.settings.ganttControlsVisible,
+      onToggleGanttControls: () => this.handleToggleGanttControls()
     })
     this.updateConflictIndicator()
+  }
+
+  /** Show/hide the Gantt's controls bar. The subview re-renders to add/remove it. */
+  private handleToggleGanttControls(): void {
+    this.plugin.settings.ganttControlsVisible = !this.plugin.settings.ganttControlsVisible
+    void this.plugin.saveSettings()
+    this.subview?.render()
+    this.updateTaskCounts()
   }
 
   private handleToggleConflicts(): void {

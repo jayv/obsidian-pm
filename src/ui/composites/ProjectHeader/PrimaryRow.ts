@@ -17,6 +17,9 @@ export interface PrimaryRowProps {
   viewMode: ViewMode
   onToggleConflicts: () => void
   onToggleFilterRow: () => void
+  /** Gantt only: whether its controls bar (granularity / Today / expand) is shown. */
+  ganttControlsVisible: boolean
+  onToggleGanttControls: () => void
 }
 
 export class PrimaryRow {
@@ -79,6 +82,13 @@ export class PrimaryRow {
     this.renderSavedViewPills(this.volatileEl)
     this.renderSaveViewAction(this.volatileEl)
     this.renderFilterToggle(this.volatileEl)
+    if (this.props.viewMode === 'gantt') this.renderGanttControlsToggle(this.volatileEl)
+  }
+
+  /** Keep the toggle's highlight in sync after the controls bar is shown/hidden. */
+  setGanttControlsVisible(visible: boolean): void {
+    this.props.ganttControlsVisible = visible
+    this.renderVolatile()
   }
 
   /** Focus and select the search box (used by the search-focus hotkey). */
@@ -204,6 +214,18 @@ export class PrimaryRow {
       .setAriaLabel('Toggle filter row')
       .onClick(() => {
         this.props.onToggleFilterRow()
+      })
+    pill.el.addClass('pm-project-header-filter-toggle')
+  }
+
+  /** Gantt only: show/hide the chart's controls bar (granularity, Today, expand/collapse). */
+  private renderGanttControlsToggle(parent: HTMLElement): void {
+    const pill = new Pill(parent)
+      .setLabel('Timeline')
+      .setActive(this.props.ganttControlsVisible)
+      .setAriaLabel('Toggle the gantt controls bar (zoom, today, expand/collapse)')
+      .onClick(() => {
+        this.props.onToggleGanttControls()
       })
     pill.el.addClass('pm-project-header-filter-toggle')
   }

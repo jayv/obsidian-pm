@@ -29,6 +29,9 @@ export interface ProjectHeaderProps {
   /** Current view — the conflict indicator only shows for the Gantt. */
   viewMode: ViewMode
   onToggleConflicts: () => void
+  /** Gantt only: whether its controls bar is shown, and the toggle for it. */
+  ganttControlsVisible: boolean
+  onToggleGanttControls: () => void
 }
 
 export class ProjectHeader {
@@ -91,6 +94,14 @@ export class ProjectHeader {
       onSavedViewDelete: this.props.onSavedViewDelete,
       viewMode: this.props.viewMode,
       onToggleConflicts: this.props.onToggleConflicts,
+      ganttControlsVisible: this.props.ganttControlsVisible,
+      onToggleGanttControls: () => {
+        this.props.ganttControlsVisible = !this.props.ganttControlsVisible
+        // Push the new value in, like the filter toggle: refreshVolatile() alone would
+        // re-render from the value captured at construction and keep the stale highlight.
+        this.primaryRow?.setGanttControlsVisible(this.props.ganttControlsVisible)
+        this.props.onToggleGanttControls()
+      },
       onToggleFilterRow: () => {
         this.props.uiState.filterOpen = !this.props.uiState.filterOpen
         this.syncFilterRowVisibility()

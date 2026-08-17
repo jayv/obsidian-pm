@@ -126,7 +126,8 @@ export class GanttView implements SubView {
     }
     this.flatTasks = flat
 
-    this.renderGranularityControls()
+    // The controls bar is optional (toggled from the header, next to Filter).
+    if (this.plugin.settings.ganttControlsVisible) this.renderGranularityControls()
     this.renderGantt()
   }
 

@@ -125,6 +125,8 @@ export interface PMSettings {
   ganttWeekLabel: GanttWeekLabel
   /** When set, the Gantt shows only rows that have a resource conflict. */
   ganttConflictsOnly: boolean
+  /** Show the Gantt's controls bar (granularity, Today, expand/collapse). */
+  ganttControlsVisible: boolean
   statuses: StatusConfig[]
   priorities: PriorityConfig[]
   globalTeamMembers: string[]
@@ -167,6 +169,7 @@ export const DEFAULT_SETTINGS: PMSettings = {
   ganttGranularity: 'week',
   ganttWeekLabel: 'weekNumber',
   ganttConflictsOnly: false,
+  ganttControlsVisible: true,
   statuses: DEFAULT_STATUSES,
   priorities: DEFAULT_PRIORITIES,
   globalTeamMembers: [],
