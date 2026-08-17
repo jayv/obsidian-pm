@@ -1,3 +1,4 @@
+/* eslint-disable import/no-nodejs-modules -- desktop-only Node transport for real Jira */
 import { requestUrl } from 'obsidian'
 import type { JiraIssue, JiraIssueType } from './JiraModel'
 import {
@@ -48,7 +49,7 @@ function logApi(
   reqBody: unknown,
   status: number,
   resText: string | undefined,
-  resHeaders?: Record<string, string>
+  resHeaders?: Record<string, string | string[] | undefined>
 ): void {
   if (!apiDebug) return
   const parsed = parseJson(resText)
@@ -80,8 +81,76 @@ const issueTypesByBase = new Map<string, JiraIssueType[]>()
  */
 const xsrfByBase = new Map<string, string>()
 
+/**
+ * Sites that answered a write with "XSRF check failed" even after the token handshake.
+ * Their traffic moves to the Node transport for the rest of the session; everyone else
+ * keeps using Obsidian's requestUrl.
+ */
+const nodeTransportBases = new Set<string>()
+
+interface RawResponse {
+  status: number
+  text: string
+  headers: Record<string, string | string[] | undefined>
+}
+
+type HttpsModule = typeof import('node:https')
+
+/**
+ * Obsidian's `requestUrl` goes through Electron's network stack, which attaches the
+ * session's cookies and an app Origin. Jira Cloud then treats a write as browser traffic
+ * and enforces XSRF ("XSRF check failed", 403) even though we authenticate with Basic —
+ * and no token echo satisfies it. Node's https module has no cookie jar and no Origin, so
+ * real Jira goes through it when Node is available (desktop). Null on mobile.
+ */
+async function loadHttps(): Promise<HttpsModule | null> {
+  const req =
+    typeof window === 'undefined' ? undefined : (window as Window & { require?: (m: string) => unknown }).require
+  if (req) return req('node:https') as HttpsModule
+  try {
+    return await import('node:https')
+  } catch {
+    return null
+  }
+}
+
+/** Issue a request over Node https — no cookies, no Origin, so no XSRF interception. */
+async function nodeRequest(
+  https: HttpsModule,
+  url: string,
+  method: string,
+  headers: Record<string, string>,
+  body: string | undefined
+): Promise<RawResponse> {
+  const u = new URL(url)
+  return new Promise<RawResponse>((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: u.pathname + u.search,
+        method,
+        // No Accept-Encoding: Node won't decompress for us, so ask for plain text.
+        headers: {
+          ...headers,
+          ...(body === undefined ? {} : { 'Content-Length': new TextEncoder().encode(body).length })
+        }
+      },
+      (res) => {
+        let text = ''
+        res.setEncoding('utf8')
+        res.on('data', (c: string) => (text += c))
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, text, headers: res.headers }))
+      }
+    )
+    req.on('error', reject)
+    if (body !== undefined) req.write(body)
+    req.end()
+  })
+}
+
 /** Pull `atlassian.xsrf.token` out of a response's set-cookie header(s), if present. */
-function readXsrfCookie(headers: Record<string, string | string[]> | undefined): string | undefined {
+function readXsrfCookie(headers: Record<string, string | string[] | undefined> | undefined): string | undefined {
   const raw = headers?.['set-cookie'] ?? headers?.['Set-Cookie']
   if (!raw) return undefined
   for (const line of Array.isArray(raw) ? raw : [raw]) {
@@ -109,36 +178,51 @@ export class JiraClient {
   }
 
   private async req(method: string, path: string, body?: unknown): Promise<{ status: number; data: unknown }> {
-    const send = async (): Promise<ReturnType<typeof requestUrl> extends Promise<infer R> ? R : never> => {
+    const url = this.base + path
+    const payload = body === undefined ? undefined : JSON.stringify(body)
+
+    const send = async (): Promise<RawResponse> => {
       // Jira Cloud can decide a write came from a browser and demand its XSRF token.
-      // `no-check` covers Server/DC; Cloud wants the token it issued echoed back as both
-      // the cookie and the header, so send that once we've seen it.
+      // `no-check` covers Server/DC; Cloud wants the token it issued echoed back.
       const xsrf = xsrfByBase.get(this.base)
-      return requestUrl({
-        url: this.base + path,
-        method,
-        headers: {
-          Authorization: this.auth,
-          Accept: 'application/json',
-          'X-Atlassian-Token': xsrf ?? 'no-check',
-          ...(xsrf ? { Cookie: `atlassian.xsrf.token=${xsrf}` } : {}),
-          ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        throw: false
-      })
+      const headers: Record<string, string> = {
+        Authorization: this.auth,
+        Accept: 'application/json',
+        'X-Atlassian-Token': xsrf ?? 'no-check',
+        ...(xsrf ? { Cookie: `atlassian.xsrf.token=${xsrf}` } : {}),
+        ...(payload === undefined ? {} : { 'Content-Type': 'application/json' })
+      }
+      // requestUrl stays the default transport (Obsidian's network stack, proxy support).
+      // Only once this site has proven to reject writes as XSRF do we switch to Node.
+      if (nodeTransportBases.has(this.base)) {
+        const https = await loadHttps()
+        if (https) {
+          try {
+            return await nodeRequest(https, url, method, headers, payload)
+          } catch (e) {
+            console.warn('[PM] Jira: node https request failed, falling back to requestUrl', e)
+          }
+        }
+      }
+      const res = await requestUrl({ url, method, headers, body: payload, throw: false })
+      return { status: res.status, text: res.text, headers: res.headers }
     }
 
     let res = await send()
     // Learn (or refresh) the XSRF token from any response that issues one.
     const issued = readXsrfCookie(res.headers)
-    if (issued && issued !== xsrfByBase.get(this.base)) {
-      xsrfByBase.set(this.base, issued)
-      // Retry once: the call that taught us the token is the one that was rejected for it.
-      if (res.status === 403 && /XSRF check failed/i.test(res.text ?? '')) {
-        logApi(method, this.base + path, body, res.status, res.text, res.headers)
-        res = await send()
+    if (issued) xsrfByBase.set(this.base, issued)
+
+    // Rejected as XSRF: echoing the token is enough for some tenants; when it isn't, the
+    // request is being seen as browser traffic (Electron attaches the session's cookies),
+    // so escalate this site to the cookie-free Node transport. One retry either way.
+    if (res.status === 403 && /XSRF check failed/i.test(res.text ?? '')) {
+      logApi(method, url, body, res.status, res.text, res.headers)
+      if (!issued && !nodeTransportBases.has(this.base)) {
+        nodeTransportBases.add(this.base)
+        console.warn(`[PM] Jira: ${this.base} rejects writes as XSRF — switching to the direct Node transport.`)
       }
+      res = await send()
     }
     const ok = res.status >= 200 && res.status < 300
     logApi(method, this.base + path, body, res.status, res.text, res.headers)
