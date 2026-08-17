@@ -73,6 +73,25 @@ const startFieldByBase = new Map<string, string>()
 const issueTypesByBase = new Map<string, JiraIssueType[]>()
 
 /**
+ * Jira's XSRF token per base URL. Cloud hands one back as `atlassian.xsrf.token` and then
+ * demands it on writes ("XSRF check failed", 403) whenever it treats the caller as a
+ * browser — which Electron requests can look like. Echoing the value as both the cookie
+ * and the `X-Atlassian-Token` header is the handshake a browser performs.
+ */
+const xsrfByBase = new Map<string, string>()
+
+/** Pull `atlassian.xsrf.token` out of a response's set-cookie header(s), if present. */
+function readXsrfCookie(headers: Record<string, string | string[]> | undefined): string | undefined {
+  const raw = headers?.['set-cookie'] ?? headers?.['Set-Cookie']
+  if (!raw) return undefined
+  for (const line of Array.isArray(raw) ? raw : [raw]) {
+    const m = /atlassian\.xsrf\.token=([^;]+)/.exec(line)
+    if (m) return m[1]
+  }
+  return undefined
+}
+
+/**
  * JIRA Cloud REST client over Obsidian's requestUrl (which bypasses CORS). Every
  * read and write the connector performs goes through here, so the same code path
  * runs against the local mock (site `localhost`) and real JIRA.
@@ -90,21 +109,37 @@ export class JiraClient {
   }
 
   private async req(method: string, path: string, body?: unknown): Promise<{ status: number; data: unknown }> {
-    const res = await requestUrl({
-      url: this.base + path,
-      method,
-      headers: {
-        Authorization: this.auth,
-        Accept: 'application/json',
-        // Jira rejects writes it believes came from a browser form ("XSRF check failed",
-        // 403) — Obsidian is Electron, so an Atlassian session cookie can ride along and
-        // trigger it even with Basic auth. This opts out; standard for REST clients.
-        'X-Atlassian-Token': 'no-check',
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      throw: false
-    })
+    const send = async (): Promise<ReturnType<typeof requestUrl> extends Promise<infer R> ? R : never> => {
+      // Jira Cloud can decide a write came from a browser and demand its XSRF token.
+      // `no-check` covers Server/DC; Cloud wants the token it issued echoed back as both
+      // the cookie and the header, so send that once we've seen it.
+      const xsrf = xsrfByBase.get(this.base)
+      return requestUrl({
+        url: this.base + path,
+        method,
+        headers: {
+          Authorization: this.auth,
+          Accept: 'application/json',
+          'X-Atlassian-Token': xsrf ?? 'no-check',
+          ...(xsrf ? { Cookie: `atlassian.xsrf.token=${xsrf}` } : {}),
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        throw: false
+      })
+    }
+
+    let res = await send()
+    // Learn (or refresh) the XSRF token from any response that issues one.
+    const issued = readXsrfCookie(res.headers)
+    if (issued && issued !== xsrfByBase.get(this.base)) {
+      xsrfByBase.set(this.base, issued)
+      // Retry once: the call that taught us the token is the one that was rejected for it.
+      if (res.status === 403 && /XSRF check failed/i.test(res.text ?? '')) {
+        logApi(method, this.base + path, body, res.status, res.text, res.headers)
+        res = await send()
+      }
+    }
     const ok = res.status >= 200 && res.status < 300
     logApi(method, this.base + path, body, res.status, res.text, res.headers)
     // NB: don't touch res.json — in real Obsidian it's a getter that JSON.parses
