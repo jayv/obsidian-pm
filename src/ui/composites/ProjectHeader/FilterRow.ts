@@ -12,7 +12,7 @@ import { collectAllAssignees, collectAllTags } from '../../../store'
 import { UNASSIGNED, countActiveFilters } from '../../../store/TaskFilter'
 import { renderFilterDropdown } from '../../FilterDropdown'
 import { Pill } from '../../primitives/Pill'
-import { Avatar } from '../../primitives/Avatar'
+import { Avatar, displayName } from '../../primitives/Avatar'
 import { SegmentedToggleGroup } from '../../primitives/SegmentedControl'
 import { formatBadgeText } from '../../../utils'
 import type { HeaderUiState } from './ProjectHeader'
@@ -131,30 +131,59 @@ export class FilterRow {
     })
 
     // One chip per assignee, plus a "?" chip for tasks with nobody assigned. Picks are
-    // cumulative (OR), so "?" combines with names rather than excluding them.
+    // cumulative (OR), so "?" combines with names rather than excluding them — and
+    // shift- or double-click switches to just that person in one action.
+    const paints: (() => void)[] = []
+    const repaint = (): void => {
+      for (const p of paints) p()
+      sync()
+      notify()
+    }
     const addChip = (value: string, render: (btn: HTMLElement) => void): void => {
       const btn = zone.createEl('button', { cls: 'pm-assignee-pick' })
       render(btn)
-      const paint = () => {
+      const paint = (): void => {
         const on = filter.assignees.includes(value)
         btn.toggleClass('is-selected', on)
         btn.setAttribute('aria-pressed', String(on))
       }
+      paints.push(paint)
       paint()
-      btn.addEventListener('click', () => {
+
+      /** Make this the only pick — the fast "show me just this person" switch. */
+      const solo = (): void => {
+        filter.assignees.length = 0 // mutate in place; the live filter is shared by ref
+        filter.assignees.push(value)
+        repaint()
+      }
+      btn.addEventListener('click', (e) => {
+        if (e.shiftKey) {
+          solo()
+          return
+        }
         const i = filter.assignees.indexOf(value)
         if (i >= 0) filter.assignees.splice(i, 1)
         else filter.assignees.push(value)
-        paint()
-        sync()
-        notify()
+        repaint()
+      })
+      btn.addEventListener('dblclick', (e) => {
+        // The two clicks that precede this cancel out (same chip), so soloing here lands
+        // on the right state without needing to debounce the click handler.
+        e.preventDefault()
+        solo()
       })
     }
 
-    for (const name of names) addChip(name, (btn) => new Avatar(btn).setName(name).setSize('sm'))
+    const soloHint = ' — shift- or double-click to show only this'
+    for (const name of names) {
+      addChip(name, (btn) => {
+        new Avatar(btn).setName(name).setSize('sm')
+        setTooltip(btn, displayName(name) + soloHint)
+      })
+    }
     addChip(UNASSIGNED, (btn) => {
-      const av = btn.createSpan({ cls: 'pm-avatar pm-avatar--sm pm-avatar--none', text: '?' })
-      setTooltip(av, 'Unassigned')
+      btn.createSpan({ cls: 'pm-avatar pm-avatar--sm pm-avatar--none', text: '?' })
+      setTooltip(btn, 'Unassigned' + soloHint)
     })
 
     sync()
