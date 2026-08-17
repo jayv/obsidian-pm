@@ -77,6 +77,31 @@
     0 0 10px 2px color-mix(in srgb, var(--interactive-accent) 55%, transparent);
 }
 
+/* Joined variant (multi-select toggle group): segments butt together as one control.
+   The floating ring would collide across adjacent segments, so an active segment is
+   filled instead. */
+.pm-segmented--joined {
+  gap: 0;
+}
+.pm-segmented--joined .pm-segmented-btn {
+  border-radius: 0;
+  border-right-width: 0;
+}
+.pm-segmented--joined .pm-segmented-btn:first-child {
+  border-top-left-radius: var(--pm-radius-sm);
+  border-bottom-left-radius: var(--pm-radius-sm);
+}
+.pm-segmented--joined .pm-segmented-btn:last-child {
+  border-right-width: 1px;
+  border-top-right-radius: var(--pm-radius-sm);
+  border-bottom-right-radius: var(--pm-radius-sm);
+}
+.pm-segmented--joined .pm-segmented-btn.pm-segmented-btn--active {
+  background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+  border-color: var(--pm-border);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 60%, transparent);
+}
+
 /* -- Recurrence picker --------------------------------------------------- */
 .pm-prop-recurrence {
   flex-wrap: wrap;

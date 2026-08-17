@@ -105,6 +105,20 @@
   flex-wrap: wrap;
 }
 
+/* Week window: a muted caption + the joined prev/this/next toggle group. */
+.pm-filter-weeks {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pm-filter-weeks-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
 /* -- Toolbar --------------------------------------------------------------- */
 .pm-toolbar {
   display: flex;

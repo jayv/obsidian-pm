@@ -13,6 +13,7 @@ import { UNASSIGNED, countActiveFilters } from '../../../store/TaskFilter'
 import { renderFilterDropdown } from '../../FilterDropdown'
 import { Pill } from '../../primitives/Pill'
 import { Avatar } from '../../primitives/Avatar'
+import { SegmentedToggleGroup } from '../../primitives/SegmentedControl'
 import { formatBadgeText } from '../../../utils'
 import type { HeaderUiState } from './ProjectHeader'
 
@@ -194,22 +195,24 @@ export class FilterRow {
    */
   private renderActiveWeekPills(notify: () => void): void {
     const { filter } = this.props
-    const weeks: { offset: WeekOffset; label: string }[] = [
-      { offset: -1, label: 'Prev week' },
-      { offset: 0, label: 'This week' },
-      { offset: 1, label: 'Next week' }
-    ]
-    for (const { offset, label } of weeks) {
-      const pill = new Pill(this.el).setLabel(label).setActive(filter.activeWeeks.includes(offset))
-      pill.onClick(() => {
+    const wrap = this.el.createDiv('pm-filter-weeks')
+    wrap.createSpan({ cls: 'pm-filter-weeks-label', text: 'Week' })
+    const group = new SegmentedToggleGroup<WeekOffset>(wrap, {
+      options: [
+        { id: -1, label: 'Prev', ariaLabel: 'Previous week' },
+        { id: 0, label: 'This', ariaLabel: 'This week' },
+        { id: 1, label: 'Next', ariaLabel: 'Next week' }
+      ],
+      selected: filter.activeWeeks,
+      onToggle: (offset) => {
         const i = filter.activeWeeks.indexOf(offset)
         // Mutate in place — the live filter object is shared by reference with the view.
         if (i >= 0) filter.activeWeeks.splice(i, 1)
         else filter.activeWeeks.push(offset)
-        pill.setActive(filter.activeWeeks.includes(offset))
+        group.setSelected(filter.activeWeeks)
         notify()
-      })
-    }
+      }
+    })
   }
 
   private renderArchivedPill(notify: () => void): void {
