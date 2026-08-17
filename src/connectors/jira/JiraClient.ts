@@ -77,6 +77,10 @@ export class JiraClient {
       headers: {
         Authorization: this.auth,
         Accept: 'application/json',
+        // Jira rejects writes it believes came from a browser form ("XSRF check failed",
+        // 403) — Obsidian is Electron, so an Atlassian session cookie can ride along and
+        // trigger it even with Basic auth. This opts out; standard for REST clients.
+        'X-Atlassian-Token': 'no-check',
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
       },
       body: body === undefined ? undefined : JSON.stringify(body),
