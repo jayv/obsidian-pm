@@ -267,11 +267,18 @@
   position: relative;
 }
 
-/* Maximized ("zen") mode — Alt+Z. Drop the toolbar, the project header and the
-   filter/search rows so the chart or board owns the whole leaf. Alt+Z restores. */
+/* Maximized ("zen") mode — Alt+Z. Drop the toolbar and the search/saved-view row so the
+   chart or board owns the leaf. Alt+Z restores.
+   The assignee avatars stay: filtering by person is a prime use of a maximized chart.
+   They keep obeying their own toggle — the zone's inline display is set by the Assignee
+   pill, so a collapsed zone stays collapsed here rather than being forced open. */
 .pm-root--maximized > .pm-toolbar,
-.pm-root--maximized > .pm-project-header-mount {
+.pm-root--maximized .pm-project-header-primary,
+.pm-root--maximized .pm-project-header-filter > *:not(.pm-assignee-filter) {
   display: none;
+}
+.pm-root--maximized .pm-project-header-filter {
+  padding: 2px 16px 6px;
 }
 
 /* -- Empty state ----------------------------------------------------------- */
