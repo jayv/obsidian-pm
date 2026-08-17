@@ -102,7 +102,15 @@ export function renderJiraProjectPanel(
   epicWrap.createEl('label', { text: 'Epic key', cls: 'pm-label' })
   const epic = epicWrap.createEl('input', { type: 'text', value: cfg.epicId, cls: 'pm-input' })
   epic.placeholder = 'DEMO-1234'
-  epic.addEventListener('input', () => (cfg.epicId = epic.value.trim()))
+  epic.addEventListener('input', () => {
+    const next = epic.value.trim()
+    if (next === cfg.epicId) return
+    cfg.epicId = next
+    // Re-rooting points at a different subtree, so the watermark from the old one would
+    // hide every issue there that hasn't changed since. Clear it: the next sync crawls
+    // the new root in full.
+    cfg.lastSeenUpdated = ''
+  })
 
   // Value maps. The button (re)loads JIRA values into them — useful after an
   // epic is set, since statuses are project-scoped.
