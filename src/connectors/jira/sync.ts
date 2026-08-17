@@ -718,6 +718,33 @@ export async function updateIgnoredKeys(
  * disconnect is skipped so the user can retry. Returns null when the project isn't
  * connected.
  */
+/** The project permissions that matter for two-way sync. */
+const SYNC_PERMISSIONS = ['BROWSE_PROJECTS', 'CREATE_ISSUES', 'EDIT_ISSUES', 'TRANSITION_ISSUES', 'ASSIGN_ISSUES']
+
+export interface JiraDiagnosis {
+  user?: string
+  projectKey: string
+  /** Permission name → granted, or null when the probe itself failed. */
+  permissions: Record<string, boolean> | null
+  error?: string
+}
+
+/**
+ * Report what the configured token can actually do on the mapped project. Creates
+ * nothing — it asks Jira directly ("/mypermissions"), which is the decisive check when
+ * reads work but writes 403 (a read-only/scoped token, or a missing project grant).
+ */
+export async function diagnoseAccess(plugin: PMPlugin, project: Project): Promise<JiraDiagnosis | null> {
+  const r = await ready(plugin, project)
+  if (!r) return null
+  const { client, cfg } = r
+  const key = projectKey(cfg)
+  const conn = await client.testConnection()
+  if (!conn.ok) return { projectKey: key, permissions: null, error: conn.error }
+  const permissions = await client.myPermissions(key, SYNC_PERMISSIONS)
+  return { user: conn.user, projectKey: key, permissions }
+}
+
 export async function cleanJira(
   plugin: PMPlugin,
   project: Project

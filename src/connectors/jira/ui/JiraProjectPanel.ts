@@ -6,7 +6,7 @@ import { flattenTasks } from '../../../store/TaskTreeOps'
 import { confirmDialog } from '../../../ui/ModalFactory'
 import { safeAsync } from '../../../utils'
 import { isLocalhost } from '../JiraMockServer'
-import { cleanJira, loadMappingValues, searchJiraUsers } from '../sync'
+import { cleanJira, diagnoseAccess, loadMappingValues, searchJiraUsers } from '../sync'
 import { setOutbound, stripJira, upsertAssigneeMapping } from '../taskLink'
 import { JiraImportModal } from './JiraImportModal'
 import { JiraExportModal } from './JiraExportModal'
@@ -188,6 +188,31 @@ export function renderJiraProjectPanel(
   new ButtonComponent(danger)
     .setButtonText('Jira export')
     .onClick(() => new JiraExportModal(plugin.app, plugin, project, refresh).open())
+  // Read-only probe: what can this token actually do on the mapped project? Creates
+  // nothing — the quickest answer when syncs fail with a permission error.
+  new ButtonComponent(danger).setButtonText('Check access').onClick(
+    safeAsync(async () => {
+      const d = await diagnoseAccess(plugin, project)
+      if (!d) {
+        new Notice('Jira: project is not connected.')
+        return
+      }
+      if (d.error || !d.permissions) {
+        new Notice(`Jira access check failed: ${d.error ?? 'could not read permissions.'}`)
+        console.warn('[PM] Jira access check', d)
+        return
+      }
+      const missing = Object.entries(d.permissions)
+        .filter(([, granted]) => !granted)
+        .map(([name]) => name)
+      console.debug(`[PM] Jira access for ${d.user ?? 'token'} on ${d.projectKey}`, d.permissions)
+      new Notice(
+        missing.length
+          ? `Jira (${d.projectKey}) as ${d.user ?? 'token'} — missing: ${missing.join(', ')}. See the console.`
+          : `Jira (${d.projectKey}) as ${d.user ?? 'token'} — all sync permissions granted.`
+      )
+    })
+  )
   new ButtonComponent(danger)
     .setButtonText('Clean Jira')
     .setWarning()

@@ -81,6 +81,14 @@ function route(store: JiraMockStore, method: string, path: string, url: URL, bod
 
   if (path === '/myself') return ok({ accountId: 'mock-user', displayName: 'Mock User' })
 
+  // /mypermissions?projectKey=X&permissions=A,B — the mock user may do everything.
+  if (path.startsWith('/mypermissions')) {
+    const asked = new URLSearchParams(path.split('?')[1] ?? '').get('permissions') ?? ''
+    const permissions: Record<string, { havePermission: boolean }> = {}
+    for (const p of asked.split(',').filter(Boolean)) permissions[p] = { havePermission: true }
+    return ok({ permissions })
+  }
+
   if (path === '/search/jql') return ok(searchJql(store, url)) // current Cloud endpoint
   if (path === '/search') return ok(search(store, url)) // legacy (kept for completeness)
 

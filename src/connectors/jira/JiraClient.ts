@@ -125,6 +125,22 @@ export class JiraClient {
     return { ok: false, error: `JIRA returned HTTP ${status}.` }
   }
 
+  /**
+   * Which of the named project permissions the token's account actually holds. Answers
+   * "can this token create issues here?" without attempting a write — the decisive check
+   * when creates fail with 403 while reads succeed (read-only/scoped token, or a missing
+   * project grant). Returns null when the probe itself couldn't run.
+   */
+  async myPermissions(projectKey: string, permissions: string[]): Promise<Record<string, boolean> | null> {
+    const query = `?projectKey=${encodeURIComponent(projectKey)}&permissions=${encodeURIComponent(permissions.join(','))}`
+    const { status, data } = await this.req('GET', `/mypermissions${query}`)
+    if (status < 200 || status >= 300) return null
+    const raw = (data as { permissions?: Record<string, { havePermission?: boolean }> } | null)?.permissions ?? {}
+    const out: Record<string, boolean> = {}
+    for (const p of permissions) out[p] = Boolean(raw[p]?.havePermission)
+    return out
+  }
+
   // ── Metadata discovery ─────────────────────────────────────────────────────────
 
   /** Discover the "Start date" custom-field id via createmeta (cached per base). Returns '' if absent. */
