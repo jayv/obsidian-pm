@@ -264,24 +264,36 @@ export class JiraClient {
 
   // ── Metadata discovery ─────────────────────────────────────────────────────────
 
-  /** Discover the "Start date" custom-field id via createmeta (cached per base). Returns '' if absent. */
+  /**
+   * Discover the "Start date" custom-field id via createmeta (cached per base once found).
+   * Returns '' when the project has no such field.
+   *
+   * Every issue type is probed, not just the first: the field can be on some create
+   * screens and not others, and settling for the first type silently disabled start-date
+   * sync for the whole project. A miss is deliberately NOT cached, so a later sync retries
+   * rather than being wrong for the rest of the session.
+   */
   async startFieldId(epicKey: string): Promise<string> {
-    if (this.startField !== undefined) return this.startField
+    if (this.startField) return this.startField
     const cached = startFieldByBase.get(this.base)
-    if (cached !== undefined) return (this.startField = cached)
-    this.startField = ''
+    if (cached) return (this.startField = cached)
     const project = projectKeyOf(epicKey)
     const types = (await this.req('GET', `/issue/createmeta/${encodeURIComponent(project)}/issuetypes`)).data as {
       values?: { id?: string }[]
     } | null
-    const typeId = types?.values?.[0]?.id
-    if (!typeId) return this.startField
-    const fields = (
-      await this.req('GET', `/issue/createmeta/${encodeURIComponent(project)}/issuetypes/${encodeURIComponent(typeId)}`)
-    ).data as { values?: { fieldId?: string; name?: string }[] } | null
-    const start = fields?.values?.find((f) => (f.name ?? '').toLowerCase() === 'start date')
-    this.startField = start?.fieldId ?? ''
-    startFieldByBase.set(this.base, this.startField)
+    for (const t of types?.values ?? []) {
+      if (!t.id) continue
+      const fields = (
+        await this.req('GET', `/issue/createmeta/${encodeURIComponent(project)}/issuetypes/${encodeURIComponent(t.id)}`)
+      ).data as { values?: { fieldId?: string; name?: string }[] } | null
+      const start = fields?.values?.find((f) => (f.name ?? '').toLowerCase() === 'start date')
+      if (start?.fieldId) {
+        this.startField = start.fieldId
+        startFieldByBase.set(this.base, this.startField)
+        return this.startField
+      }
+    }
+    this.startField = ''
     return this.startField
   }
 

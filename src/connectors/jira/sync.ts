@@ -118,9 +118,13 @@ function withJiraKey(
   task: Task,
   key: string,
   keyOf: Map<string, string>,
-  cfg: JiraProjectConfig
+  cfg: JiraProjectConfig,
+  startField = ''
 ): Record<string, unknown> {
   const shadow = shadowOf(task, keyOf)
+  // Same reasoning as the assignee below: with no start field discovered the date was
+  // never sent, so don't record it as synced — leave it pending instead of losing it.
+  if (!startField) shadow.start = ''
   // Only record the assignee as synced when it was actually pushed. An unmapped assignee
   // isn't sent to Jira (assigneeField → undefined), so a fresh pull reports none —
   // recording the local name here would make the next reconcile read Jira's empty
@@ -670,7 +674,7 @@ export async function exportTasks(
     plan.levelByKey.set(key, ct.level)
     keyOf.set(f.task.id, key)
     createdIds.add(f.task.id)
-    patches.push({ taskId: f.task.id, patch: { ext: withJiraKey(f.task, key, keyOf, cfg) } })
+    patches.push({ taskId: f.task.id, patch: { ext: withJiraKey(f.task, key, keyOf, cfg, startField) } })
   }
   for (const f of flat) {
     const blockedKey = createdIds.has(f.task.id) ? keyOf.get(f.task.id) : undefined
@@ -873,7 +877,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     keyOf.set(f.task.id, key)
     createdKeys.add(key)
     createdIds.add(f.task.id)
-    patches.push({ taskId: f.task.id, patch: { ext: withJiraKey(f.task, key, keyOf, cfg) } })
+    patches.push({ taskId: f.task.id, patch: { ext: withJiraKey(f.task, key, keyOf, cfg, startField) } })
   }
   // Newly created issues have no links yet → add their dependencies.
   for (const f of flat) {
@@ -955,7 +959,13 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     const fields: Record<string, unknown> = {}
     if (tw.push.includes('title')) fields.summary = t.title
     if (tw.push.includes('due')) fields.duedate = t.due || null
-    if (tw.push.includes('start') && startField) fields[startField] = t.start || null
+    if (tw.push.includes('start')) {
+      // No discovered start field = nowhere to write it. Don't drop it silently (that
+      // would advance the shadow as if synced and lose the change) — hold it, same as an
+      // unmapped assignee below.
+      if (startField) fields[startField] = t.start || null
+      else ok = false
+    }
     if (tw.push.includes('priority')) {
       const p = mapOutboundEntry(cfg.priorityMap, t.priority)
       if (p) fields.priority = priorityRef(p)
