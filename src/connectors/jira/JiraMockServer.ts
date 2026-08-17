@@ -75,6 +75,25 @@ interface RouteResult {
   mutated?: boolean
 }
 
+/** This project's issue types, as project-scoped createmeta reports them. */
+const ISSUE_TYPES = [
+  { id: '1', name: 'Initiative', hierarchyLevel: 2, subtask: false },
+  { id: '2', name: 'Epic', hierarchyLevel: 1, subtask: false },
+  { id: '3', name: 'Story', hierarchyLevel: 0, subtask: false },
+  { id: '4', name: 'Task', hierarchyLevel: 0, subtask: false },
+  { id: '5', name: 'Sub-task', hierarchyLevel: -1, subtask: true }
+]
+
+/**
+ * Same names, wrong levels — another project's scheme, as the instance-wide /issuetype
+ * list would report it. Real sites are full of these; de-duplicating that list by name
+ * resolved "Initiative" to level 0 and made its children Sub-tasks.
+ */
+const FOREIGN_ISSUE_TYPES = [
+  { id: '90', name: 'Initiative', hierarchyLevel: 0, subtask: false },
+  { id: '91', name: 'Epic', hierarchyLevel: 0, subtask: false }
+]
+
 /** Dispatch a request to a faithful JIRA endpoint handler. */
 function route(store: JiraMockStore, method: string, path: string, url: URL, body: string): RouteResult {
   const m = store.data.meta
@@ -97,15 +116,10 @@ function route(store: JiraMockStore, method: string, path: string, url: URL, bod
   if (path === '/priority') return ok(m.priorities)
 
   // Issue-type hierarchy (drives create-type resolution by level).
-  if (path === '/issuetype') {
-    return ok([
-      { id: '1', name: 'Initiative', hierarchyLevel: 2, subtask: false },
-      { id: '2', name: 'Epic', hierarchyLevel: 1, subtask: false },
-      { id: '3', name: 'Story', hierarchyLevel: 0, subtask: false },
-      { id: '4', name: 'Task', hierarchyLevel: 0, subtask: false },
-      { id: '5', name: 'Sub-task', hierarchyLevel: -1, subtask: true }
-    ])
-  }
+  // The instance-wide list, like a real multi-project site: OTHER projects contribute
+  // types with the SAME names at different levels, listed first. Anything resolving
+  // hierarchy from here instead of the project-scoped createmeta gets it wrong.
+  if (path === '/issuetype') return ok([...FOREIGN_ISSUE_TYPES, ...ISSUE_TYPES])
 
   if (path === '/user/picker') {
     const q = (url.searchParams.get('query') ?? '').toLowerCase()
@@ -124,16 +138,10 @@ function route(store: JiraMockStore, method: string, path: string, url: URL, bod
   // createmeta: issue types, then the fields for one (includes the Start custom field).
   const cmTypes = path.match(/^\/issue\/createmeta\/([^/]+)\/issuetypes$/)
   if (cmTypes) {
-    return ok({
-      startAt: 0,
-      maxResults: 50,
-      total: 2,
-      isLast: true,
-      values: [
-        { id: '10000', name: 'Story', subtask: false },
-        { id: '10001', name: 'Sub-task', subtask: true }
-      ]
-    })
+    // Real Jira reports the project's types here WITH their hierarchy level — the
+    // connector reads levels from this (project-scoped) list, because the instance-wide
+    // /issuetype repeats names across projects at different levels.
+    return ok({ startAt: 0, maxResults: 50, total: ISSUE_TYPES.length, isLast: true, values: ISSUE_TYPES })
   }
   const cmFields = path.match(/^\/issue\/createmeta\/([^/]+)\/issuetypes\/([^/]+)$/)
   if (cmFields) {

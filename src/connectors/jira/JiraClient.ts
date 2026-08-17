@@ -332,20 +332,32 @@ export class JiraClient {
    * Issue types with their hierarchy level (Sub-task −1, base 0, Epic 1, Initiative 2, …),
    * for resolving a new issue's type from its parent's level. Cached per client.
    */
-  async issueTypes(): Promise<JiraIssueType[]> {
-    const cached = issueTypesByBase.get(this.base)
+  async issueTypes(projectHint?: string): Promise<JiraIssueType[]> {
+    const project = projectHint ? projectKeyOf(projectHint) : ''
+    const cacheKey = this.base + '|' + project
+    const cached = issueTypesByBase.get(cacheKey)
     if (cached) return cached
-    const { data } = await this.req('GET', '/issuetype')
-    const raw = Array.isArray(data) ? (data as { name?: string; hierarchyLevel?: number; subtask?: boolean }[]) : []
-    const seen = new Set<string>()
-    const types = raw.flatMap((t) => {
-      const name = t.name ?? ''
-      if (!name || seen.has(name.toLowerCase())) return []
-      seen.add(name.toLowerCase())
-      const level = typeof t.hierarchyLevel === 'number' ? t.hierarchyLevel : t.subtask ? -1 : 0
-      return [{ name, level }]
-    })
-    issueTypesByBase.set(this.base, types)
+    // Project-scoped when we know the project. The instance-wide /issuetype list repeats
+    // names across projects with DIFFERENT hierarchy levels (every project has its own
+    // "Task"/"Epic"), and de-duplicating by name there picked whichever came first — which
+    // resolved e.g. Initiative to level 0 and made its children Sub-tasks.
+    const parse = (data: unknown): JiraIssueType[] => {
+      const seen = new Set<string>()
+      return listOf<{ name?: string; hierarchyLevel?: number; subtask?: boolean }>(data, 'issueTypes').flatMap((t) => {
+        const name = t.name ?? ''
+        if (!name || seen.has(name.toLowerCase())) return []
+        seen.add(name.toLowerCase())
+        const level = typeof t.hierarchyLevel === 'number' ? t.hierarchyLevel : t.subtask ? -1 : 0
+        return [{ name, level }]
+      })
+    }
+    // Fall back on the *parsed* result, not the raw length: some responses list types
+    // without names/levels, which would otherwise yield an empty (useless) hierarchy.
+    let types = project
+      ? parse((await this.req('GET', `/issue/createmeta/${encodeURIComponent(project)}/issuetypes`)).data)
+      : []
+    if (!types.length) types = parse((await this.req('GET', '/issuetype')).data)
+    issueTypesByBase.set(cacheKey, types)
     return types
   }
 

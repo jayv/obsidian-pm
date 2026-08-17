@@ -215,7 +215,7 @@ interface TypePlan {
 }
 
 async function buildTypePlan(client: JiraClient, cfg: JiraProjectConfig): Promise<TypePlan> {
-  const types = await client.issueTypes()
+  const types = await client.issueTypes(cfg.epicId)
   const root = await client.getIssue(cfg.epicId)
   const rootLevel = (root ? levelOfType(types, root.issueType) : undefined) ?? 1
   return {
