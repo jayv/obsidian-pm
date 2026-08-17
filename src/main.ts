@@ -145,6 +145,19 @@ export default class PMPlugin extends Plugin {
     }
 
     this.addCommand({
+      id: 'toggle-maximize-view',
+      name: 'Toggle maximized view',
+      // eslint-disable-next-line obsidianmd/commands/no-default-hotkeys -- deliberate: Alt+Z hides the chrome, only active when a project view is focused
+      hotkeys: [{ modifiers: ['Alt'], key: 'z' }],
+      checkCallback: (checking: boolean) => {
+        const view = this.app.workspace.getActiveViewOfType(ProjectView)
+        if (!view) return false
+        if (!checking) view.toggleMaximize()
+        return true
+      }
+    })
+
+    this.addCommand({
       id: 'focus-search',
       name: 'Focus task search',
       // eslint-disable-next-line obsidianmd/commands/no-default-hotkeys -- deliberate: Alt+F focuses search, only active when a project view is focused

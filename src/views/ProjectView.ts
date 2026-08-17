@@ -54,6 +54,8 @@ export class ProjectView extends ItemView {
   private titleEl2!: HTMLElement
   /** "visible | total" task counter in the toolbar (left of the view switcher). */
   private countEl: HTMLElement | null = null
+  /** Maximized ("zen") mode: chrome hidden so the chart/board gets the whole leaf. */
+  private maximized = false
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null
   private fileModifyRef: EventRef | null = null
   private reloadDebounceTimer: number | null = null
@@ -570,6 +572,26 @@ export class ProjectView extends ItemView {
   /** Focus the task search box. Used by the search-focus hotkey. */
   focusSearch(): void {
     this.header?.focusSearch()
+  }
+
+  /**
+   * Toggle maximized mode (Alt+Z): hide the toolbar, header and filter/search rows so the active
+   * view fills the leaf. The sub-view is re-rendered afterwards because the Gantt and the
+   * table size themselves from the container, which just changed height.
+   */
+  toggleMaximize(force?: boolean): void {
+    const next = force ?? !this.maximized
+    if (next === this.maximized) return
+    this.maximized = next
+    this.contentEl.toggleClass('pm-root--maximized', this.maximized)
+    this.renderCurrentView()
+    this.subview?.focus?.() // keep the toggle working without clicking back in
+    // Every control just disappeared, so say how to get back.
+    if (this.maximized) new Notice('Maximized — Alt+Z to restore.')
+  }
+
+  isMaximized(): boolean {
+    return this.maximized
   }
 
   /** Switch the active sub-view (table/gantt/kanban). Used by the view hotkeys. */

@@ -267,6 +267,13 @@
   position: relative;
 }
 
+/* Maximized ("zen") mode — Alt+Z. Drop the toolbar, the project header and the
+   filter/search rows so the chart or board owns the whole leaf. Alt+Z restores. */
+.pm-root--maximized > .pm-toolbar,
+.pm-root--maximized > .pm-project-header-mount {
+  display: none;
+}
+
 /* -- Empty state ----------------------------------------------------------- */
 .pm-empty-state {
   display: flex;
