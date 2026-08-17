@@ -596,7 +596,7 @@ incremental form); the current <code>runSync</code> uses a full crawl
 <h3 id="reqmethod-path-body">5.1
 <code>req(method, path, body?)</code></h3>
 <ul>
-<li><code>requestUrl({ url: base+path, method, headers: { Authorization, Accept: json, [Content-Type: json if body] }, body: JSON.stringify(body)?, throw: false })</code>.</li>
+<li><code>requestUrl({ url: base+path, method, headers: { Authorization, Accept: json, X-Atlassian-Token, [Cookie], [Content-Type: json if body] }, body: JSON.stringify(body)?, throw: false })</code>.</li>
 <li><code>ok = 200..299</code>. <strong>Parse <code>res.text</code>
 defensively</strong> (<code>parseJson</code>: empty/invalid → null);
 never read <code>res.json</code> (a getter that throws on empty
@@ -604,66 +604,111 @@ never read <code>res.json</code> (a getter that throws on empty
 <li>Returns
 <code>{ status, data: ok ? parseJson(res.text) : null }</code>.</li>
 <li>If API debug logging is on,
-<code>console.debug("[PM-JIRA] {method} {url} → {status}", {request, response})</code>.</li>
+<code>console.debug("[PM-JIRA] {method} {url} → {status}", {request, response})</code>.
+A non-2xx whose body isn’t JSON also logs <code>rawBody</code> +
+response <code>headers</code> — an empty <code>response: null</code>
+otherwise hides the reason (proxy/WAF pages, plain-text refusals).</li>
 </ul>
+<h4 id="xsrf-and-the-transport-fallback">5.1.1 XSRF and the transport
+fallback</h4>
+<p>Jira Cloud refuses writes it judges to be browser traffic with
+<code>403 "XSRF check failed"</code> (plain text, plus a
+<code>atlassian.xsrf.token</code> cookie). Obsidian’s
+<code>requestUrl</code> goes through Electron’s network stack, so a real
+site can classify our writes that way even with Basic auth. Handling, in
+order:</p>
+<ol type="1">
+<li>Always send <code>X-Atlassian-Token: no-check</code> (covers
+Server/DC; Atlassian documents it as working for “command line tools or
+external systems, <strong>not</strong> browser requests”).</li>
+<li>Learn <code>atlassian.xsrf.token</code> from any response and echo
+it back as both the cookie and the header, then retry the refused call
+once.</li>
+<li>If an <strong>https</strong> base still refuses, escalate that site
+to a direct <strong>Node <code>https</code></strong> transport for the
+session — no cookie jar, no <code>Origin</code>, so the check never
+triggers — and retry. <code>requestUrl</code> stays the default for
+every other site; the localhost mock (plain http) only ever needs the
+retry.</li>
+</ol>
+<p>Mobile has no Node, so a site that enforces this is read-only
+there.</p>
 <h3 id="methods-exact-paths">5.2 Methods (exact paths)</h3>
 <ul>
 <li><code>testConnection()</code> → <code>GET /myself</code>
 (<code>ok</code>/user, or auth/HTTP error).</li>
-<li><code>startFieldId(epicKey)</code>:
-<code>GET /issue/createmeta/{proj}/issuetypes</code> → first type id;
-<code>GET /issue/createmeta/{proj}/issuetypes/{id}</code> → field whose
-<code>name</code> (ci) === <code>"start date"</code>; cache its
-<code>fieldId</code> (or <code>''</code>). Returns cached value
-thereafter.</li>
+<li><code>startFieldId(epicKey)</code>: probe <strong>every</strong>
+type from <code>GET /issue/createmeta/{proj}/issuetypes</code>, reading
+<code>GET …/issuetypes/{id}</code> for a field whose <code>name</code>
+(ci) === <code>"start date"</code> (accepting <code>fieldId</code> or
+<code>key</code>). Falls back to the instance-wide
+<code>GET /field</code> (custom-field ids are global). <strong>Only a
+hit is cached</strong> — a miss re-probes next sync rather than
+disabling start-date sync for the session. Warns when nothing
+matches.</li>
 <li><code>projectStatuses(epicKey)</code> →
 <code>GET /project/{proj}/statuses</code> → unique
 <code>{name, category, id}</code>.</li>
-<li><code>priorities()</code> →
-<code>GET /priority/search?maxResults=100</code> →
-<code>{name, id}[]</code>.</li>
-<li><code>userPicker(query, max=10)</code> →
+<li><code>priorities(projectHint?)</code> → the project’s
+<strong>scheme</strong> via createmeta
+<code>priority.allowedValues</code> (unioned over its issue types,
+cached per project); falls back to the instance-wide
+<code>GET /priority/search?maxResults=100</code>. A project rejects any
+priority outside its scheme
+(<code>400 "The priority selected is invalid"</code>), so mapping from
+the instance list is wrong.</li>
+<li><code>myPermissions(projectKey, names)</code> →
+<code>GET /mypermissions?projectKey=…&amp;permissions=…</code> →
+<code>{name: granted}</code>. Read-only probe behind the panel’s
+<strong>Check access</strong>, for when writes fail but reads
+succeed.</li>
+<li><code>issueTypes(projectHint?)</code> → <code>{name, level}[]</code>
+from the <strong>project-scoped</strong>
+<code>GET /issue/createmeta/{proj}/issuetypes</code>
+(<code>hierarchyLevel</code>; <code>subtask</code> ⇒ −1), cached per
+project. Falls back to <code>GET /issuetype</code> only when that yields
+nothing. The instance-wide list repeats type names across projects at
+<strong>different levels</strong>, so de-duplicating it by name
+mis-resolves the hierarchy (an Initiative read as level 0 makes its
+children Sub-tasks).</li>
+</ul>
+<p>All of the createmeta readers accept whichever envelope Cloud returns
+— a paginated <code>{values}</code>, a named collection
+(<code>{issueTypes}</code> / <code>{fields}</code>), or a bare array. -
+<code>userPicker(query, max=10)</code> →
 <code>GET /user/picker?query=…&amp;maxResults=…</code> →
-<code>{accountId, displayName}[]</code> (empty query → []).</li>
-<li><code>search(jql, max=100)</code> (private):
+<code>{accountId, displayName}[]</code> (empty query → []). -
+<code>search(jql, max=100)</code> (private):
 <code>GET /search/jql?jql=…&amp;fields={list}&amp;maxResults={max}[&amp;nextPageToken=…]</code>;
 <code>fields</code> =
 <code>summary,status,priority,assignee,duedate,issuetype,parent,issuelinks,updated</code>
 plus the start field id when known; loop appending
 <code>nextPageToken</code> until <code>isLast || !nextPageToken</code>;
-normalize each issue.
-<ul>
-<li><code>epicChildren(epic)</code>=search(epicChildrenJql);
+normalize each issue. -
+<code>epicChildren(epic)</code>=search(epicChildrenJql);
 <code>subtasksOf(keys)</code>=search(parentInJql) (<code>[]</code> if no
 keys);
-<code>getIssue(key)</code>=<code>GET /issue/{key}?fields=*navigable</code>.</li>
-</ul></li>
-<li><code>createIssue(fields)</code> → <code>POST /issue</code> body
-<code>{fields}</code> → <code>{key}</code> or <code>{error}</code>.</li>
-<li><code>editIssue(key, fields)</code> → <code>PUT /issue/{key}</code>
-body <code>{fields}</code> → boolean ok.</li>
-<li><code>getTransitions(key)</code> →
+<code>getIssue(key)</code>=<code>GET /issue/{key}?fields=*navigable</code>.
+- <code>createIssue(fields)</code> → <code>POST /issue</code> body
+<code>{fields}</code> → <code>{key}</code> or <code>{error}</code>. -
+<code>editIssue(key, fields)</code> → <code>PUT /issue/{key}</code> body
+<code>{fields}</code> → boolean ok. - <code>getTransitions(key)</code> →
 <code>GET /issue/{key}/transitions</code> →
-<code>{id, name, to:{id, name}}[]</code>.</li>
-<li><code>transitionTo(key, statusName, statusId?)</code>: find
-transition matching <code>to.id === statusId</code> (when given)
+<code>{id, name, to:{id, name}}[]</code>. -
+<code>transitionTo(key, statusName, statusId?)</code>: find transition
+matching <code>to.id === statusId</code> (when given)
 <strong>else</strong> <code>to.name</code> (ci);
 <code>POST /issue/{key}/transitions {transition:{id}}</code>; false if
 none/!ok. (Callers pass the persisted status id so a rename/duplicate
-name doesn’t misfire.)</li>
-<li><code>getProperty(key, propKey)</code> →
+name doesn’t misfire.) - <code>getProperty(key, propKey)</code> →
 <code>GET …/properties/{propKey}</code> → <code>.value</code> or
-undefined.</li>
-<li><code>setProperty(key, propKey, value)</code> →
-<code>PUT …/properties/{propKey}</code> body = value → ok.</li>
-<li><code>createLink(blockedKey, blockerKey)</code> →
+undefined. - <code>setProperty(key, propKey, value)</code> →
+<code>PUT …/properties/{propKey}</code> body = value → ok. -
+<code>createLink(blockedKey, blockerKey)</code> →
 <code>POST /issueLink {type:{name:'Blocks'}, inwardIssue:{key:blockedKey}, outwardIssue:{key:blockerKey}}</code>
-(blocked “is blocked by” blocker).</li>
-<li><code>deleteLink(id)</code> →
-<code>DELETE /issueLink/{id}</code>.</li>
-<li><code>setJiraApiDebug(on)</code> — module-level flag for §5.1
-logging.</li>
-</ul>
+(blocked “is blocked by” blocker). - <code>deleteLink(id)</code> →
+<code>DELETE /issueLink/{id}</code>. - <code>setJiraApiDebug(on)</code>
+— module-level flag for §5.1 logging.</p>
 <hr />
 <h2 id="issue-normalization-normalizeissueraw-startfieldid">6. Issue
 normalization (<code>normalizeIssue(raw, startFieldId?)</code>)</h2>
@@ -774,15 +819,16 @@ else <code>[]</code>.</li>
 <code>null</code> (unassign); mapped → <code>{accountId}</code>;
 assignee present but unmapped → <code>undefined</code> (omit — don’t
 clobber).</li>
-<li><code>withJiraKey(task, key, keyOf, cfg)</code> links a just-created
-task: <code>ext.jira = {key, sync:true,   shadow}</code>. The shadow
-records <strong>what was actually pushed</strong> — when
-<code>assigneeField(task,cfg)   === undefined</code> (unmapped) the
+<li><code>withJiraKey(task, key, keyOf, cfg, startField)</code> links a
+just-created task: <code>ext.jira =   {key, sync:true, shadow}</code>.
+The shadow records <strong>what was actually pushed</strong> — when
+<code>assigneeField(task,cfg) === undefined</code> (unmapped) the
 assignee wasn’t sent, so <code>shadow.assignees = []</code> (not the
-local name). Otherwise the next reconcile would read Jira’s empty
-assignee as a remote deletion and drop the local one; instead the field
-stays “to push” and surfaces as a conflict until the member is
-mapped.</li>
+local name), and with no <code>startField</code> the date wasn’t sent
+either, so <code>shadow.start = ''</code>. Otherwise the next reconcile
+would read Jira’s empty value as a remote deletion and drop the local
+one; instead the field stays “to push” and surfaces as a conflict until
+the mapping/field exists.</li>
 <li><code>priorityRef(entry)</code> =
 <code>entry.id ? {id} : {name: entry.jira}</code> — prefer the persisted
 priority id, fall back to the name.</li>
@@ -871,9 +917,14 @@ via <code>editIssue</code> (<code>priority</code> =
 <code>reconcileLinks(key, issue.blockLinks,   desiredBlockerKeys)</code>.
 A <code>priority</code>/<code>status</code> with no canonical outbound,
 an <code>assignee</code> whose local member has no JIRA-user mapping
-(<code>assigneeField === undefined</code>), or any rejected write sets
-<code>ok=false</code> — these are surfaced, never silently dropped. If
-<code>!ok</code> → <code>flagConflict(task, theirs)</code>,
+(<code>assigneeField === undefined</code>), a <code>start</code> with
+<strong>no discovered start field</strong>, or any rejected write is
+<em>held</em>: named in a <code>held[]</code> reason list, logged as
+<code>[PM] Jira: {key} held back — {reasons}</code>, and treated as a
+failure. These are surfaced, never silently dropped — a held field that
+left <code>fields</code> empty would skip the edit entirely and still
+advance the shadow, losing the change (how start dates vanished live).
+If held/<code>!ok</code> → <code>flagConflict(task, theirs)</code>,
 <code>conflicts++</code>, continue (no shadow advance). Else
 <code>jiraUpdated++</code> if <code>tw.push</code> non-empty.</li>
 <li><strong>Adopt</strong> <code>tw.adopt</code> fields into a task
@@ -1070,10 +1121,26 @@ outbound checkbox + delete + “add rule”; inline validation
 (<code>validateValueMap</code>) with messages + red-outlined offending
 rows; assignee map (one row per team member with a JIRA user-picker
 autocomplete); sync interval; and the <strong>Jira import / Jira export
-/ Disconnect</strong> actions. Editing a map sets
-<code>mappingsDirty</code>. Load/import/export re-render the
+/ Check access / Clean Jira / Disconnect</strong> actions. Editing a map
+sets <code>mappingsDirty</code>. Load/import/export re-render the
 <strong>whole</strong> modal (via the host <code>onChange</code>) so
 newly created team members appear.</p>
+<p>Changing the <strong>Epic key</strong> clears
+<code>lastSeenUpdated</code>: a different root is a different subtree,
+and the old watermark would hide every issue there that hasn’t changed
+since.</p>
+<ul>
+<li><strong>Check access</strong> (§5.2 <code>myPermissions</code>) —
+read-only; reports the authenticated account and which sync permissions
+it holds on the mapped project. Creates nothing.</li>
+<li><strong>Clean Jira</strong> — deletes the per-issue
+<code>obsidian-pm</code> property from every linked issue and
+<code>obsidian-pm-config</code> from the epic, then (only if the remote
+wipe fully succeeded) clears the local config and strips each task’s
+<code>jira</code> block, for a clean reset. Issues are never deleted. On
+any failure it stays connected so the wipe can be retried (deletes are
+idempotent).</li>
+</ul>
 <h3 id="task-field-rendertaskfield">10.3 Task field
 (<code>renderTaskField</code>)</h3>
 <p>A “Jira” row: a sync checkbox (state = <code>isLinkChecked</code>;
@@ -1145,19 +1212,33 @@ surfaces a conflict (no silent drop); conflicts resolve field-by-field
 (keep mine re-pushes, take theirs adopts); two-way create/edit/status/
 assignee/unassign/dependencies/milestone/dates/hierarchy; map
 validation; merges never duplicate a JIRA value; all I/O over HTTP.</p>
-<p><strong>Validated against a real Jira Cloud instance:</strong> the
-multi-level <code>parent</code> hierarchy, both the full
+<p><strong>Validated against a real Jira Cloud instance:</strong> an
+end-to-end outbound write — create under an Epic parent, summary, status
+transition, due date, <strong>start date</strong>, priority, assignee,
+and the <code>obsidian-pm</code> property — plus the multi-level
+<code>parent</code> hierarchy, both the full
 <code>(parent OR "Epic Link")</code> and incremental
 <code>subtreeChangedJql</code> queries, createmeta start-field
 discovery, issue-type level resolution, the <code>Blocks</code>/“is
 blocked by” link type, and screenless/global status transitions across
 all issue types. All instance-specific ids and names are discovered at
 runtime — none are hardcoded.</p>
+<p><strong>Learned the hard way (each shipped as a live bug, now
+covered):</strong> writes are refused as XSRF through
+<code>requestUrl</code> (§5.1.1); a project accepts only its
+<strong>priority scheme</strong>, not the instance’s priorities; the
+“Start date” field may be absent, on a later issue type, or reported in
+a different envelope; the instance-wide <code>/issuetype</code> list
+repeats names at different hierarchy levels. Every one passed the suite
+beforehand because the mock had been written to match the connector’s
+assumptions — it now models these shapes (§13), and each fix was
+verified by reverting it and watching its test fail.</p>
 <p><strong>Residual (still unproven without a real instance):</strong>
 company- vs team-managed <code>parent</code>/“Epic Link” on other
-project styles; permissions/rate-limits (failures surface as conflict,
-no backoff); nesting below the lowest issue type (skipped + flagged);
-<code>setProperty</code> entity-property round-trip end-to-end.</p>
+project styles; rate-limits (failures surface as conflict, no backoff);
+nesting below the lowest issue type (skipped + flagged); inbound
+reconcile and conflict resolution against a real instance (proven on the
+mock only).</p>
 <hr />
 <h2 id="testing">13. Testing</h2>
 <ul>
@@ -1180,6 +1261,21 @@ matrix + confidence score + residual-risk audit).</li>
 fails the build), and <code>integration.test.ts</code> drives the
 connector through the <strong>real <code>ProjectStore</code></strong>
 over the in-memory vault (behavioral drift fails a test).</li>
+<li><strong>Instance shapes</strong>
+(<code>instance-shape.test.ts</code>): the mock can be <em>wrong the way
+a real site is</em>, because a mock that only mirrors our assumptions
+validates our bugs. Knobs: <code>setPriorityScheme</code> (createmeta
+reports a subset; create/edit return the real
+<code>400 "The priority selected is invalid"</code>),
+<code>setStartFieldId('')</code> (a project with no Start date field),
+<code>setEnvelope('named')</code> (createmeta as
+<code>issueTypes</code>/<code>fields</code> instead of
+<code>values</code>), <code>armXsrfFailure()</code> (one write refused
+with a non-JSON <code>403 "XSRF check   failed"</code> + token cookie),
+and <code>FOREIGN_ISSUE_TYPES</code> — foreign types sharing our names
+at the wrong hierarchy levels, permanently seeded into the instance-wide
+<code>/issuetype</code> so the hierarchy tests fail if type resolution
+ever reads from there again.</li>
 </ul>
 <hr />
 <h2 id="implementation-history">Implementation history</h2>

@@ -95,8 +95,8 @@ const CONFIDENCE = [
   ],
   [
     'Live-instance readiness',
-    8.0,
-    'Validated against a real Jira Cloud instance: multi-level parent hierarchy, full + incremental JQL, createmeta start-field discovery, issue-type level resolution, the Blocks link type, and screenless/global transitions across all issue types. Remaining unknowns: permissions/rate-limits and the entity-property round-trip.'
+    8.5,
+    'A full outbound write is proven end-to-end on a real Jira Cloud instance: create under an Epic parent, summary, status transition, due date, start date, priority, assignee, and the obsidian-pm property — on top of the multi-level parent hierarchy, full + incremental JQL, createmeta discovery, issue-type level resolution, the Blocks link type, and screenless/global transitions. Getting there exposed five bugs the suite had passed (XSRF-refused writes, priority schemes, start-field discovery, silent start drop, instance-wide type levels); all are fixed and now modelled by the mock. Inbound reconcile and conflict resolution are still mock-only.'
   ]
 ]
 const overall = (CONFIDENCE.reduce((s, [, v]) => s + v, 0) / CONFIDENCE.length).toFixed(1)
@@ -115,6 +115,16 @@ const RISKS = [
     'LOW',
     'Entity-property round-trip (obsidian-pm / -config)',
     'Confirmed live: the plugin-written obsidian-pm-config sits on the real epic (same setProperty/getProperty path the per-issue milestone bag uses). Milestone bag itself only re-exercises that mechanism.'
+  ],
+  [
+    'MED',
+    'Inbound reconcile against a real instance',
+    'The 3-way merge, adopt/push split, and conflict resolution are proven on the mock and by a second client acting as a teammate, but not yet against real Jira: only outbound writes have been exercised live. Worth a deliberate two-sided edit on a throwaway epic before trusting interval sync.'
+  ],
+  [
+    'MED',
+    'Mock fidelity',
+    "Every live bug so far passed the suite because the mock had been written to match the connector's assumptions. It now models real instance shapes (priority schemes, a missing Start date field, createmeta envelope variants, XSRF-refused writes, foreign issue types at wrong levels) and each fix was verified by reverting it, but any NEW endpoint the mock hand-rolls carries the same risk until checked against a real payload."
   ],
   [
     'MED',
