@@ -1,7 +1,15 @@
-import { ButtonComponent, Menu } from 'obsidian'
-import type { Project, FilterState, StatusConfig, PriorityConfig, TaskPriority, DueDateFilter } from '../../../types'
+import { ButtonComponent, Menu, setTooltip } from 'obsidian'
+import type {
+  Project,
+  FilterState,
+  StatusConfig,
+  PriorityConfig,
+  TaskPriority,
+  DueDateFilter,
+  WeekOffset
+} from '../../../types'
 import { collectAllAssignees, collectAllTags } from '../../../store'
-import { countActiveFilters } from '../../../store/TaskFilter'
+import { UNASSIGNED, countActiveFilters } from '../../../store/TaskFilter'
 import { renderFilterDropdown } from '../../FilterDropdown'
 import { Pill } from '../../primitives/Pill'
 import { Avatar } from '../../primitives/Avatar'
@@ -90,7 +98,7 @@ export class FilterRow {
     }
 
     this.renderDueDatePill(notify)
-    this.renderActiveThisWeekPill(notify)
+    this.renderActiveWeekPills(notify)
     this.renderArchivedPill(notify)
     this.renderClearButton()
     // The avatar zone spans the full width, so keep it as the last child — it wraps onto
@@ -121,24 +129,32 @@ export class FilterRow {
       sync()
     })
 
-    for (const name of names) {
+    // One chip per assignee, plus a "?" chip for tasks with nobody assigned. Picks are
+    // cumulative (OR), so "?" combines with names rather than excluding them.
+    const addChip = (value: string, render: (btn: HTMLElement) => void): void => {
       const btn = zone.createEl('button', { cls: 'pm-assignee-pick' })
-      new Avatar(btn).setName(name).setSize('sm')
+      render(btn)
       const paint = () => {
-        const on = filter.assignees.includes(name)
+        const on = filter.assignees.includes(value)
         btn.toggleClass('is-selected', on)
         btn.setAttribute('aria-pressed', String(on))
       }
       paint()
       btn.addEventListener('click', () => {
-        const i = filter.assignees.indexOf(name)
+        const i = filter.assignees.indexOf(value)
         if (i >= 0) filter.assignees.splice(i, 1)
-        else filter.assignees.push(name)
+        else filter.assignees.push(value)
         paint()
         sync()
         notify()
       })
     }
+
+    for (const name of names) addChip(name, (btn) => new Avatar(btn).setName(name).setSize('sm'))
+    addChip(UNASSIGNED, (btn) => {
+      const av = btn.createSpan({ cls: 'pm-avatar pm-avatar--sm pm-avatar--none', text: '?' })
+      setTooltip(av, 'Unassigned')
+    })
 
     sync()
     this.assigneeZoneEl = zone
@@ -171,14 +187,29 @@ export class FilterRow {
     })
   }
 
-  private renderActiveThisWeekPill(notify: () => void): void {
+  /**
+   * Active-week window as three cumulative toggles. Each adds its Mon–Sun week to the
+   * filter, so e.g. "This week" + "Next week" shows everything active across the
+   * two-week span. None selected = no week filter.
+   */
+  private renderActiveWeekPills(notify: () => void): void {
     const { filter } = this.props
-    const pill = new Pill(this.el).setLabel('Active this week').setActive(filter.activeThisWeek)
-    pill.onClick(() => {
-      filter.activeThisWeek = !filter.activeThisWeek
-      pill.setActive(filter.activeThisWeek)
-      notify()
-    })
+    const weeks: { offset: WeekOffset; label: string }[] = [
+      { offset: -1, label: 'Prev week' },
+      { offset: 0, label: 'This week' },
+      { offset: 1, label: 'Next week' }
+    ]
+    for (const { offset, label } of weeks) {
+      const pill = new Pill(this.el).setLabel(label).setActive(filter.activeWeeks.includes(offset))
+      pill.onClick(() => {
+        const i = filter.activeWeeks.indexOf(offset)
+        // Mutate in place — the live filter object is shared by reference with the view.
+        if (i >= 0) filter.activeWeeks.splice(i, 1)
+        else filter.activeWeeks.push(offset)
+        pill.setActive(filter.activeWeeks.includes(offset))
+        notify()
+      })
+    }
   }
 
   private renderArchivedPill(notify: () => void): void {

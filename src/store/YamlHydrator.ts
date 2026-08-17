@@ -24,7 +24,12 @@ export function hydrateSavedViews(raw: unknown[]): SavedView[] {
           assignees: Array.isArray(filter.assignees) ? filter.assignees : [],
           tags: Array.isArray(filter.tags) ? filter.tags : [],
           dueDateFilter: (filter.dueDateFilter as string as SavedView['filter']['dueDateFilter']) ?? 'any',
-          activeThisWeek: (filter.activeThisWeek as boolean) ?? false,
+          // Saved before the three-week toggles: the boolean maps to "this week".
+          activeWeeks: Array.isArray(filter.activeWeeks)
+            ? (filter.activeWeeks as SavedView['filter']['activeWeeks'])
+            : filter.activeThisWeek
+              ? [0]
+              : [],
           showArchived: (filter.showArchived as boolean) ?? false
         },
         sortKey: (v.sortKey as string) ?? 'status',

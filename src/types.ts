@@ -77,15 +77,23 @@ export interface Project {
   taskIndex: TaskIndex
 }
 
+/** Week windows the "active week" filter can select, relative to the current week. */
+export type WeekOffset = -1 | 0 | 1
+
 export interface FilterState {
   text: string
   statuses: TaskStatus[]
   priorities: TaskPriority[]
+  /** Assignee names to match; `UNASSIGNED` matches tasks with no assignee. */
   assignees: string[]
   tags: string[]
   dueDateFilter: DueDateFilter
-  /** Show only tasks whose start…due span overlaps the current week (Mon–Sun). */
-  activeThisWeek: boolean
+  /**
+   * Show only tasks whose start…due span overlaps one of these weeks (Mon–Sun),
+   * relative to the current week. Cumulative — the selected weeks form one window.
+   * Empty means no week filter.
+   */
+  activeWeeks: WeekOffset[]
   showArchived: boolean
 }
 
@@ -241,7 +249,7 @@ export function makeDefaultFilter(): FilterState {
     assignees: [],
     tags: [],
     dueDateFilter: 'any',
-    activeThisWeek: false,
+    activeWeeks: [],
     showArchived: false
   }
 }

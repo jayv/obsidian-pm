@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_STATUSES, makeDefaultFilter, makeTask, type FilterState, type Task } from '../types'
 import {
+  UNASSIGNED,
   applyTaskFilter,
   applyTaskFilterFlat,
   applyTaskFilterPromote,
@@ -40,8 +41,8 @@ describe('isFilterActive', () => {
     expect(isFilterActive(filter({ dueDateFilter: 'overdue' }))).toBe(true)
   })
 
-  it('returns true when activeThisWeek is on', () => {
-    expect(isFilterActive(filter({ activeThisWeek: true }))).toBe(true)
+  it('returns true when an active week is selected', () => {
+    expect(isFilterActive(filter({ activeWeeks: [0] }))).toBe(true)
   })
 
   it('ignores showArchived (matches legacy semantics)', () => {
@@ -74,7 +75,7 @@ describe('countActiveFilters', () => {
 
 describe('cloneFilter', () => {
   it('copies scalars and clones arrays (no shared references)', () => {
-    const src = filter({ statuses: ['todo'], assignees: ['Zoe'], text: 'x', activeThisWeek: true })
+    const src = filter({ statuses: ['todo'], assignees: ['Zoe'], text: 'x', activeWeeks: [0] })
     const copy = cloneFilter(src)
     expect(copy).toEqual(src)
     expect(copy.statuses).not.toBe(src.statuses)
@@ -94,10 +95,10 @@ describe('filterEquals', () => {
   })
 
   it('detects differences in any field', () => {
-    const base = filter({ statuses: ['todo'], text: 'x', activeThisWeek: true })
-    expect(filterEquals(base, filter({ statuses: ['todo'], text: 'y', activeThisWeek: true }))).toBe(false)
-    expect(filterEquals(base, filter({ statuses: ['todo', 'done'], text: 'x', activeThisWeek: true }))).toBe(false)
-    expect(filterEquals(base, filter({ statuses: ['todo'], text: 'x', activeThisWeek: false }))).toBe(false)
+    const base = filter({ statuses: ['todo'], text: 'x', activeWeeks: [0] })
+    expect(filterEquals(base, filter({ statuses: ['todo'], text: 'y', activeWeeks: [0] }))).toBe(false)
+    expect(filterEquals(base, filter({ statuses: ['todo', 'done'], text: 'x', activeWeeks: [0] }))).toBe(false)
+    expect(filterEquals(base, filter({ statuses: ['todo'], text: 'x', activeWeeks: [] }))).toBe(false)
     expect(filterEquals(makeDefaultFilter(), makeDefaultFilter())).toBe(true)
   })
 })
@@ -158,13 +159,13 @@ describe('matchesFilter', () => {
     })
   })
 
-  describe('activeThisWeek matches tasks whose span overlaps the current week', () => {
+  describe('activeWeeks matches tasks whose span overlaps the selected week(s)', () => {
     afterEach(() => vi.useRealTimers())
 
     it('overlaps by span, not just the due date', () => {
       vi.useFakeTimers()
       vi.setSystemTime(new Date('2026-07-01T12:00:00Z')) // Wednesday; week = Mon 06-29 … Sun 07-05
-      const f = filter({ activeThisWeek: true })
+      const f = filter({ activeWeeks: [0] })
       const m = (start: string, due: string) => matchesFilter(task({ id: `${start}/${due}`, start, due }), f)
 
       expect(m('2026-06-20', '2026-07-10')).toBe(true) // spans across the whole week
@@ -178,10 +179,60 @@ describe('matchesFilter', () => {
     it('uses whichever single date exists, and excludes dateless tasks', () => {
       vi.useFakeTimers()
       vi.setSystemTime(new Date('2026-07-01T12:00:00Z'))
-      const f = filter({ activeThisWeek: true })
+      const f = filter({ activeWeeks: [0] })
       expect(matchesFilter(task({ id: 'due-only', due: '2026-07-02' }), f)).toBe(true)
       expect(matchesFilter(task({ id: 'start-only', start: '2026-07-02' }), f)).toBe(true)
       expect(matchesFilter(task({ id: 'no-dates', start: '', due: '' }), f)).toBe(false)
+    })
+
+    it('prev/next select their own week, and multiple weeks are cumulative', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-07-01T12:00:00Z')) // Wed; this week = Mon 06-29 … Sun 07-05
+      const on = (day: string) => task({ id: day, start: day, due: day })
+      const prev = on('2026-06-24') // in the previous week (06-22 … 06-28)
+      const now = on('2026-07-02')
+      const next = on('2026-07-08') // in the next week (07-06 … 07-12)
+
+      const matches = (f: FilterState) => [prev, now, next].filter((t) => matchesFilter(t, f)).map((t) => t.id)
+      expect(matches(filter({ activeWeeks: [-1] }))).toEqual([prev.id])
+      expect(matches(filter({ activeWeeks: [1] }))).toEqual([next.id])
+      expect(matches(filter({ activeWeeks: [0, 1] }))).toEqual([now.id, next.id]) // cumulative
+      expect(matches(filter({ activeWeeks: [-1, 0, 1] }))).toEqual([prev.id, now.id, next.id])
+    })
+
+    it('reads a filter saved before the toggles (activeThisWeek) as "this week"', () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-07-01T12:00:00Z'))
+      // A legacy persisted filter: boolean set, no activeWeeks array.
+      const legacy = { ...makeDefaultFilter(), activeThisWeek: true } as unknown as FilterState
+      Reflect.deleteProperty(legacy, 'activeWeeks')
+
+      expect(isFilterActive(legacy)).toBe(true)
+      expect(matchesFilter(task({ id: 'in', start: '2026-07-02', due: '2026-07-02' }), legacy)).toBe(true)
+      expect(matchesFilter(task({ id: 'out', start: '2026-06-24', due: '2026-06-24' }), legacy)).toBe(false)
+      // Cloning migrates it to the array form and drops the legacy key.
+      const migrated = cloneFilter(legacy)
+      expect(migrated.activeWeeks).toEqual([0])
+      expect('activeThisWeek' in migrated).toBe(false)
+    })
+  })
+
+  describe('unassigned assignee filter', () => {
+    const none = task({ id: 'none', assignees: [] })
+    const alice = task({ id: 'alice', assignees: ['Alice'] })
+    const bob = task({ id: 'bob', assignees: ['Bob'] })
+    const matches = (f: FilterState) => [none, alice, bob].filter((t) => matchesFilter(t, f)).map((t) => t.id)
+
+    it('matches only tasks with no assignee', () => {
+      expect(matches(filter({ assignees: [UNASSIGNED] }))).toEqual(['none'])
+    })
+
+    it('combines cumulatively with named assignees', () => {
+      expect(matches(filter({ assignees: [UNASSIGNED, 'Alice'] }))).toEqual(['none', 'alice'])
+    })
+
+    it('does not affect a plain name filter', () => {
+      expect(matches(filter({ assignees: ['Alice'] }))).toEqual(['alice'])
     })
   })
 })

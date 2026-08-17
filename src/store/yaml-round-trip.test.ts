@@ -162,7 +162,7 @@ describe('project round-trip', () => {
         assignees: ['Alice'],
         tags: ['design'],
         dueDateFilter: 'overdue',
-        activeThisWeek: false,
+        activeWeeks: [],
         showArchived: false
       },
       sortKey: 'due',

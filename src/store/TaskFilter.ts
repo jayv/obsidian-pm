@@ -1,7 +1,20 @@
 import { parsePlainDate, Temporal, today } from '../dates'
-import type { DueDateFilter, FilterState, StatusConfig, Task } from '../types'
+import type { DueDateFilter, FilterState, StatusConfig, Task, WeekOffset } from '../types'
 import { isTerminalStatus } from '../utils'
 import type { FlatTask } from './TaskTreeOps'
+
+/** Sentinel assignee value matching tasks that have no assignee at all. */
+export const UNASSIGNED = '__pm_unassigned__'
+
+/**
+ * The filter's selected week offsets, tolerating filters persisted before the
+ * three-week toggles replaced the single `activeThisWeek` boolean (true → this week).
+ */
+function weeksOf(filter: FilterState): WeekOffset[] {
+  const legacy = filter as FilterState & { activeThisWeek?: boolean }
+  if (Array.isArray(legacy.activeWeeks)) return legacy.activeWeeks
+  return legacy.activeThisWeek ? [0] : []
+}
 
 export function isFilterActive(filter: FilterState): boolean {
   return !!(
@@ -11,7 +24,7 @@ export function isFilterActive(filter: FilterState): boolean {
     filter.assignees.length ||
     filter.tags.length ||
     filter.dueDateFilter !== 'any' ||
-    filter.activeThisWeek
+    weeksOf(filter).length
   )
 }
 
@@ -21,23 +34,26 @@ export function isFilterActive(filter: FilterState): boolean {
  * Spread-then-clone so any future scalar field is carried automatically, not dropped.
  */
 export function cloneFilter(f: FilterState): FilterState {
-  return {
+  const clone = {
     ...f,
     statuses: [...f.statuses],
     priorities: [...f.priorities],
     assignees: [...f.assignees],
-    tags: [...f.tags]
+    tags: [...f.tags],
+    activeWeeks: [...weeksOf(f)]
   }
+  // Drop the pre-toggle boolean once migrated, so it isn't persisted forever.
+  Reflect.deleteProperty(clone, 'activeThisWeek')
+  return clone
 }
 
 /** Value-equality of two filters (list fields compared as unordered sets). */
 export function filterEquals(a: FilterState, b: FilterState): boolean {
-  const setEq = (x: readonly string[], y: readonly string[]): boolean =>
-    x.length === y.length && x.every((v) => y.includes(v))
+  const setEq = <T>(x: readonly T[], y: readonly T[]): boolean => x.length === y.length && x.every((v) => y.includes(v))
   return (
     a.text === b.text &&
     a.dueDateFilter === b.dueDateFilter &&
-    a.activeThisWeek === b.activeThisWeek &&
+    setEq(weeksOf(a), weeksOf(b)) &&
     a.showArchived === b.showArchived &&
     setEq(a.statuses, b.statuses) &&
     setEq(a.priorities, b.priorities) &&
@@ -54,7 +70,7 @@ export function countActiveFilters(filter: FilterState): number {
   if (filter.assignees.length) count++
   if (filter.tags.length) count++
   if (filter.dueDateFilter !== 'any') count++
-  if (filter.activeThisWeek) count++
+  if (weeksOf(filter).length) count++ // the week window counts once, not per week
   if (filter.showArchived) count++
   return count
 }
@@ -94,24 +110,31 @@ export function matchesFilter(task: Task, filter: FilterState, statuses: StatusC
   }
   if (filter.statuses.length && !filter.statuses.includes(task.status)) return false
   if (filter.priorities.length && !filter.priorities.includes(task.priority)) return false
-  if (filter.assignees.length && !task.assignees.some((a) => filter.assignees.includes(a))) return false
+  if (filter.assignees.length) {
+    // Cumulative: a task matches if it carries one of the picked assignees, or — when
+    // the "?" chip is picked — if it has no assignee at all.
+    const unassignedOk = filter.assignees.includes(UNASSIGNED) && task.assignees.length === 0
+    if (!unassignedOk && !task.assignees.some((a) => filter.assignees.includes(a))) return false
+  }
   if (filter.tags.length && !task.tags.some((t) => filter.tags.includes(t))) return false
   if (filter.dueDateFilter !== 'any' && !matchDueDateFilter(task, filter.dueDateFilter, statuses)) return false
-  if (filter.activeThisWeek && !overlapsCurrentWeek(task)) return false
+  const weeks = weeksOf(filter)
+  if (weeks.length && !weeks.some((w) => overlapsWeek(task, w))) return false
   return true
 }
 
 /**
- * True when the task's span overlaps the current week (Mon–Sun). The span is
- * `[start…due]`, falling back to whichever single date exists (so a one-date task or a
- * milestone counts on its day). A task with no dates never overlaps.
+ * True when the task's span overlaps the Mon–Sun week `offset` weeks from the current one
+ * (-1 previous, 0 current, +1 next). The span is `[start…due]`, falling back to whichever
+ * single date exists (so a one-date task or a milestone counts on its day). A task with no
+ * dates never overlaps.
  */
-function overlapsCurrentWeek(task: Task): boolean {
+function overlapsWeek(task: Task, offset: WeekOffset): boolean {
   const start = parsePlainDate(task.start) ?? parsePlainDate(task.due)
   const end = parsePlainDate(task.due) ?? parsePlainDate(task.start)
   if (!start || !end) return false
   const now = today()
-  const weekStart = now.subtract({ days: now.dayOfWeek - 1 })
+  const weekStart = now.subtract({ days: now.dayOfWeek - 1 }).add({ days: offset * 7 })
   const weekEnd = weekStart.add({ days: 6 })
   // Overlap: the task starts on/before the week ends AND ends on/after the week starts.
   return Temporal.PlainDate.compare(start, weekEnd) <= 0 && Temporal.PlainDate.compare(end, weekStart) >= 0
