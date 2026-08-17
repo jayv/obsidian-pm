@@ -20,6 +20,20 @@ export interface JiraCreds {
   baseUrl?: string
 }
 
+/**
+ * Read a list out of a Jira response that may be a bare array, a paginated `{values}`
+ * envelope, or a named collection (`{issueTypes}` / `{fields}`) — Cloud uses all three
+ * across the createmeta and field endpoints.
+ */
+function listOf<T>(data: unknown, named: string): T[] {
+  if (Array.isArray(data)) return data as T[]
+  const obj = (data ?? {}) as Record<string, unknown>
+  for (const key of ['values', named]) {
+    if (Array.isArray(obj[key])) return obj[key] as T[]
+  }
+  return []
+}
+
 /** Parse a response body as JSON, tolerating empty/non-JSON bodies (e.g. 204). */
 function parseJson(text: string | undefined): unknown {
   if (!text) return null
@@ -278,23 +292,40 @@ export class JiraClient {
     const cached = startFieldByBase.get(this.base)
     if (cached) return (this.startField = cached)
     const project = projectKeyOf(epicKey)
-    const types = (await this.req('GET', `/issue/createmeta/${encodeURIComponent(project)}/issuetypes`)).data as {
-      values?: { id?: string }[]
-    } | null
-    for (const t of types?.values ?? []) {
+
+    // createmeta first — it's project-scoped, so it can't pick a same-named field that
+    // isn't on this project's screens. Cloud has shipped more than one envelope for these
+    // pages (`values` / `issueTypes` / `fields`), so read whichever came back.
+    const types = (await this.req('GET', `/issue/createmeta/${encodeURIComponent(project)}/issuetypes`)).data
+    for (const t of listOf<{ id?: string }>(types, 'issueTypes')) {
       if (!t.id) continue
-      const fields = (
+      const meta = (
         await this.req('GET', `/issue/createmeta/${encodeURIComponent(project)}/issuetypes/${encodeURIComponent(t.id)}`)
-      ).data as { values?: { fieldId?: string; name?: string }[] } | null
-      const start = fields?.values?.find((f) => (f.name ?? '').toLowerCase() === 'start date')
-      if (start?.fieldId) {
-        this.startField = start.fieldId
-        startFieldByBase.set(this.base, this.startField)
-        return this.startField
-      }
+      ).data
+      const start = listOf<{ fieldId?: string; key?: string; name?: string }>(meta, 'fields').find(
+        (f) => (f.name ?? '').toLowerCase() === 'start date'
+      )
+      const id = start?.fieldId ?? start?.key
+      if (id) return this.rememberStartField(id)
     }
+
+    // Fallback: the global field list. Custom-field ids are instance-wide, so matching by
+    // name here is still correct — it just can't confirm the field is on a create screen.
+    const all = (await this.req('GET', '/field')).data
+    const named = listOf<{ id?: string; name?: string; schema?: { type?: string } }>(all, 'fields').find(
+      (f) => (f.name ?? '').toLowerCase() === 'start date' && f.schema?.type === 'date'
+    )
+    if (named?.id) return this.rememberStartField(named.id)
+
+    console.warn(`[PM] Jira: no "Start date" field found on project ${project} — start dates won't sync.`)
     this.startField = ''
     return this.startField
+  }
+
+  private rememberStartField(id: string): string {
+    this.startField = id
+    startFieldByBase.set(this.base, id)
+    return id
   }
 
   /**
