@@ -16,6 +16,21 @@ export interface DragState {
   dragMoved: boolean
 }
 
+/**
+ * The dates to write when a bar edge is dragged. Normally only the dragged end moves, but
+ * a task with just one date renders its bar from whichever date it has — so resizing it
+ * must fill the missing end too. Without that the bar visibly stretches while the empty
+ * date stays empty, and the next render snaps it back to a single day.
+ */
+export function resizePatch(
+  side: 'left' | 'right',
+  dates: { oldStart: string; oldDue: string; newStart: string; newDue: string }
+): Partial<Task> {
+  const { oldStart, oldDue, newStart, newDue } = dates
+  if (side === 'left') return oldDue ? { start: newStart } : { start: newStart, due: newDue }
+  return oldStart ? { due: newDue } : { start: newStart, due: newDue }
+}
+
 export function makeDragState(): DragState {
   return {
     isDragging: false,
@@ -99,12 +114,12 @@ export function attachDragHandle(
       const oldStart = drag.dragTask.start
       const oldDue = drag.dragTask.due
 
-      const patch: Partial<Task> = {}
-      if (drag.dragSide === 'left') {
-        patch.start = xToDate(cfg, snappedX).toString()
-      } else {
-        patch.due = xToDate(cfg, snappedRight).subtract({ days: 1 }).toString()
-      }
+      const patch = resizePatch(drag.dragSide === 'left' ? 'left' : 'right', {
+        oldStart,
+        oldDue,
+        newStart: xToDate(cfg, snappedX).toString(),
+        newDue: xToDate(cfg, snappedRight).subtract({ days: 1 }).toString()
+      })
       try {
         await plugin.store.updateTask(project, taskId, patch)
       } catch (err) {
