@@ -551,12 +551,13 @@ export class ProjectView extends ItemView {
       const icon = getStatusConfig(statuses, t.status)?.icon
       return icon ? `${icon} ` : ''
     }
-    // Linked issue keys sit between the title and the due date, e.g. "Child [ENG-123] _(2026-08-20)_".
-    // Tasks with no link contribute nothing, not an empty pair of brackets.
+    // Linked issue keys sit between the title and the due date, e.g. "Child [ENG-123] _(2026-08-20)_",
+    // as a Markdown link to the issue when the connector supplies a URL. Tasks with no link
+    // contribute nothing, not an empty pair of brackets.
     const fmtKeys = (t: Task): string =>
       this.plugin.connectors
         .taskBadges(project, t)
-        .map((b) => ` [${b.label}]`)
+        .map((b) => (b.href ? ` [${b.label}](${b.href})` : ` [${b.label}]`))
         .join('')
     // Prefix a subtask with its ancestor chain: "Parent > Child > …".
     const titlePath = (f: FlatTask): string => {
