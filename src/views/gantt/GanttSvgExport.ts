@@ -1,4 +1,4 @@
-import type { GanttGranularity, PriorityConfig, Project, StatusConfig, Task } from '../../types'
+import type { GanttGranularity, PriorityConfig, Project, StatusConfig, Task, TaskBadge } from '../../types'
 import { flattenTasks, collectAllAssignees } from '../../store/TaskTreeOps'
 import { getStatusConfig, getPriorityConfig, stringToColor } from '../../utils'
 import { displayName, initialsFor } from '../../ui/primitives/Avatar'
@@ -6,7 +6,7 @@ import { parsePlainDate, today } from '../../dates'
 import { buildTimelineConfig, dateToX, PRIORITY_MARK } from './TimelineConfig'
 
 // ── Layout constants (base, zoom = 1) ───────────────────────────────────────
-const LABEL_W = 240
+const TITLE_COL_W = 240
 const TOOLBAR_H = 44
 const HEADER_H = 56
 const CHART_TOP = TOOLBAR_H + HEADER_H
@@ -18,6 +18,9 @@ const AVATAR_R = 8
 const AVATAR_STEP = 13
 const AVATAR_EDGE_GAP = 3
 const DAY_MIN = 16
+const BADGE_H = 14
+const BADGE_GAP = 4
+const LABEL_PAD = 8
 const MILESTONE_COLOR = '#8fd9ad'
 const ACCENT = '#6c8cd5'
 
@@ -25,15 +28,46 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+/** Width of a badge chip — the text plus horizontal padding, at .bdgt's 9px. */
+function badgeChipW(label: string): number {
+  return label.length * 5.6 + 10
+}
+
+/**
+ * Overlapping initial-avatars laid out right-to-left from `rightX`, capped at three
+ * with a "+N" bubble for the rest. Shared by the bars and the label column so both
+ * stacks look identical.
+ */
+function avatarStack(names: string[], rightX: number): string {
+  const shown = Math.min(3, names.length)
+  const overflow = names.length - shown
+  const out: string[] = []
+  for (let k = shown - 1; k >= 0; k--) {
+    const cx = rightX - AVATAR_R - AVATAR_EDGE_GAP - k * AVATAR_STEP
+    const isOver = overflow > 0 && k === shown - 1
+    const fill = isOver ? '#555b66' : stringToColor(names[k])
+    const text = isOver ? `+${overflow + 1}` : initialsFor(names[k])
+    out.push(`<circle cx="${cx}" cy="0" r="${AVATAR_R}" fill="${fill}" stroke="rgba(255,255,255,0.7)"/>`)
+    out.push(`<text class="av" x="${cx}" y="0">${esc(text)}</text>`)
+  }
+  return out.join('')
+}
+
 interface RowGeom {
   task: Task
   depth: number
+  badges: TaskBadge[]
   isSummary: boolean
   barX0: number | null
   barW0: number | null
   msX0: number | null
   inX0: number | null
   outX0: number | null
+}
+
+export interface GanttSvgOptions {
+  /** Short labels (e.g. a linked issue key) to show beside each task, as in the on-screen column. */
+  badgesOf?: (task: Task) => TaskBadge[]
 }
 
 /**
@@ -47,7 +81,8 @@ export function buildGanttSvg(
   statuses: StatusConfig[],
   priorities: PriorityConfig[],
   granularity: GanttGranularity,
-  exportedAt: string
+  exportedAt: string,
+  opts: GanttSvgOptions = {}
 ): string {
   const cfg = buildTimelineConfig(project.tasks, granularity, 1)
   const flat = flattenTasks(project.tasks)
@@ -82,8 +117,25 @@ export function buildGanttSvg(
       }
     }
     const isSummary = !isMs && task.subtasks.length > 0 && barX0 !== null
-    return { task, depth: f.depth, isSummary, barX0, barW0, msX0, inX0, outX0 }
+    return { task, depth: f.depth, badges: opts.badgesOf?.(task) ?? [], isSummary, barX0, barW0, msX0, inX0, outX0 }
   })
+
+  // The label column reserves fixed right-hand zones for badges and avatars, sized to
+  // the widest row, so both line up as sub-columns and the title never collides with
+  // them. Absent either, the zone costs nothing and the title reclaims the space.
+  const badgeZone = rows.reduce(
+    (m, r) =>
+      Math.max(
+        m,
+        r.badges.reduce((w, b) => w + badgeChipW(b.label) + BADGE_GAP, 0)
+      ),
+    0
+  )
+  const avatarMax = rows.reduce((m, r) => Math.max(m, Math.min(3, r.task.assignees.length)), 0)
+  const avatarZone = avatarMax ? AVATAR_R * 2 + AVATAR_EDGE_GAP + (avatarMax - 1) * AVATAR_STEP : 0
+  const LABEL_W = TITLE_COL_W + badgeZone + avatarZone
+  const avRight = LABEL_W - LABEL_PAD
+  const badgeStart = avRight - avatarZone - badgeZone
 
   const anchor = new Map<string, { inX0: number; outX0: number }>()
   for (const r of rows) if (r.inX0 !== null && r.outX0 !== null) anchor.set(r.task.id, { inX0: r.inX0, outX0: r.outX0 })
@@ -135,7 +187,6 @@ export function buildGanttSvg(
   const bodyParts: string[] = []
   const msPillParts: string[] = []
   const msLineParts: string[] = []
-  const labelMaxChars = Math.max(6, Math.floor((LABEL_W - 26) / 7))
   rows.forEach((r, i) => {
     const task = r.task
     const lx = 8 + r.depth * 16
@@ -148,13 +199,26 @@ export function buildGanttSvg(
     const barH = ROW_H - BAR_PAD * 2
     const hasKids = i + 1 < rows.length && rows[i + 1].depth > r.depth
     const name = displayName(task.title)
-    const labelMax = Math.max(4, labelMaxChars - r.depth * 2)
-    const labelText = name.length > labelMax ? name.slice(0, labelMax - 1) + '…' : name
+    const titleX = lx + 14
+    const titleMax = Math.max(4, Math.floor((badgeStart - 6 - titleX) / 7))
+    const labelText = name.length > titleMax ? name.slice(0, titleMax - 1) + '…' : name
 
-    // Left (frozen) label + collapse toggle.
+    // Left (frozen) column: collapse toggle, title, badges, assignee avatars — the
+    // same row content as the on-screen label column.
     const lparts: string[] = []
     if (hasKids) lparts.push(`<text class="ctoggle" data-id="${esc(task.id)}" x="${lx}" y="${cy}">▾</text>`)
-    lparts.push(`<text class="rlabel" x="${lx + 14}" y="${cy}">${esc(labelText)}</text>`)
+    lparts.push(`<text class="rlabel" x="${titleX}" y="${cy}">${esc(labelText)}</text>`)
+    let bx = badgeStart
+    for (const badge of r.badges) {
+      const w = badgeChipW(badge.label)
+      const chip = `<g class="bdg" transform="translate(${bx},${cy})"><rect x="0" y="${-BADGE_H / 2}" width="${w}" height="${BADGE_H}" rx="3"/><text class="bdgt" x="${w / 2}" y="0">${esc(badge.label)}</text></g>`
+      // Opened in a browser the chip follows its link, matching the clickable badge in-app.
+      lparts.push(badge.href ? `<a href="${esc(badge.href)}" target="_blank" rel="noopener">${chip}</a>` : chip)
+      bx += w + BADGE_GAP
+    }
+    if (task.assignees.length) {
+      lparts.push(`<g transform="translate(0,${cy})">${avatarStack(task.assignees.map(displayName), avRight)}</g>`)
+    }
     leftParts.push(`<g class="lrow" data-id="${esc(task.id)}" transform="translate(0,${y})">${lparts.join('')}</g>`)
 
     // Body.
@@ -202,20 +266,8 @@ export function buildGanttSvg(
           parts.push(`<text class="pmark" x="${bx + 5}" y="${cy}" fill="${priority}">${esc(pmark)}</text>`)
         }
         if (task.assignees.length) {
-          const names = task.assignees.map(displayName)
-          const shown = Math.min(3, names.length)
-          const overflow = names.length - shown
-          const av: string[] = []
-          for (let k = shown - 1; k >= 0; k--) {
-            const acx = -AVATAR_R - AVATAR_EDGE_GAP - k * AVATAR_STEP
-            const isOver = overflow > 0 && k === shown - 1
-            const aFill = isOver ? '#555b66' : stringToColor(names[k])
-            const aText = isOver ? `+${overflow + 1}` : initialsFor(names[k])
-            av.push(`<circle cx="${acx}" cy="0" r="${AVATAR_R}" fill="${aFill}" stroke="rgba(255,255,255,0.7)"/>`)
-            av.push(`<text class="av" x="${acx}" y="0">${esc(aText)}</text>`)
-          }
           parts.push(
-            `<g class="avg" data-x0="${rightX0}" data-ty="${cy}" transform="translate(${LABEL_W + rightX0},${cy})">${av.join('')}</g>`
+            `<g class="avg" data-x0="${rightX0}" data-ty="${cy}" transform="translate(${LABEL_W + rightX0},${cy})">${avatarStack(task.assignees.map(displayName), 0)}</g>`
           )
         }
       }
@@ -297,6 +349,8 @@ export function buildGanttSvg(
     .ctoggle:hover { fill: var(--text); }
     .mspilltext { font-size: 10px; font-weight: 700; fill: #0b3d24; text-anchor: middle; dominant-baseline: central; }
     .hdiv, .vdiv { stroke: var(--border); stroke-width: 1; }
+    .bdg rect { fill: none; stroke: var(--muted); stroke-width: 1; opacity: 0.8; }
+    .bdgt { font-size: 9px; font-weight: 600; fill: var(--muted); text-anchor: middle; dominant-baseline: central; }
     .av { font-size: 9px; font-weight: 700; fill: #fff; text-anchor: middle; dominant-baseline: central; }
     .depline { fill: none; stroke: ${ACCENT}; stroke-width: 1.3; stroke-dasharray: 4 3; opacity: 0.55; }
     .pm-ah { fill: ${ACCENT}; opacity: 0.7; }
