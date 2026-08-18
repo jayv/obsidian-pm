@@ -15,6 +15,7 @@ import {
   isLinkChecked,
   linkTask,
   queueDirty,
+  renameAssigneeMapping,
   unlinkTask
 } from './taskLink'
 import { hasConflicts, runSync } from './sync'
@@ -67,6 +68,16 @@ export class JiraConnector implements Connector {
   onTaskDeleted(project: Project, task: Task): void {
     const cfg = projectCfg(project)
     if (cfg) ignoreOnDelete(cfg, task)
+  }
+
+  /**
+   * A team member was renamed. The assignee map is keyed by the member's name, so the
+   * entry has to move with them — otherwise the rename reads as a brand-new, unmapped
+   * member and assignment sync silently stops for them.
+   */
+  onAssigneeRenamed(project: Project, from: string, to: string): void {
+    const cfg = projectCfg(project)
+    if (cfg) renameAssigneeMapping(cfg.assigneeMap, from, to)
   }
 
   /**

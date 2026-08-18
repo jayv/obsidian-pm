@@ -28,6 +28,11 @@ export interface Connector {
   onProjectLoaded?(project: Project): void | Promise<void>
   /** A project finished saving. */
   onProjectSaved?(project: Project): void | Promise<void>
+  /**
+   * A team member was renamed. Mappings keyed by the member's name (e.g. the Jira
+   * assignee map) have to follow, or the renamed member reads as unmapped.
+   */
+  onAssigneeRenamed?(project: Project, from: string, to: string): void
   /** Periodic sync opportunity; resolves whether local data changed (→ refresh views). */
   syncTick?(project: Project): Promise<{ changed: boolean }>
   /** Run a sync now on user request (e.g. a toolbar button). Refreshes views itself. */
@@ -148,6 +153,10 @@ export class ConnectorRegistry {
 
   async projectSaved(project: Project): Promise<void> {
     for (const c of this.activeFor(project)) await c.onProjectSaved?.(project)
+  }
+
+  assigneeRenamed(project: Project, from: string, to: string): void {
+    for (const c of this.activeFor(project)) c.onAssigneeRenamed?.(project, from, to)
   }
 
   /** Build (once), cache, and run onload for a connector. */

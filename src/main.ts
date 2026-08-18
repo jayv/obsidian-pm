@@ -57,6 +57,7 @@ export default class PMPlugin extends Plugin {
     this.store.onTaskDeleted = (project, task) => this.connectors.taskDeleted(project, task)
     this.store.onProjectLoaded = (project) => void this.connectors.projectLoaded(project)
     this.store.onProjectSaved = (project) => void this.connectors.projectSaved(project)
+    this.store.onAssigneeRenamed = (project, from, to) => this.connectors.assigneeRenamed(project, from, to)
     this.store.isConnectorKey = (key) => this.connectors.ownsKey(key)
     this.notifier = new Notifier(this)
     this.router = new PMViewRouter(this)

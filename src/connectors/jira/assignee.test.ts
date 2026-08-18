@@ -13,6 +13,7 @@ import {
   shadowOf
 } from './sync'
 import { conflictFields } from './reconcile'
+import { renameAssigneeMapping } from './taskLink'
 
 afterEach(() => stopMockServer())
 
@@ -190,5 +191,39 @@ describe('jira sync — assignee conflicts [both]', () => {
     project.teamMembers.push('Frank')
     const results = await searchJiraUsers(plugin, project, 'Frank')
     expect(results.map((u) => u.displayName)).toContain('Frank')
+  })
+})
+
+describe('jira assignee map — team member renames [local]', () => {
+  const map = () => [
+    { name: 'Alice', jiraUser: 'mock:alice' },
+    { name: 'Bob', jiraUser: 'mock:bob' }
+  ]
+
+  it('follows the member so they stay mapped', () => {
+    const m = map()
+    renameAssigneeMapping(m, 'Alice', 'Alice Smith')
+    expect(m).toEqual([
+      { name: 'Alice Smith', jiraUser: 'mock:alice' },
+      { name: 'Bob', jiraUser: 'mock:bob' }
+    ])
+  })
+
+  it('keeps the surviving member’s own mapping when two members merge', () => {
+    const m = map()
+    renameAssigneeMapping(m, 'Alice', 'Bob')
+    expect(m).toEqual([{ name: 'Bob', jiraUser: 'mock:bob' }])
+  })
+
+  it('drops the mapping when the member is cleared', () => {
+    const m = map()
+    renameAssigneeMapping(m, 'Alice', '')
+    expect(m).toEqual([{ name: 'Bob', jiraUser: 'mock:bob' }])
+  })
+
+  it('ignores a rename of someone who was never mapped', () => {
+    const m = map()
+    renameAssigneeMapping(m, 'Carol', 'Carol Jones')
+    expect(m).toEqual(map())
   })
 })

@@ -81,6 +81,22 @@ export function setOutbound(entries: JiraValueMap[], entry: JiraValueMap): void 
  * Upsert a team member's JIRA-user mapping by member name. An empty `jiraUser`
  * removes the row; otherwise it updates an existing row or appends a new one.
  */
+/**
+ * Move a mapping when its team member is renamed. The map is keyed by the member's name,
+ * so without this the renamed member reads as brand-new and unmapped, and assignment sync
+ * silently stops for them.
+ *
+ * An empty `to` (the member was cleared) drops the entry. Renaming onto a member who
+ * already has a mapping keeps theirs — the surviving member's own mapping is the better
+ * of the two — and drops the row being renamed away.
+ */
+export function renameAssigneeMapping(map: JiraAssignee[], from: string, to: string): void {
+  const at = map.findIndex((e) => e.name === from)
+  if (at < 0) return
+  if (!to || map.some((e) => e.name === to)) map.splice(at, 1)
+  else map[at].name = to
+}
+
 export function upsertAssigneeMapping(
   map: JiraAssignee[],
   member: string,
