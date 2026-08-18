@@ -63,12 +63,13 @@ function logApi(
   reqBody: unknown,
   status: number,
   resText: string | undefined,
-  resHeaders?: Record<string, string | string[] | undefined>
+  resHeaders?: Record<string, string | string[] | undefined>,
+  ms?: number
 ): void {
   if (!apiDebug) return
   const parsed = parseJson(resText)
   const ok = status >= 200 && status < 300
-  console.debug(`[PM-JIRA] ${method} ${url} → ${status}`, {
+  console.debug(`[PM-JIRA] ${method} ${url} → ${status}${ms === undefined ? '' : ` (${ms}ms)`}`, {
     request: reqBody,
     response: parsed,
     ...(parsed === null && !ok ? { rawBody: resText?.slice(0, 2000) ?? '(empty)', headers: resHeaders } : {})
@@ -112,6 +113,10 @@ interface RawResponse {
 
 type HttpsModule = typeof import('node:https')
 
+/** Pooled keep-alive agent — a sync is many small requests; a TLS handshake each would
+ *  dominate the wall clock. Created once, on first use of the Node transport. */
+let keepAliveAgent: import('node:https').Agent | undefined
+
 /**
  * Obsidian's `requestUrl` goes through Electron's network stack, which attaches the
  * session's cookies and an app Origin. Jira Cloud then treats a write as browser traffic
@@ -139,6 +144,7 @@ async function nodeRequest(
   body: string | undefined
 ): Promise<RawResponse> {
   const u = new URL(url)
+  keepAliveAgent = keepAliveAgent ?? new https.Agent({ keepAlive: true, maxSockets: 8 })
   return new Promise<RawResponse>((resolve, reject) => {
     const req = https.request(
       {
@@ -146,6 +152,7 @@ async function nodeRequest(
         port: u.port || 443,
         path: u.pathname + u.search,
         method,
+        agent: keepAliveAgent,
         // No Accept-Encoding: Node won't decompress for us, so ask for plain text.
         headers: {
           ...headers,
@@ -224,6 +231,7 @@ export class JiraClient {
       return { status: res.status, text: res.text, headers: res.headers }
     }
 
+    const started = Date.now()
     let res = await send()
     // Learn (or refresh) the XSRF token from any response that issues one.
     const issued = readXsrfCookie(res.headers)
@@ -243,7 +251,7 @@ export class JiraClient {
       res = await send()
     }
     const ok = res.status >= 200 && res.status < 300
-    logApi(method, this.base + path, body, res.status, res.text, res.headers)
+    logApi(method, this.base + path, body, res.status, res.text, res.headers, Date.now() - started)
     // NB: don't touch res.json — in real Obsidian it's a getter that JSON.parses
     // and throws on an empty body (204/empty 200, e.g. transitions, PUT edits,
     // property writes). Parse res.text defensively instead.

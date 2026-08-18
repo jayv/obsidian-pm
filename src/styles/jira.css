@@ -367,3 +367,17 @@
 .pm-jira-pick-table .pm-pick-due {
   font-variant-numeric: tabular-nums;
 }
+
+/* Sync progress popup (an Obsidian notice, so it sits in the top-right corner). */
+.pm-jira-progress-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.pm-jira-progress-phase {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+.pm-jira-progress-bar {
+  margin-top: 6px;
+  min-width: 180px;
+}

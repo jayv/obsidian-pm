@@ -22,6 +22,7 @@ import { renderJiraGlobalSettings } from './ui/JiraGlobalSettings'
 import { renderJiraProjectPanel } from './ui/JiraProjectPanel'
 import { JiraImportModal } from './ui/JiraImportModal'
 import { JiraMergeModal } from './ui/JiraMergeModal'
+import { SyncProgress } from './ui/SyncProgress'
 
 /** The JIRA integration as a self-contained connector (read-only / dry-run). */
 export class JiraConnector implements Connector {
@@ -89,8 +90,14 @@ export class JiraConnector implements Connector {
   }
 
   async syncNow(project: Project): Promise<void> {
+    // A manual sync is many round-trips; show live progress so a slow instance doesn't
+    // look frozen. The periodic tick stays silent.
+    const progress = new SyncProgress()
     try {
-      const r = await runSync(this.plugin, project)
+      const r = await runSync(this.plugin, project, {
+        onProgress: (phase, done, total) => progress.update(phase, done, total)
+      })
+      progress.hide()
       const lines = [
         'Jira sync complete',
         `  Created in Jira: ${r.jiraCreated}`,
@@ -114,6 +121,8 @@ export class JiraConnector implements Connector {
     } catch (e) {
       new Notice('Jira sync failed. Check the console.')
       console.error('[PM] Jira sync failed', e)
+    } finally {
+      progress.hide() // never leave the popup behind on an early return or a throw
     }
   }
 

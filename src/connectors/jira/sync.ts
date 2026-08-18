@@ -824,6 +824,11 @@ export interface SyncOptions {
    * routine poll costs O(changes) requests instead of O(tree) + metadata every minute.
    */
   full?: boolean
+  /**
+   * Progress callback for long syncs. `done`/`total` are omitted for indeterminate
+   * phases (metadata, fetching) and set while stepping through tasks.
+   */
+  onProgress?: (phase: string, done?: number, total?: number) => void
 }
 
 /**
@@ -837,6 +842,8 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   const empty = { changed: false, jiraCreated: 0, jiraUpdated: 0, obsidianUpdated: 0, membersAdded: 0, conflicts: 0 }
   if (!r || !r.cfg.epicId) return { ...empty, skippedTooDeep: [], skippedNoParent: [], newIssues: [] }
   const { client, cfg } = r
+  const progress = opts.onProgress ?? ((): void => undefined)
+  progress('Reading Jira metadata…')
   const startField = await client.startFieldId(cfg.epicId)
   // The type plan needs /issuetype + the root issue; only built when we actually have a
   // new task to create, so a routine "check for changes" tick fetches no type metadata.
@@ -870,9 +877,12 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   const patches: { taskId: string; patch: Partial<Task> }[] = []
 
   // 1. Create opted-in keyless tasks (parent-first). Only `sync === true` ones.
+  const toCreate = flat.filter((f) => !taskExt(f.task).key && taskExt(f.task).sync === true).length
+  let createdSoFar = 0
   for (const f of flat) {
     const ext = taskExt(f.task)
     if (ext.key || ext.sync !== true) continue
+    progress('Creating issues in Jira', createdSoFar++, toCreate)
     typePlan = typePlan ?? (await buildTypePlan(client, cfg)) // lazy: only when creating
     const parentId = parentOf.get(f.task.id) ?? null
     // Same rule as export: never re-root a child onto the epic because its parent isn't
@@ -912,6 +922,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   // Full sync: crawl the whole subtree. Incremental: pull only the tracked subtree
   // changed since the watermark, plus the issues behind locally-dirty tasks (whose JIRA
   // side may be unchanged but still need a push) — so an idle tick fetches nothing.
+  progress('Fetching issues from Jira…')
   let all: JiraIssue[]
   if (full) {
     all = await epicDescendants(client, cfg.epicId)
@@ -940,10 +951,13 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     newIssues.push(issue) // under the epic, not local, not created this run, not ignored
   }
 
+  const linked = flat.filter((f) => taskExt(f.task).sync && taskExt(f.task).key).length
+  let checked = 0
   for (const f of flat) {
     const t = f.task
     const ext = taskExt(t)
     if (!ext.sync || !ext.key) continue
+    progress('Reconciling tasks', checked++, linked)
     const issue = issueByKey.get(ext.key)
     if (!issue) continue // linked issue not under this epic — leave the task untouched
     const mine = shadowOf(t, keyOf)
