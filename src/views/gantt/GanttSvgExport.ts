@@ -176,7 +176,8 @@ export function buildGanttSvg(
       }
     }
   }
-  const todayX0 = dx(today())
+  // Centred in today's column, matching the milestone markers and the in-app chart.
+  const todayX0 = dx(today()) + cfg.dayWidth / 2
   const todayLine =
     todayX0 >= 0 && todayX0 <= BASE_W
       ? `<line class="todayline" data-x0="${todayX0}" x1="${LABEL_W + todayX0}" y1="${CHART_TOP}" x2="${LABEL_W + todayX0}" y2="${CHART_TOP}"/>`
@@ -339,7 +340,7 @@ export function buildGanttSvg(
     .dline { stroke: var(--gridd); stroke-width: 1; }
     .wkrect { fill: var(--wk); }
     .msline { stroke: ${MILESTONE_COLOR}; stroke-width: 1.5; stroke-dasharray: 4 4; opacity: 0.55; }
-    .todayline { stroke: #d86b6b; stroke-width: 1.5; stroke-dasharray: 5 4; opacity: 0.8; }
+    .todayline { stroke: #d86b6b; stroke-width: 2; stroke-dasharray: 5 4; opacity: 0.6; }
     .mlabel { font-size: 11px; font-weight: 600; }
     .dlabel { font-size: 9px; fill: var(--muted); text-anchor: middle; }
     .rlabel { font-size: 12px; dominant-baseline: middle; }

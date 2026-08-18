@@ -371,8 +371,10 @@
 
 /* Today line */
 .pm-gantt-today-line {
-  stroke: color-mix(in srgb, var(--color-red) 65%, transparent);
-  stroke-width: 1.5;
+  /* Wider than the grid so it reads at a glance, and softened so it doesn't
+     compete with the bars it crosses. */
+  stroke: color-mix(in srgb, var(--color-red) 55%, transparent);
+  stroke-width: 2;
   stroke-dasharray: 5 4;
 }
 .pm-gantt-today-diamond {

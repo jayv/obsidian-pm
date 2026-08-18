@@ -106,7 +106,9 @@ export function renderGridLines(ctx: RendererContext, totalRows: number): void {
 // ─── Today line ────────────────────────────────────────────────────────────
 
 export function renderTodayLine(ctx: RendererContext, svgHeight: number): void {
-  const x = dateToX(ctx.cfg, today())
+  // Centred in today's column, like milestone markers — sitting on the day's leading
+  // edge reads as "between yesterday and today" and misaligns with them.
+  const x = dateToX(ctx.cfg, today()) + ctx.cfg.dayWidth / 2
   if (x < 0 || x > ctx.cfg.totalWidth) return
 
   const g = svgEl('g', { class: 'pm-gantt-today-group' })
