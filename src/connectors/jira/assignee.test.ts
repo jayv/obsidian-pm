@@ -13,7 +13,7 @@ import {
   shadowOf
 } from './sync'
 import { conflictFields } from './reconcile'
-import { renameAssigneeMapping } from './taskLink'
+import { addMemberFromJira, renameAssigneeMapping } from './taskLink'
 
 afterEach(() => stopMockServer())
 
@@ -225,5 +225,34 @@ describe('jira assignee map — team member renames [local]', () => {
     const m = map()
     renameAssigneeMapping(m, 'Carol', 'Carol Jones')
     expect(m).toEqual(map())
+  })
+})
+
+describe('jira assignee map — add a member from Jira [local]', () => {
+  const ada = { accountId: 'acc:ada', displayName: 'Ada Lovelace' }
+
+  it('adds the member and their mapping in one step', () => {
+    const team: string[] = []
+    const m: { name: string; jiraUser: string; jiraDisplay?: string }[] = []
+
+    expect(addMemberFromJira(team, m, ada)).toEqual({ name: 'Ada Lovelace', added: true })
+    expect(team).toEqual(['Ada Lovelace'])
+    expect(m).toEqual([{ name: 'Ada Lovelace', jiraUser: 'acc:ada', jiraDisplay: 'Ada Lovelace' }])
+  })
+
+  it('reuses an existing member instead of adding a duplicate name', () => {
+    const team = ['ada lovelace']
+    const m: { name: string; jiraUser: string; jiraDisplay?: string }[] = []
+
+    expect(addMemberFromJira(team, m, ada)).toEqual({ name: 'ada lovelace', added: false })
+    // One member, and the mapping is keyed to the name the tasks already use.
+    expect(team).toEqual(['ada lovelace'])
+    expect(m).toEqual([{ name: 'ada lovelace', jiraUser: 'acc:ada', jiraDisplay: 'Ada Lovelace' }])
+  })
+
+  it('ignores a Jira user with no display name', () => {
+    const team: string[] = []
+    expect(addMemberFromJira(team, [], { accountId: 'acc:x', displayName: '  ' })).toBeNull()
+    expect(team).toEqual([])
   })
 })

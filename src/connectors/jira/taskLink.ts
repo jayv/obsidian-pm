@@ -82,6 +82,27 @@ export function setOutbound(entries: JiraValueMap[], entry: JiraValueMap): void 
  * removes the row; otherwise it updates an existing row or appends a new one.
  */
 /**
+ * Add a Jira user as a team member with their mapping already set, returning the member
+ * name used and whether a new member was created.
+ *
+ * Tasks reference assignees by name, so a member whose name already matches is reused
+ * rather than added a second time — matched case-insensitively, since two spellings would
+ * be two distinct people to every lookup. That case just fills in their mapping.
+ */
+export function addMemberFromJira(
+  teamMembers: string[],
+  map: JiraAssignee[],
+  user: { accountId: string; displayName: string }
+): { name: string; added: boolean } | null {
+  const name = user.displayName.trim()
+  if (!name) return null
+  const existing = teamMembers.find((m) => m.trim().toLowerCase() === name.toLowerCase())
+  if (!existing) teamMembers.push(name)
+  upsertAssigneeMapping(map, existing ?? name, user.accountId, user.displayName)
+  return { name: existing ?? name, added: !existing }
+}
+
+/**
  * Move a mapping when its team member is renamed. The map is keyed by the member's name,
  * so without this the renamed member reads as brand-new and unmapped, and assignment sync
  * silently stops for them.

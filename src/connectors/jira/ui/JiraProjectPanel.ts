@@ -7,7 +7,7 @@ import { confirmDialog } from '../../../ui/ModalFactory'
 import { safeAsync } from '../../../utils'
 import { isLocalhost } from '../JiraMockServer'
 import { cleanJira, diagnoseAccess, loadMappingValues, searchJiraUsers } from '../sync'
-import { setOutbound, stripJira, upsertAssigneeMapping } from '../taskLink'
+import { addMemberFromJira, setOutbound, stripJira, upsertAssigneeMapping } from '../taskLink'
 import { JiraImportModal } from './JiraImportModal'
 import { JiraExportModal } from './JiraExportModal'
 import type { JiraProjectConfig, JiraValueMap } from '../types'
@@ -141,7 +141,9 @@ export function renderJiraProjectPanel(
     return Boolean(e?.jiraUser && e.jiraUser.trim())
   }
   if (!project.teamMembers.length) {
-    amWrap.createDiv('pm-modal-hint').setText('Add team members above to map them to Jira users.')
+    amWrap
+      .createDiv('pm-modal-hint')
+      .setText('Add team members above to map them to Jira users, or add one from Jira below.')
   } else {
     // A member with no Jira-user mapping can't have their assignment synced, so flag
     // them up front (and per row) rather than letting it surface later as a conflict.
@@ -167,6 +169,7 @@ export function renderJiraProjectPanel(
     }
     updateSummary()
   }
+  renderAddFromJira(amWrap, plugin, project, cfg, markDirty, rerender)
 
   // Sync interval.
   const intervalWrap = section.createDiv('pm-jira-field')
@@ -300,14 +303,75 @@ function renderUserPicker(
   const input = wrap.createEl('input', { type: 'text', cls: 'pm-input' })
   input.placeholder = 'Search Jira user…'
   input.value = existing?.jiraDisplay ?? existing?.jiraUser ?? ''
-  const suggest = wrap.createDiv('pm-jira-suggest')
-  suggest.hide()
 
   const setMapping = (jiraUser: string, jiraDisplay?: string): void => {
     upsertAssigneeMapping(cfg.assigneeMap, member, jiraUser, jiraDisplay)
     markDirty()
   }
 
+  attachUserSuggest(wrap, input, plugin, project, {
+    onPick: (u) => {
+      setMapping(u.accountId, u.displayName)
+      input.value = u.displayName
+    },
+    // Manual text is kept as a literal accountId/name until a pick overrides it.
+    onType: (text) => setMapping(text)
+  })
+}
+
+/**
+ * "Add from Jira": search Jira's user directory and add the picked user as a team member
+ * with their mapping already filled in.
+ *
+ * Team members are freeform text created in Obsidian, so mapping them to Jira is normally
+ * a second, manual step per person — and a typo'd name is a member who silently never
+ * syncs. Starting from the Jira user makes the name and the mapping arrive together.
+ *
+ * Tasks reference assignees by name, so an existing member with the same name is reused
+ * rather than added twice; that just fills in their mapping.
+ */
+function renderAddFromJira(
+  parent: HTMLElement,
+  plugin: PMPlugin,
+  project: Project,
+  cfg: JiraProjectConfig,
+  markDirty: () => void,
+  rerender: () => void
+): void {
+  const wrap = parent.createDiv('pm-jira-add-member')
+  const input = wrap.createEl('input', { type: 'text', cls: 'pm-input' })
+  input.placeholder = '+ add team member from Jira…'
+
+  attachUserSuggest(wrap, input, plugin, project, {
+    onPick: (u) => {
+      const r = addMemberFromJira(project.teamMembers, cfg.assigneeMap, u)
+      if (!r) return
+      markDirty()
+      new Notice(r.added ? `Added ${r.name}.` : `Mapped "${r.name}" to ${u.displayName}.`)
+      input.value = ''
+      // The team list lives outside this panel, so re-render the whole modal.
+      rerender()
+    }
+  })
+}
+
+/**
+ * Jira user autocomplete for `input`, with the suggestion list rendered into `wrap`.
+ * Shared by the per-member picker and the "add from Jira" control so both get the same
+ * debounce and the same pick-before-blur behaviour.
+ */
+function attachUserSuggest(
+  wrap: HTMLElement,
+  input: HTMLInputElement,
+  plugin: PMPlugin,
+  project: Project,
+  handlers: {
+    onPick: (user: { accountId: string; displayName: string }) => void
+    onType?: (text: string) => void
+  }
+): void {
+  const suggest = wrap.createDiv('pm-jira-suggest')
+  suggest.hide()
   const close = (): void => {
     suggest.empty()
     suggest.hide()
@@ -326,8 +390,7 @@ function renderUserPicker(
       // mousedown (not click) fires before the input's blur, so the pick lands.
       item.addEventListener('mousedown', (ev) => {
         ev.preventDefault()
-        setMapping(u.accountId, u.displayName)
-        input.value = u.displayName
+        handlers.onPick(u)
         close()
       })
     }
@@ -336,8 +399,7 @@ function renderUserPicker(
 
   let timer = 0
   input.addEventListener('input', () => {
-    // Manual text is kept as a literal accountId/name until a pick overrides it.
-    setMapping(input.value)
+    handlers.onType?.(input.value)
     window.clearTimeout(timer)
     const q = input.value
     timer = window.setTimeout(() => void search(q), 250)

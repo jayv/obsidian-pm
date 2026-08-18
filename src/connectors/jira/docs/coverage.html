@@ -23,8 +23,8 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>173</strong> tests</span>
-    <span class="stat"><strong>46</strong> areas</span>
+    <span class="stat"><strong>180</strong> tests</span>
+    <span class="stat"><strong>48</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
 
@@ -122,6 +122,17 @@
 <tr><td>pushes the assignee once the member is mapped, clearing the pending conflict</td><td class="file">assignee.test.ts</td></tr>
 <tr><td>an assignee conflict alongside a Jira-only change shows ONLY the assignee as a decision</td><td class="file">assignee.test.ts</td></tr>
 <tr><td>a team member added after the first sync is findable in the Jira user picker (mock)</td><td class="file">assignee.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira assignee map — team member renames <span class="dir dir-local">local</span> <span class="muted">4</span></td></tr>
+    <tr><td>follows the member so they stay mapped</td><td class="file">assignee.test.ts</td></tr>
+<tr><td>keeps the surviving member’s own mapping when two members merge</td><td class="file">assignee.test.ts</td></tr>
+<tr><td>drops the mapping when the member is cleared</td><td class="file">assignee.test.ts</td></tr>
+<tr><td>ignores a rename of someone who was never mapped</td><td class="file">assignee.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira assignee map — add a member from Jira <span class="dir dir-local">local</span> <span class="muted">3</span></td></tr>
+    <tr><td>adds the member and their mapping in one step</td><td class="file">assignee.test.ts</td></tr>
+<tr><td>reuses an existing member instead of adding a duplicate name</td><td class="file">assignee.test.ts</td></tr>
+<tr><td>ignores a Jira user with no display name</td><td class="file">assignee.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">jira clean (cleanJira) <span class="dir dir-both">both</span> <span class="muted">2</span></td></tr>
     <tr><td>deletes issue + epic properties, keeps the issues, and resets all local state</td><td class="file">clean.test.ts</td></tr>

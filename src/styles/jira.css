@@ -232,8 +232,16 @@
 .pm-jira-merge-radio {
   color: var(--interactive-accent);
 }
-.pm-jira-user {
+.pm-jira-user,
+.pm-jira-add-member {
   position: relative;
+}
+/* Sits below the assignee-map rows; the suggest list anchors to it. */
+.pm-jira-add-member {
+  margin-top: 8px;
+}
+.pm-jira-add-member .pm-input {
+  width: 100%;
 }
 .pm-jira-user .pm-input {
   width: 100%;
