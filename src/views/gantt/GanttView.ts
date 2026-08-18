@@ -167,7 +167,10 @@ export class GanttView implements SubView {
         this.plugin.settings.priorities,
         this.granularity,
         new Date().toLocaleString(),
-        { roster: this.roster() }
+        {
+          roster: this.roster(),
+          badgesOf: (task: Task) => this.plugin.connectors.taskBadges(this.project, task)
+        }
       )
       // Trigger a save dialog so the user picks where to write the file.
       const blob = new Blob([svg], { type: 'image/svg+xml' })
