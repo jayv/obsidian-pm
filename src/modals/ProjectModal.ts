@@ -1,4 +1,4 @@
-import { App, ButtonComponent, Modal } from 'obsidian'
+import { App, ButtonComponent, Modal, Notice } from 'obsidian'
 import type PMPlugin from '../main'
 import { Project, CustomFieldDef, makeId, makeProject } from '../types'
 import { rebuildTaskIndex } from '../store'
@@ -181,7 +181,10 @@ export class ProjectModal extends Modal {
         })
         input.placeholder = 'Name'
         input.addEventListener('change', () => {
-          this.project.teamMembers[i] = input.value
+          // Re-point every task assigned to them, not just the list entry — see
+          // ProjectStore.renameAssignee for why the list alone isn't enough.
+          const moved = this.plugin.store.renameAssignee(this.project, this.project.teamMembers[i], input.value)
+          if (moved) new Notice(`Renamed on ${moved} task${moved === 1 ? '' : 's'}.`)
           renderMembers()
         })
         const rm = row.createEl('button', { text: '✕', cls: 'pm-settings-del' })

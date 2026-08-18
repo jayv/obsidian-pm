@@ -887,3 +887,76 @@ describe('ProjectStore team membership follows assignment', () => {
     expect(project.teamMembers.filter((m) => m === 'Dave')).toHaveLength(1)
   })
 })
+
+describe('ProjectStore renameAssignee', () => {
+  async function projectWithAssignees() {
+    const { store, vault, app } = newStore()
+    const project = await store.createProject('Team', 'Projects')
+    const ada = await addNamed(store, project, 'Ada task')
+    const other = await addNamed(store, project, 'Nobody task')
+    await store.updateTask(project, ada.id, { assignees: ['Ada'] })
+    return { store, vault, app, project, ada, other }
+  }
+
+  it('moves every task off the old name and keeps one member entry', async () => {
+    const { store, project, ada } = await projectWithAssignees()
+
+    const moved = store.renameAssignee(project, 'Ada', 'Ada Lovelace')
+
+    expect(moved).toBe(1)
+    expect(project.teamMembers).toEqual(['Ada Lovelace'])
+    expect(expectDefined(project.taskIndex.get(ada.id)).task.assignees).toEqual(['Ada Lovelace'])
+  })
+
+  it('persists the rename to the task file and leaves untouched tasks alone', async () => {
+    const { store, vault, app, project, ada, other } = await projectWithAssignees()
+    vault.resetCounts()
+
+    store.renameAssignee(project, 'Ada', 'Ada Lovelace')
+    await store.saveProject(project)
+
+    expect(vault.readSync(fileAt(app, ada.filePath))).toContain('Ada Lovelace')
+    expect(vault.modifyCount.get(expectDefined(other.filePath)) ?? 0).toBe(0)
+  })
+
+  it('survives a reload — the old name does not come back as a second member', async () => {
+    const { store, app, project } = await projectWithAssignees()
+
+    store.renameAssignee(project, 'Ada', 'Ada Lovelace')
+    await store.saveProject(project)
+    const reloaded = expectDefined(await store.loadProject(fileAt(app, project.filePath)))
+
+    expect(reloaded.teamMembers).toEqual(['Ada Lovelace'])
+  })
+
+  it('merges rather than duplicating when renaming onto an existing member', async () => {
+    const { store, project, ada } = await projectWithAssignees()
+    project.teamMembers.push('Grace')
+    await store.updateTask(project, ada.id, { assignees: ['Ada', 'Grace'] })
+
+    const moved = store.renameAssignee(project, 'Ada', 'Grace')
+
+    expect(moved).toBe(1)
+    expect(project.teamMembers).toEqual(['Grace'])
+    expect(expectDefined(project.taskIndex.get(ada.id)).task.assignees).toEqual(['Grace'])
+  })
+
+  it('clearing a name unassigns the tasks and drops the member', async () => {
+    const { store, project, ada } = await projectWithAssignees()
+
+    store.renameAssignee(project, 'Ada', '')
+
+    expect(project.teamMembers).toEqual([])
+    expect(expectDefined(project.taskIndex.get(ada.id)).task.assignees).toEqual([])
+  })
+
+  it('notifies connectors so a mapping keyed by the old name can follow', async () => {
+    const { store, project } = await projectWithAssignees()
+    const seen = vi.fn<NonNullable<ProjectStore['onAssigneeRenamed']>>()
+    store.onAssigneeRenamed = seen
+
+    store.renameAssignee(project, 'Ada', 'Ada Lovelace')
+
+    expect(seen).toHaveBeenCalledWith(project, 'Ada', 'Ada Lovelace')
+  })
+})

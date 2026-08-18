@@ -144,6 +144,8 @@ export class ProjectStore {
   onTaskDeleted?: (project: Project, task: Task) => void
   onProjectLoaded?: (project: Project) => void
   onProjectSaved?: (project: Project) => void
+  /** A team member was renamed, so connectors can move any mapping keyed by their name. */
+  onAssigneeRenamed?: (project: Project, from: string, to: string) => void
   /** Predicate: does a frontmatter key belong to a connector? (round-tripped into `ext`). */
   isConnectorKey?: (key: string) => boolean
 
@@ -480,6 +482,45 @@ export class ProjectStore {
   }
 
   // ─── Save ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Rename a team member in one step: their slot in `teamMembers` and the `assignees` of
+   * every task that names them.
+   *
+   * Renaming only the member list leaves the old name on the tasks, and `absorbAssignees`
+   * puts it straight back at the next save — so the rename looks like it created a
+   * duplicate member, with the tasks still on the old one. Renaming onto a name that is
+   * already a member merges the two rather than duplicating.
+   *
+   * Returns the number of tasks whose assignees changed. The tasks are marked dirty, so
+   * the next `saveProject` writes them.
+   */
+  renameAssignee(project: Project, from: string, to: string): number {
+    const next = to.trim()
+    const at = project.teamMembers.indexOf(from)
+    if (at >= 0) {
+      const mergeInto = next ? project.teamMembers.findIndex((m, i) => i !== at && m === next) : -1
+      if (mergeInto >= 0 || !next) project.teamMembers.splice(at, 1)
+      else project.teamMembers[at] = next
+    } else if (next && !project.teamMembers.includes(next)) {
+      project.teamMembers.push(next)
+    }
+    if (!from || from === next) return 0
+
+    const changed: string[] = []
+    const now = new Date().toISOString()
+    for (const { task } of flattenTasks(project.tasks)) {
+      if (!task.assignees.includes(from)) continue
+      const kept = task.assignees.filter((n) => n !== from)
+      // Dropping the old name is the whole change when the task already names the new one.
+      task.assignees = next && !kept.includes(next) ? [...kept, next] : kept
+      task.updatedAt = now
+      changed.push(task.id)
+    }
+    this.markDirty(project, changed, 'fm')
+    this.onAssigneeRenamed?.(project, from, next)
+    return changed.length
+  }
 
   async saveProject(project: Project): Promise<void> {
     // A project with no file path hasn't been created yet (e.g. the new-project modal
