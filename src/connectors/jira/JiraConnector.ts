@@ -99,7 +99,8 @@ export class JiraConnector implements Connector {
         `  Updated in Obsidian: ${r.obsidianUpdated}`,
         `  Created Team Members: ${r.membersAdded}`,
         `  Conflicts: ${r.conflicts}`,
-        ...(r.skippedTooDeep.length ? [`  Too deeply nested for Jira (not created): ${r.skippedTooDeep.length}`] : [])
+        ...(r.skippedTooDeep.length ? [`  Too deeply nested for Jira (not created): ${r.skippedTooDeep.length}`] : []),
+        ...(r.skippedNoParent.length ? [`  Waiting on an unsynced parent: ${r.skippedNoParent.length}`] : [])
       ]
       new Notice(lines.join('\n'))
       this.plugin.refreshProjectViews()

@@ -661,6 +661,14 @@ export async function exportTasks(
   for (const f of flat) {
     if (!selected.has(f.task.id) || taskExt(f.task).key) continue
     const parentId = parentOf.get(f.task.id) ?? null
+    // A subtask whose parent has no issue must NOT fall back to the epic — that silently
+    // creates it a level too high (an Epic instead of a child). Skip until the parent is
+    // synced; exporting the parent in the same run is fine, it's keyed before we get here.
+    if (parentId && !keyOf.get(parentId)) {
+      skipped.push(f.task.title)
+      console.warn(`[PM] Jira export: "${f.task.title}" skipped — its parent task isn't synced to Jira yet.`)
+      continue
+    }
     const parentKey = (parentId ? keyOf.get(parentId) : undefined) ?? cfg.epicId
     const ct = await childTypeFor(client, plan, parentKey)
     if (!ct) {
@@ -800,6 +808,8 @@ export interface SyncResult {
   conflicts: number // tasks left in limbo (local ⇄ JIRA diverged) this cycle
   /** Titles of tasks too deeply nested for the JIRA hierarchy to create (below Sub-task). */
   skippedTooDeep: string[]
+  /** Tasks not created because their parent task isn't synced yet. */
+  skippedNoParent: string[]
   /** Issues under the epic not yet a local task and not ignored — offered for import. */
   newIssues: JiraIssue[]
 }
@@ -825,13 +835,14 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   const full = opts.full !== false
   const r = await ready(plugin, project)
   const empty = { changed: false, jiraCreated: 0, jiraUpdated: 0, obsidianUpdated: 0, membersAdded: 0, conflicts: 0 }
-  if (!r || !r.cfg.epicId) return { ...empty, skippedTooDeep: [], newIssues: [] }
+  if (!r || !r.cfg.epicId) return { ...empty, skippedTooDeep: [], skippedNoParent: [], newIssues: [] }
   const { client, cfg } = r
   const startField = await client.startFieldId(cfg.epicId)
   // The type plan needs /issuetype + the root issue; only built when we actually have a
   // new task to create, so a routine "check for changes" tick fetches no type metadata.
   let typePlan: TypePlan | null = null
   const skippedTooDeep: string[] = []
+  const skippedNoParent: string[] = []
   const fallback = plugin.settings.statuses[0]?.id ?? 'todo'
   const membersBefore = project.teamMembers.length
 
@@ -864,6 +875,13 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     if (ext.key || ext.sync !== true) continue
     typePlan = typePlan ?? (await buildTypePlan(client, cfg)) // lazy: only when creating
     const parentId = parentOf.get(f.task.id) ?? null
+    // Same rule as export: never re-root a child onto the epic because its parent isn't
+    // synced — that creates it one level too high. Wait for the parent instead.
+    if (parentId && !keyOf.get(parentId)) {
+      skippedNoParent.push(f.task.title)
+      console.warn(`[PM] Jira sync: "${f.task.title}" not created — its parent task isn't synced to Jira yet.`)
+      continue
+    }
     const parentKey = (parentId ? keyOf.get(parentId) : undefined) ?? cfg.epicId
     const ct = await childTypeFor(client, typePlan, parentKey)
     if (!ct) {
@@ -929,7 +947,15 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     const issue = issueByKey.get(ext.key)
     if (!issue) continue // linked issue not under this epic — leave the task untouched
     const mine = shadowOf(t, keyOf)
-    const localDiverged = !ext.shadow || !shadowEqual(mine, ext.shadow)
+    // Hierarchy is driven from Obsidian: the issue's Jira parent must match the task's
+    // parent here. `parent` isn't one of the merged shadow fields, so compare it against
+    // the issue directly — and treat a mismatch as divergence, or a pure reparent (no
+    // other edit) would be skipped below and never reach Jira.
+    const localParentId = parentOf.get(t.id) ?? null
+    const desiredParent = localParentId ? keyOf.get(localParentId) : cfg.epicId
+    const parentUnsynced = Boolean(localParentId) && !desiredParent
+    const parentDiverged = parentUnsynced || (Boolean(desiredParent) && issue.parentKey !== desiredParent)
+    const localDiverged = !ext.shadow || !shadowEqual(mine, ext.shadow) || parentDiverged
     // Nothing changed on either side and no open conflict → skip (no HTTP).
     if (!localDiverged && issue.updated <= prev && ext.reconciled !== false) continue
 
@@ -973,6 +999,8 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       if (p) fields.priority = priorityRef(p)
       else held.push(`priority "${t.priority}" (no Jira value mapped with "→ Jira")`)
     }
+    if (parentUnsynced) held.push("parent (the parent task isn't synced to Jira yet)")
+    else if (parentDiverged && desiredParent) fields.parent = { key: desiredParent }
     if (tw.push.includes('assignees')) {
       const a = assigneeField(t, cfg)
       // `undefined` = a local assignee with no JIRA-user mapping. Don't silently drop
@@ -1055,6 +1083,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     membersAdded: project.teamMembers.length - membersBefore,
     conflicts,
     skippedTooDeep,
+    skippedNoParent,
     newIssues
   }
 }

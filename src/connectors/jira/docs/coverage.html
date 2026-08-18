@@ -23,8 +23,8 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>169</strong> tests</span>
-    <span class="stat"><strong>45</strong> areas</span>
+    <span class="stat"><strong>173</strong> tests</span>
+    <span class="stat"><strong>46</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
 
@@ -175,6 +175,12 @@
 <tr><td>autoMatchByTitle leaves ambiguous titles and already-linked tasks for the user</td><td class="file">link.test.ts</td></tr>
 <tr><td>autoMatchByTitle claims each task at most once</td><td class="file">link.test.ts</td></tr>
 <tr><td>skips a task that is already linked</td><td class="file">link.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira parent hierarchy <span class="dir dir-OJ">O→J</span> <span class="muted">4</span></td></tr>
+    <tr><td>refuses to create a task whose parent is not synced (never re-roots onto the epic)</td><td class="file">parent.test.ts</td></tr>
+<tr><td>creates parent-first when both are exported together</td><td class="file">parent.test.ts</td></tr>
+<tr><td>pushes a reparent to Jira even when nothing else changed</td><td class="file">parent.test.ts</td></tr>
+<tr><td>holds a task whose parent became unsynced instead of silently re-rooting it</td><td class="file">parent.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">threeWay merge (single shadow base) <span class="dir dir-unit">unit</span> <span class="muted">9</span></td></tr>
     <tr><td>does nothing when both sides match the base</td><td class="file">reconcile.test.ts</td></tr>
