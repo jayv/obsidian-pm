@@ -529,8 +529,9 @@ export class ProjectView extends ItemView {
    */
   private async copyVisibleTasksMarkdown(): Promise<void> {
     if (!this.project) return
+    const project = this.project
     const statuses = this.plugin.settings.statuses
-    const flat = flattenTasks(this.project.tasks)
+    const flat = flattenTasks(project.tasks)
     const byId = new Map(flat.map((f) => [f.task.id, f]))
     const visible = flat.filter((f) => f.task.subtasks.length === 0 && matchesFilter(f.task, this.filter, statuses))
     if (!visible.length) {
@@ -550,6 +551,13 @@ export class ProjectView extends ItemView {
       const icon = getStatusConfig(statuses, t.status)?.icon
       return icon ? `${icon} ` : ''
     }
+    // Linked issue keys sit between the title and the due date, e.g. "Child [ENG-123] _(2026-08-20)_".
+    // Tasks with no link contribute nothing, not an empty pair of brackets.
+    const fmtKeys = (t: Task): string =>
+      this.plugin.connectors
+        .taskBadges(project, t)
+        .map((b) => ` [${b.label}]`)
+        .join('')
     // Prefix a subtask with its ancestor chain: "Parent > Child > …".
     const titlePath = (f: FlatTask): string => {
       const parts = [f.task.title]
@@ -583,18 +591,20 @@ export class ProjectView extends ItemView {
       const names = items.length ? namesOf(items[0].task) : []
       return names.length ? `- ${names.map((n) => `@${n}`).join(', ')}` : `- *${key}*`
     }
+    // "<symbol> <title path> [<issue key>] <due>" — one definition for both groupings.
+    const lineOf = (f: FlatTask): string => `    - ${fmtSym(f.task)}${titlePath(f)}${fmtKeys(f.task)}${fmtDue(f.task)}`
 
     const lines: string[] = []
     // Milestones first, nested under their own group header like the assignees.
     const milestones = visible.filter((f) => f.task.type === 'milestone').sort((a, b) => byDue(a.task, b.task))
     if (milestones.length) {
       lines.push('- *Milestones*')
-      for (const f of milestones) lines.push(`    - ${fmtSym(f.task)}${titlePath(f)}${fmtDue(f.task)}`)
+      for (const f of milestones) lines.push(lineOf(f))
     }
     for (const key of orderedKeys) {
       const items = (groups.get(key) ?? []).sort((a, b) => byDue(a.task, b.task))
       lines.push(headerOf(key, items))
-      for (const f of items) lines.push(`    - ${fmtSym(f.task)}${titlePath(f)}${fmtDue(f.task)}`)
+      for (const f of items) lines.push(lineOf(f))
     }
     await navigator.clipboard.writeText(lines.join('\n'))
     new Notice(`Copied ${lines.length} item${lines.length === 1 ? '' : 's'} as Markdown.`)
