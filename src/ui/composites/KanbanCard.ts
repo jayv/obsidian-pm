@@ -69,9 +69,6 @@ export class KanbanCard {
         .setColor('var(--color-blue)')
         .setTooltip('Recurring')
     }
-    // Last in the title row, which flexes the title — so the key sits in the top-right
-    // corner, styled exactly like the table and gantt badges.
-    renderTaskBadges(titleRow, props.badges)
 
     if (props.descriptionPreview) {
       body.createDiv({ cls: 'pm-kanban-card-description', text: props.descriptionPreview })
@@ -104,8 +101,12 @@ export class KanbanCard {
     const footer = body.createDiv('pm-kanban-card-footer')
     new AvatarStack(footer).setNames(task.assignees).setMax(3).setSize('sm')
 
+    // Badges sit with the due date on the footer's right, rather than crowding the title
+    // row alongside the type/recurrence chips and tags.
+    const footerRight = footer.createDiv('pm-kanban-card-footer-right')
+    renderTaskBadges(footerRight, props.badges)
     if (task.due) {
-      const dueChip = new Chip(footer).setLabel(formatDateShort(task.due)).setSize('sm')
+      const dueChip = new Chip(footerRight).setLabel(formatDateShort(task.due)).setSize('sm')
       if (props.overdue) {
         dueChip.setVariant('solid').setColor('var(--color-red)').setStrong()
       }

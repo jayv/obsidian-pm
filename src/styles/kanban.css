@@ -147,6 +147,15 @@
   padding-top: 2px;
 }
 
+/* Right-hand group of the footer: badges (e.g. an issue key) then the due date, kept
+   together so space-between pins them opposite the assignee avatars. */
+.pm-kanban-card-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
 .pm-kanban-card-subtasks {
   font-size: 11px;
   color: var(--pm-text-muted);
