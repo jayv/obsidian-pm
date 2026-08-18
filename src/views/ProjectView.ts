@@ -22,6 +22,7 @@ import { ProjectHeader, type HeaderUiState } from '../ui/composites/ProjectHeade
 import { flattenTasks, type FlatTask } from '../store/TaskTreeOps'
 import { cloneFilter, filterEquals, isFilterActive, matchesFilter } from '../store/TaskFilter'
 import { computeResourceConflicts } from './gantt/ResourceConflicts'
+import { displayName } from '../ui/primitives/Avatar'
 
 export const PM_PROJECT_VIEW_TYPE = 'pm-project'
 
@@ -520,7 +521,8 @@ export class ProjectView extends ItemView {
     // Empty due dates sort after dated ones.
     const byDue = (a: Task, b: Task): number =>
       a.due === b.due ? 0 : !a.due ? 1 : !b.due ? -1 : a.due.localeCompare(b.due)
-    const whoOf = (t: Task): string => (t.assignees.length ? t.assignees.join(', ') : 'Unassigned')
+    const namesOf = (t: Task): string[] => t.assignees.map(displayName)
+    const whoOf = (t: Task): string => (t.assignees.length ? namesOf(t).join(', ') : 'Unassigned')
     const fmtDue = (t: Task): string => (t.due ? ` _(${t.due})_` : '')
     // Status symbol prefix so each line reads "<symbol> <task> <due>". Omitted (no leading
     // space) when the status has no icon configured.
@@ -555,6 +557,13 @@ export class ProjectView extends ItemView {
       return a.localeCompare(b)
     })
 
+    // Assignee group header: @-mention each person so a pasted update pings them.
+    // "Unassigned" is nobody, so it stays styled rather than mentioned.
+    const headerOf = (key: string, items: FlatTask[]): string => {
+      const names = items.length ? namesOf(items[0].task) : []
+      return names.length ? `- ${names.map((n) => `@${n}`).join(', ')}` : `- *${key}*`
+    }
+
     const lines: string[] = []
     // Milestones first, nested under their own group header like the assignees.
     const milestones = visible.filter((f) => f.task.type === 'milestone').sort((a, b) => byDue(a.task, b.task))
@@ -563,8 +572,8 @@ export class ProjectView extends ItemView {
       for (const f of milestones) lines.push(`    - ${fmtSym(f.task)}${titlePath(f)}${fmtDue(f.task)}`)
     }
     for (const key of orderedKeys) {
-      lines.push(`- *${key}*`)
       const items = (groups.get(key) ?? []).sort((a, b) => byDue(a.task, b.task))
+      lines.push(headerOf(key, items))
       for (const f of items) lines.push(`    - ${fmtSym(f.task)}${titlePath(f)}${fmtDue(f.task)}`)
     }
     await navigator.clipboard.writeText(lines.join('\n'))
