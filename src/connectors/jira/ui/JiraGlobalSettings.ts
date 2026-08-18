@@ -8,6 +8,12 @@ import { deleteMock } from '../JiraMock'
 import { ensureMockServer, isLocalhost, mockBaseUrl, stopMockServer } from '../JiraMockServer'
 import { getDebug, getToken, servers, setDebug, setToken, setServers } from '../types'
 
+/**
+ * Where Atlassian Cloud API tokens are created. Account-scoped rather than per-site,
+ * so one URL serves every server configured here.
+ */
+const API_TOKEN_URL = 'https://id.atlassian.com/manage-profile/security/api-tokens'
+
 /** Renders the global "Jira servers" section in the main settings tab. */
 export function renderJiraGlobalSettings(containerEl: HTMLElement, plugin: PMPlugin): void {
   new Setting(containerEl).setName('Jira servers').setHeading()
@@ -58,6 +64,15 @@ export function renderJiraGlobalSettings(containerEl: HTMLElement, plugin: PMPlu
         (v) => setToken(plugin, server.id, v),
         true
       )
+      // A localhost server is the in-process mock and accepts any token, so pointing at
+      // Atlassian would only mislead.
+      if (!isLocalhost(server.site)) {
+        const hint = card.createDiv('pm-jira-field-hint')
+        const link = hint.createEl('a', { text: 'Create an API token', href: API_TOKEN_URL })
+        link.setAttr('target', '_blank')
+        link.setAttr('rel', 'noopener')
+        hint.appendText(' in your Atlassian account, then paste it above.')
+      }
 
       const actions = card.createDiv('pm-jira-actions')
       const result = card.createDiv('pm-jira-result')
