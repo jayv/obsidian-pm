@@ -1,6 +1,6 @@
 import { Menu } from 'obsidian'
 import type PMPlugin from '../main'
-import { Project, Task, TaskType, Recurrence } from '../types'
+import { Project, Task, TaskType } from '../types'
 import { flattenTasks } from '../store/TaskTreeOps'
 import { wouldCreateCycle } from '../store/Scheduler'
 import { renderPropRow, renderProgressSlider, renderChipList } from '../ui/FormField'
@@ -169,55 +169,6 @@ export function renderTaskFormFields(container: HTMLElement, ctx: TaskFormFields
       return input
     })
   }
-
-  // Recurrence
-  renderPropRow(container, 'Repeat', () => {
-    const wrap = createDiv('pm-prop-value pm-prop-recurrence')
-    const renderRecurrence = () => {
-      wrap.empty()
-      if (!task.recurrence) {
-        const addBtn = wrap.createEl('button', { text: '+ set recurrence', cls: 'pm-prop-add-btn' })
-        addBtn.addEventListener('click', () => {
-          task.recurrence = { interval: 'weekly', every: 1 }
-          renderRecurrence()
-        })
-      } else {
-        const rec = task.recurrence
-        const everyInput = wrap.createEl('input', { type: 'number', cls: 'pm-prop-text pm-recur-every' })
-        everyInput.value = String(rec.every)
-        everyInput.min = '1'
-        everyInput.max = '365'
-        everyInput.addEventListener('change', () => {
-          rec.every = parseInt(everyInput.value) || 1
-        })
-
-        const sel = wrap.createEl('select', { cls: 'pm-prop-select pm-recur-interval' })
-        for (const opt of ['daily', 'weekly', 'monthly', 'yearly'] as const) {
-          const o = sel.createEl('option', { value: opt, text: opt })
-          if (opt === rec.interval) o.selected = true
-        }
-        sel.addEventListener('change', () => {
-          rec.interval = sel.value as Recurrence['interval']
-        })
-
-        const endWrap = wrap.createDiv('pm-recur-end')
-        endWrap.createSpan({ text: 'Until', cls: 'pm-recur-label' })
-        const endInput = endWrap.createEl('input', { type: 'date', cls: 'pm-prop-date pm-recur-end-input' })
-        endInput.value = rec.endDate ?? ''
-        endInput.addEventListener('change', () => {
-          rec.endDate = endInput.value || undefined
-        })
-
-        const rmBtn = wrap.createEl('button', { text: '\u2715', cls: 'pm-prop-add-btn pm-recur-rm' })
-        rmBtn.addEventListener('click', () => {
-          task.recurrence = undefined
-          renderRecurrence()
-        })
-      }
-    }
-    renderRecurrence()
-    return wrap
-  })
 
   // Assignees
   renderPropRow(container, 'Assignees', () => {
