@@ -24,9 +24,19 @@ export class FakeVault {
     this.folders.set('', root)
   }
 
+  /** Every markdown file, as Obsidian's vault reports it. */
+  getMarkdownFiles(): TFile[] {
+    return [...this.files.values()].map((f) => f.file).filter((f) => f.path.endsWith('.md'))
+  }
+
   getAbstractFileByPath(path: string): TAbstractFile | null {
     const n = normalizePath(path)
     return this.files.get(n)?.file ?? this.folders.get(n) ?? null
+  }
+
+  /** Synchronous read, for the metadataCache stand-in (Obsidian's cache is sync too). */
+  readSync(file: TFile): string | null {
+    return this.files.get(normalizePath(file.path))?.content ?? null
   }
 
   async cachedRead(file: TFile): Promise<string> {
@@ -176,10 +186,16 @@ export function makeFakeApp(): { app: FakeAppLike; vault: FakeVault } {
         })
       }
     },
-    // Minimal metadataCache: always misses, forcing the store's fallback read+parse path.
-    // Tests that want to exercise the cache hit can override this per-test.
+    // Obsidian's metadataCache resolves frontmatter for any file; model that so code
+    // relying on it (e.g. the orphan guard) behaves as in production. Callers that want
+    // a cache MISS can override this per-test.
     metadataCache: {
-      getFileCache: () => null
+      getFileCache: (file: TFile) => {
+        const raw = vault.readSync(file)
+        if (raw === null) return null
+        const { frontmatter } = splitFrontmatter(raw)
+        return frontmatter ? { frontmatter } : null
+      }
     }
   }
   return { app, vault }

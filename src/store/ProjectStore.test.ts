@@ -12,6 +12,13 @@ const expectDefined = <T>(value: T | null | undefined, message = 'expected value
   return value
 }
 
+/** The task/project file at `path`, narrowed — tests read files back to assert content. */
+const fileAt = (app: App, path: string | undefined): TFile => {
+  const f = app.vault.getAbstractFileByPath(expectDefined(path))
+  if (!(f instanceof TFile)) throw new Error(`expected a file at ${String(path)}`)
+  return f
+}
+
 const STATUSES: StatusConfig[] = [
   { id: 'todo', label: 'Todo', color: '#888', icon: 'circle', complete: false },
   { id: 'in-progress', label: 'In progress', color: '#88f', icon: 'loader', complete: false },
@@ -150,6 +157,56 @@ describe('ProjectStore dirty-set save efficiency', () => {
     expect(vault.modifyCount.get(expectDefined(p1.filePath))).toBe(1)
     expect(vault.modifyCount.get(expectDefined(p2.filePath))).toBe(1)
     expect(vault.modifyCount.get(expectDefined(child.filePath))).toBe(1)
+  })
+
+  /*
+   * Live data-loss regression: two views of one project each hold their own tree, so a
+   * save from the stale one serialized a parent WITHOUT children it didn't know about.
+   * The children's files survived but nothing referenced them — invisible in every view
+   * and to integrations walking the tree. Renaming the parent made it unrecoverable-
+   * looking, because that path trashes the previous file.
+   */
+  it('keeps subtasks a stale parent write would have dropped (their files still name it)', async () => {
+    const { store, vault, app } = newStore()
+    const project = await store.createProject('Stale', 'Projects')
+    const parent = await addNamed(store, project, 'Parent')
+    const child = await addNamed(store, project, 'Child', parent.id)
+
+    // Simulate the stale copy: the in-memory parent forgets the child, but the child's
+    // file is untouched and still records parentId = parent. Renaming forces the branch
+    // that trashes the previous file, so a bad write would be unrecoverable.
+    parent.subtasks = []
+    await store.updateTask(project, parent.id, { title: 'Parent renamed' })
+
+    const written = await vault.cachedRead(fileAt(app, parent.filePath))
+    expect(written).toContain(child.id) // preserved, not orphaned
+    expect(app.vault.getAbstractFileByPath(expectDefined(child.filePath))).toBeInstanceOf(TFile)
+  })
+
+  it('keeps them on a frontmatter-only write too (no rename involved)', async () => {
+    const { store, vault, app } = newStore()
+    const project = await store.createProject('StaleFm', 'Projects')
+    const parent = await addNamed(store, project, 'Parent')
+    const child = await addNamed(store, project, 'Child', parent.id)
+
+    parent.subtasks = [] // stale copy again, but this update keeps the title
+    await store.updateTask(project, parent.id, { priority: 'high' })
+
+    const written = await vault.cachedRead(fileAt(app, parent.filePath))
+    expect(written).toContain(child.id)
+  })
+
+  it('still drops a genuinely deleted subtask (its file is gone)', async () => {
+    const { store, vault, app } = newStore()
+    const project = await store.createProject('RealDelete', 'Projects')
+    const parent = await addNamed(store, project, 'Parent')
+    const child = await addNamed(store, project, 'Child', parent.id)
+    const childId = child.id
+
+    await store.deleteTask(project, childId)
+
+    const written = await vault.cachedRead(fileAt(app, parent.filePath))
+    expect(written).not.toContain(childId) // the guard must not resurrect it
   })
 
   it('rewrites the parent (not the deleted task) on deleteTask', async () => {

@@ -89,9 +89,15 @@ export function serializeTask(
   task: Task,
   project: Project,
   parentTask: Task | null,
-  statuses: StatusConfig[] = []
+  statuses: StatusConfig[] = [],
+  /** Child ids to keep in `subtaskIds` even though the in-memory task lost them —
+   *  see ProjectStore.childIdsToPreserve. Prevents a stale write orphaning them. */
+  preserveChildIds: string[] = []
 ): string {
   const fm = buildTaskFrontmatter(task, project, parentTask)
+  if (preserveChildIds.length) {
+    fm.subtaskIds = [...(fm.subtaskIds as string[]), ...preserveChildIds]
+  }
 
   const yamlLines: string[] = ['---']
   appendYaml(yamlLines, fm, 0)
