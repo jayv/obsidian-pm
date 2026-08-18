@@ -181,9 +181,22 @@ export class ProjectModal extends Modal {
         })
         input.placeholder = 'Name'
         input.addEventListener('change', () => {
+          const to = input.value.trim()
+          // Tasks reference assignees by name, so two members sharing one name are a
+          // single person as far as assignment goes — and picking between them in the
+          // task form is a coin flip. Refuse instead of silently merging their work.
+          // Compared case-insensitively: "ada" and "Ada" would be two people to every
+          // lookup, which nobody means to create.
+          const clash =
+            to && this.project.teamMembers.some((m, j) => j !== i && m.trim().toLowerCase() === to.toLowerCase())
+          if (clash) {
+            new Notice(`"${to}" is already a team member.`)
+            renderMembers() // discards the edit — the input reverts to the stored name
+            return
+          }
           // Re-point every task assigned to them, not just the list entry — see
           // ProjectStore.renameAssignee for why the list alone isn't enough.
-          const moved = this.plugin.store.renameAssignee(this.project, this.project.teamMembers[i], input.value)
+          const moved = this.plugin.store.renameAssignee(this.project, this.project.teamMembers[i], to)
           if (moved) new Notice(`Renamed on ${moved} task${moved === 1 ? '' : 's'}.`)
           renderMembers()
         })
