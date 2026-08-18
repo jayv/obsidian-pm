@@ -463,3 +463,16 @@
   background: var(--pm-bg3);
   color: var(--pm-accent);
 }
+
+/* A task badge that links out (e.g. an issue key). The chip carries the visuals; the
+   anchor only needs to not look like a themed link, and to hint it's clickable. */
+.pm-task-badge-link {
+  display: inline-flex;
+  text-decoration: none;
+  color: inherit;
+  flex-shrink: 0;
+}
+.pm-task-badge-link:hover .pm-chip {
+  border-color: var(--interactive-accent);
+  color: var(--text-accent);
+}

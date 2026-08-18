@@ -1,7 +1,8 @@
 import type PMPlugin from '../../main'
-import type { Project, Task } from '../../types'
+import type { Project, Task, TaskBadge } from '../../types'
 import { CollapseToggle } from '../../ui/primitives/CollapseToggle'
 import { AvatarStack } from '../../ui/primitives/AvatarStack'
+import { renderTaskBadges } from '../../ui/primitives/TaskBadges'
 import { openTaskModal } from '../../ui/ModalFactory'
 import { getStatusConfig, safeAsync } from '../../utils'
 import { ROW_HEIGHT } from './TimelineConfig'
@@ -10,6 +11,8 @@ export interface LabelContext {
   plugin: PMPlugin
   project: Project
   onRefresh: () => Promise<void>
+  /** Short labels (e.g. a linked issue key) to show beside the title, as in the table. */
+  badgesOf?: (task: Task) => TaskBadge[]
 }
 
 export function renderTaskLabel(
@@ -80,6 +83,8 @@ export function renderTaskLabel(
   titleEl.addEventListener('click', () => {
     openTaskModal(ctx.plugin, ctx.project, { task, onSave: () => ctx.onRefresh() })
   })
+
+  renderTaskBadges(el, ctx.badgesOf?.(task))
 
   // Assignee avatars (colored initials), matching the bars and table
   if (task.assignees.length) {

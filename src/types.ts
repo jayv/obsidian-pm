@@ -80,6 +80,15 @@ export interface Project {
 /** Week windows the "active week" filter can select, relative to the current week. */
 export type WeekOffset = -1 | 0 | 1
 
+/**
+ * A short label shown beside a task (e.g. an issue key from an integration). `href`
+ * makes it open externally; without one it renders as a plain chip.
+ */
+export interface TaskBadge {
+  label: string
+  href?: string
+}
+
 export interface FilterState {
   text: string
   statuses: TaskStatus[]

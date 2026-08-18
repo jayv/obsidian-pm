@@ -1,5 +1,6 @@
-import type { Task } from '../../../types'
+import type { Task, TaskBadge } from '../../../types'
 import { Chip } from '../../primitives/Chip'
+import { renderTaskBadges } from '../../primitives/TaskBadges'
 import { IconButton } from '../../primitives/IconButton'
 import { makeInlineEdit } from './inlineEdit'
 
@@ -7,7 +8,7 @@ export interface TitleCellProps {
   task: Task
   depth: number
   /** Connector-contributed labels (e.g. the Jira issue key), shown as bordered pills. */
-  badges?: string[]
+  badges?: TaskBadge[]
   onTitleClick: () => void
   onTitleSave: (newTitle: string) => Promise<void>
   onAddSubtask: () => void
@@ -43,9 +44,7 @@ export class TitleCell {
         props.onAddSubtask()
       })
 
-    for (const badge of props.badges ?? []) {
-      new Chip(this.el).setLabel(badge).setVariant('outline').setSize('sm')
-    }
+    renderTaskBadges(this.el, props.badges)
 
     if (task.type === 'milestone') {
       new Chip(this.el)

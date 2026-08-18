@@ -1,7 +1,8 @@
-import type { Task } from '../../types'
+import type { Task, TaskBadge } from '../../types'
 import { formatDateShort } from '../../utils'
 import { AvatarStack } from '../primitives/AvatarStack'
 import { Chip } from '../primitives/Chip'
+import { renderTaskBadges } from '../primitives/TaskBadges'
 import { ProgressBar } from '../primitives/ProgressBar'
 import { TimeChip } from '../primitives/TimeChip'
 
@@ -10,6 +11,8 @@ export interface KanbanCardProps {
   priorityColor?: string
   descriptionPreview?: string
   parentTitle?: string
+  /** Short labels (e.g. a linked issue key); rendered at the card's top right. */
+  badges?: TaskBadge[]
   subtaskProgress?: { done: number; total: number }
   loggedHours: number
   overdue: boolean
@@ -66,6 +69,9 @@ export class KanbanCard {
         .setColor('var(--color-blue)')
         .setTooltip('Recurring')
     }
+    // Last in the title row, which flexes the title — so the key sits in the top-right
+    // corner, styled exactly like the table and gantt badges.
+    renderTaskBadges(titleRow, props.badges)
 
     if (props.descriptionPreview) {
       body.createDiv({ cls: 'pm-kanban-card-description', text: props.descriptionPreview })
