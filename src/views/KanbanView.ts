@@ -132,6 +132,7 @@ export class KanbanView implements SubView {
       roster: projectRoster(this.project, this.plugin.settings),
       descriptionPreview,
       parentTitle,
+      badges: this.plugin.connectors.taskBadges(this.project, task),
       subtaskProgress,
       loggedHours: totalLoggedHours(task),
       overdue: isTaskOverdue(task, this.plugin.settings.statuses)

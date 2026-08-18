@@ -1,4 +1,4 @@
-import type { Task } from '../../types'
+import type { Task, TaskBadge } from '../../types'
 import { formatBadgeText, safeAsync } from '../../utils'
 import { KanbanCard } from './KanbanCard'
 
@@ -16,6 +16,7 @@ export interface KanbanCardData {
   roster?: Map<string, string>
   descriptionPreview?: string
   parentTitle?: string
+  badges?: TaskBadge[]
   subtaskProgress?: { done: number; total: number }
   loggedHours: number
   overdue: boolean

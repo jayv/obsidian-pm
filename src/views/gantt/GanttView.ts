@@ -379,7 +379,13 @@ export class GanttView implements SubView {
 
     // Iterate the resolved row model so the conflicts-only filter applies and
     // row indexes line up with dependency arrows / grid (both use flatTasks).
-    const labelCtx = { plugin: this.plugin, project: this.project, onRefresh: this.onRefresh, roster: this.roster() }
+    const labelCtx = {
+      plugin: this.plugin,
+      project: this.project,
+      onRefresh: this.onRefresh,
+      roster: this.roster(),
+      badgesOf: (task: Task) => this.plugin.connectors.taskBadges(this.project, task)
+    }
     this.flatTasks.forEach((f, rowIndex) => {
       renderTaskLabel(leftBody, f.task, f.depth, rowIndex, labelCtx)
       renderTaskBar(barsGroup, f.task, rowIndex, f.depth, ctx)

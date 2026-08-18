@@ -1,5 +1,5 @@
 import type PMPlugin from '../main'
-import type { Project, Task } from '../types'
+import type { Project, Task, TaskBadge } from '../types'
 
 /**
  * A pluggable integration (e.g. JIRA). The core calls these hooks at generic
@@ -46,7 +46,7 @@ export interface Connector {
   /** Contribute project-toolbar actions. */
   toolbarActions?(project: Project): { label: string; onClick: () => void }[]
   /** A short label for a task (e.g. the issue key) shown as a pill in the table. */
-  taskBadge?(task: Task): string | null
+  taskBadge?(task: Task, project: Project): TaskBadge | null
 }
 
 /**
@@ -127,9 +127,9 @@ export class ConnectorRegistry {
   }
 
   /** Short labels (e.g. the Jira key) contributed by the project's active connectors. */
-  taskBadges(project: Project, task: Task): string[] {
+  taskBadges(project: Project, task: Task): TaskBadge[] {
     return this.activeFor(project).flatMap((c) => {
-      const badge = c.taskBadge?.(task)
+      const badge = c.taskBadge?.(task, project)
       return badge ? [badge] : []
     })
   }

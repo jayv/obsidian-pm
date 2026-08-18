@@ -1,7 +1,7 @@
 /* eslint-disable obsidianmd/ui/sentence-case -- "Jira" is a product name */
 import { ButtonComponent, Notice } from 'obsidian'
 import type PMPlugin from '../../main'
-import type { Project, Task } from '../../types'
+import type { Project, Task, TaskBadge } from '../../types'
 import type { Connector, ConnectorDescriptor } from '../registry'
 import { renderPropRow } from '../../ui/FormField'
 import { ProjectView } from '../../views/ProjectView'
@@ -68,9 +68,16 @@ export class JiraConnector implements Connector {
     if (cfg) ignoreOnDelete(cfg, task)
   }
 
-  /** The linked Jira issue key, shown as a pill in the table title. */
-  taskBadge(task: Task): string | null {
-    return taskExt(task).key ?? null
+  /**
+   * The linked Jira issue key, shown as a pill in the table, the gantt label column and
+   * on kanban cards. Carries the browse URL so it opens the issue, like the task editor's
+   * key link — omitted when the project's server has no site configured.
+   */
+  taskBadge(task: Task, project: Project): TaskBadge | null {
+    const key = taskExt(task).key
+    if (!key) return null
+    const site = serverById(this.plugin, projectCfg(project)?.serverId ?? '')?.site
+    return { label: key, href: site ? `https://${site}/browse/${key}` : undefined }
   }
 
   async syncTick(project: Project): Promise<{ changed: boolean }> {
