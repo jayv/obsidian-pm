@@ -340,9 +340,9 @@
 }
 
 /* "critical" is a "»" stood upright; it renders lighter than a bare arrowhead, so
-   nudge it up 15% to sit at the same visual weight. */
+   size it up 25% to sit at the same visual weight. */
 .pm-gantt-bar-priority--turned {
-  font-size: 12.65px;
+  font-size: 13.75px;
 }
 
 /* Assignee avatars on the bar */

@@ -115,7 +115,7 @@
 .pm-kanban-card-priority--turned {
   display: inline-block;
   transform: rotate(-90deg);
-  font-size: 12.65px; /* 15% up — it renders lighter than a bare arrowhead */
+  font-size: 13.75px; /* 25% up — it renders lighter than a bare arrowhead */
 }
 .pm-kanban-card-body {
   flex: 1;
