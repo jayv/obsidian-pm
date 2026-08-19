@@ -188,6 +188,25 @@
   flex-wrap: wrap;
 }
 
+/* Type-ahead beside the "+ add" button. Narrow by default so it reads as one more
+   control on the row rather than a form field, widening once it has focus. */
+.pm-assignee-suggest {
+  width: 120px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 12px;
+  background: var(--background-modifier-form-field);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--pm-radius-sm);
+  color: var(--text-normal);
+  transition: width 120ms ease;
+}
+.pm-assignee-suggest:focus {
+  width: 180px;
+  outline: none;
+  border-color: var(--pm-accent);
+}
+
 /* Modal sections */
 .pm-modal-section {
   padding: 14px 24px;

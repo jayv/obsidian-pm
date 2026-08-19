@@ -7,6 +7,7 @@ import { renderPropRow, renderProgressSlider, renderChipList } from '../ui/FormF
 import { Chip } from '../ui/primitives/Chip'
 import { SegmentedControl } from '../ui/primitives/SegmentedControl'
 import { getStatusConfig, getPriorityConfig, formatBadgeText, isTerminalStatus } from '../utils'
+import { TextSuggest } from '../ui/primitives/TextSuggest'
 import { renderCustomFieldInput } from './CustomFieldInputs'
 import { TaskPickerModal, TagPickerModal } from './PickerModals'
 
@@ -173,7 +174,9 @@ export function renderTaskFormFields(container: HTMLElement, ctx: TaskFormFields
   // Assignees
   renderPropRow(container, 'Assignees', () => {
     const wrap = createDiv('pm-prop-value pm-prop-assignees')
-    const render = () => {
+    // Kept across re-renders so adding someone can hand focus straight back for the next.
+    let suggestEl: HTMLInputElement | null = null
+    const render = (focusSuggest = false) => {
       const all = [...new Set([...project.teamMembers, ...plugin.settings.globalTeamMembers])]
       const remaining = all.filter((m) => !task.assignees.includes(m))
       renderChipList(wrap, task.assignees, {
@@ -184,6 +187,27 @@ export function renderTaskFormFields(container: HTMLElement, ctx: TaskFormFields
           render()
         },
         renderAdd: (el) => {
+          // Type-ahead beside the menu: quicker than hunting a long team list, and it
+          // still accepts a name nobody has been assigned before.
+          const suggest = el.createEl('input', {
+            type: 'text',
+            cls: 'pm-assignee-suggest',
+            placeholder: 'Add assignee\u2026'
+          })
+          suggestEl = suggest
+          const commit = (name: string) => {
+            const value = name.trim()
+            if (value && !task.assignees.includes(value)) task.assignees.push(value)
+            render(true)
+          }
+          new TextSuggest(plugin.app, suggest, () => remaining, commit)
+          suggest.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+              ev.preventDefault()
+              commit(suggest.value)
+            }
+          })
+
           const addBtn = el.createEl('button', { text: '+ add', cls: 'pm-prop-add-btn' })
           const showNameInput = () => {
             addBtn.addClass('pm-hidden')
@@ -220,6 +244,7 @@ export function renderTaskFormFields(container: HTMLElement, ctx: TaskFormFields
           })
         }
       })
+      if (focusSuggest) suggestEl?.focus()
     }
     render()
     return wrap
