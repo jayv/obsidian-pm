@@ -1014,7 +1014,22 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       else held.push(`priority "${t.priority}" (no Jira value mapped with "→ Jira")`)
     }
     if (parentUnsynced) held.push("parent (the parent task isn't synced to Jira yet)")
-    else if (parentDiverged && desiredParent) fields.parent = { key: desiredParent }
+    else if (parentDiverged && desiredParent) {
+      // Depth decides the Jira type, so a move across levels is a type change too: a task
+      // that was top-level got created as the root's child type, and Jira rejects an issue
+      // whose parent isn't exactly one level above it. Send the type with the parent so
+      // the whole move is one legal edit.
+      typePlan = typePlan ?? (await buildTypePlan(client, cfg))
+      const ct = await childTypeFor(client, typePlan, desiredParent)
+      if (!ct) {
+        held.push('parent (the new parent is too deep for the Jira hierarchy)')
+      } else {
+        fields.parent = { key: desiredParent }
+        if (ct.typeName.toLowerCase() !== issue.issueType.toLowerCase()) {
+          fields.issuetype = { name: ct.typeName }
+        }
+      }
+    }
     if (tw.push.includes('assignees')) {
       const a = assigneeField(t, cfg)
       // `undefined` = a local assignee with no JIRA-user mapping. Don't silently drop
@@ -1024,7 +1039,14 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       else held.push(`assignee "${t.assignees[0] ?? ''}" (no Jira user mapped)`)
     }
     if (Object.keys(fields).length && !(await client.editIssue(ext.key, fields))) {
-      held.push(`fields ${Object.keys(fields).join(', ')} (Jira rejected the edit)`)
+      const names = Object.keys(fields).join(', ')
+      // A type change across the standard/sub-task boundary is the one edit Jira can
+      // refuse outright, so name it rather than leaving a bare "rejected".
+      held.push(
+        fields.issuetype
+          ? `fields ${names} (Jira rejected the edit — changing the issue type to "${(fields.issuetype as { name: string }).name}" may need a Move in Jira)`
+          : `fields ${names} (Jira rejected the edit)`
+      )
     }
     if (tw.push.includes('status')) {
       const s = mapOutboundEntry(cfg.statusMap, t.status)

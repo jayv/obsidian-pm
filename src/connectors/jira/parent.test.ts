@@ -19,6 +19,10 @@ const parentKeyOf = async (plugin: ReturnType<typeof harness>['plugin'], key: st
   const mock = await readMock(plugin)
   return (mock.getIssue(key)?.fields.parent as { key?: string } | undefined)?.key
 }
+const issueTypeOf = async (plugin: ReturnType<typeof harness>['plugin'], key: string): Promise<string | undefined> => {
+  const mock = await readMock(plugin)
+  return (mock.getIssue(key)?.fields.issuetype as { name?: string } | undefined)?.name
+}
 
 describe('jira parent hierarchy [O→J]', () => {
   it('refuses to create a task whose parent is not synced (never re-roots onto the epic)', async () => {
@@ -74,6 +78,52 @@ describe('jira parent hierarchy [O→J]', () => {
     await runSync(plugin, project)
 
     expect(await parentKeyOf(plugin, childKey)).toBe(taskExt(b).key)
+  })
+
+  it('changes the Jira issue type when a reparent moves the task down a level', async () => {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    await runSync(plugin, project)
+
+    // Both start at the top level, so both are created as the root's child type.
+    const keeper = localTask(project, { title: 'Keeper' })
+    const stray = localTask(project, { title: 'Stray' })
+    await exportTasks(plugin, project, [keeper.id, stray.id])
+    const strayKey = must(taskExt(stray).key)
+    expect(await issueTypeOf(plugin, strayKey)).toBe('Task')
+
+    // The mistake being corrected: it belonged under the other task all along.
+    const moved = must(findTask(project.tasks, stray.id))
+    deleteTaskFromTree(project.tasks, stray.id)
+    addTaskToTree(project.tasks, moved, keeper.id)
+    await runSync(plugin, project)
+
+    expect(await parentKeyOf(plugin, strayKey)).toBe(taskExt(keeper).key)
+    // Without the type change Jira would refuse the parent: a Task can't parent a Task.
+    expect(await issueTypeOf(plugin, strayKey)).toBe('Sub-task')
+  })
+
+  it('leaves the issue type alone when the new parent is at the same level', async () => {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    await runSync(plugin, project)
+
+    const a = localTask(project, { title: 'Parent A' })
+    const b = localTask(project, { title: 'Parent B' })
+    const child = localTask(project, { title: 'Child' }, a.id)
+    await exportTasks(plugin, project, [a.id, b.id, child.id])
+    const childKey = must(taskExt(child).key)
+    expect(await issueTypeOf(plugin, childKey)).toBe('Sub-task')
+
+    const moved = must(findTask(project.tasks, child.id))
+    deleteTaskFromTree(project.tasks, child.id)
+    addTaskToTree(project.tasks, moved, b.id)
+    await runSync(plugin, project)
+
+    expect(await parentKeyOf(plugin, childKey)).toBe(taskExt(b).key)
+    expect(await issueTypeOf(plugin, childKey)).toBe('Sub-task')
   })
 
   it('holds a task whose parent became unsynced instead of silently re-rooting it', async () => {
