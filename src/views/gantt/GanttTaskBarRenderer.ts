@@ -200,7 +200,10 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
       'pointer-events': 'none'
     })
     const spin = PRIORITY_MARK_ROTATE[task.priority]
-    if (spin) mark.setAttribute('transform', `rotate(${spin} ${cx} ${labelY})`)
+    if (spin) {
+      mark.setAttribute('transform', `rotate(${spin} ${cx} ${labelY})`)
+      mark.classList.add('pm-gantt-bar-priority--turned')
+    }
     mark.textContent = priorityMark
     barGroup.appendChild(mark)
   }

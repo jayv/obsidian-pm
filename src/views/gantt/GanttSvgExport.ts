@@ -275,7 +275,8 @@ export function buildGanttSvg(
           const pcx = bx + 5 + PRIORITY_MARK_W / 2
           const spin = PRIORITY_MARK_ROTATE[task.priority]
           const turn = spin ? ` transform="rotate(${spin} ${pcx} ${cy})"` : ''
-          parts.push(`<text class="pmark" x="${pcx}" y="${cy}" fill="${priority}"${turn}>${esc(pmark)}</text>`)
+          const cls = spin ? 'pmark pmark--turned' : 'pmark'
+          parts.push(`<text class="${cls}" x="${pcx}" y="${cy}" fill="${priority}"${turn}>${esc(pmark)}</text>`)
         }
         if (task.assignees.length) {
           parts.push(
@@ -363,6 +364,7 @@ export function buildGanttSvg(
     .hdiv, .vdiv { stroke: var(--border); stroke-width: 1; }
     .bdg rect { fill: none; stroke: var(--muted); stroke-width: 1; opacity: 0.8; }
     .bdgt { font-size: 9px; font-weight: 600; fill: var(--muted); text-anchor: middle; dominant-baseline: central; }
+    .pmark--turned { font-size: 12.65px; }
     .av { font-size: 9px; font-weight: 700; fill: #fff; text-anchor: middle; dominant-baseline: central; }
     .depline { fill: none; stroke: ${ACCENT}; stroke-width: 1.3; stroke-dasharray: 4 3; opacity: 0.55; }
     .pm-ah { fill: ${ACCENT}; opacity: 0.7; }

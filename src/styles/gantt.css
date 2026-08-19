@@ -339,6 +339,12 @@
   stroke-linejoin: round;
 }
 
+/* "critical" is a "»" stood upright; it renders lighter than a bare arrowhead, so
+   nudge it up 15% to sit at the same visual weight. */
+.pm-gantt-bar-priority--turned {
+  font-size: 12.65px;
+}
+
 /* Assignee avatars on the bar */
 .pm-gantt-bar-avatars {
   pointer-events: none;
