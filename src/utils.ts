@@ -93,6 +93,28 @@ export function getPriorityConfig(priorities: PriorityConfig[], id: TaskPriority
   return priorities.find((p) => p.id === id)
 }
 
+/**
+ * Jira-style priority glyphs, shown on gantt bars and kanban cards. Light-weight
+ * arrowheads rather than a colour block, so priority doesn't compete with the status
+ * colour and the completion fill for the same pixels.
+ */
+export const PRIORITY_MARK: Record<string, string> = {
+  critical: '⌃⌃',
+  high: '⌃',
+  medium: '=',
+  low: '⌄'
+}
+
+/**
+ * Rank for sorting by priority, most urgent first, taken from the configured order
+ * rather than hardcoded — reordering priorities in settings reorders the sort.
+ * Unknown ids sort last.
+ */
+export function priorityRank(priorities: PriorityConfig[], id: TaskPriority): number {
+  const i = priorities.findIndex((p) => p.id === id)
+  return i < 0 ? priorities.length : i
+}
+
 /** Format a config's icon + label into display text (e.g. "🔴 Critical") */
 export function formatBadgeText(icon: string | undefined, label: string): string {
   return [icon, label].filter(Boolean).join(' ')

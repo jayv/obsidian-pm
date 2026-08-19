@@ -11,13 +11,6 @@ export const BAR_BORDER_RADIUS = 7
 // Lightweight priority arrowheads shown just before a task bar's label (tinted by the
 // priority's colour): critical ⌃⌃ · high ⌃ · medium = · low ⌄. Kept here (config, no DOM
 // deps) so both the live renderer and the SVG exporter can share it.
-export const PRIORITY_MARK: Record<string, string> = {
-  critical: '⌃⌃',
-  high: '⌃',
-  medium: '=',
-  low: '⌄'
-}
-
 export const DAY_WIDTH: Record<GanttGranularity, number> = {
   day: 44,
   week: 22,

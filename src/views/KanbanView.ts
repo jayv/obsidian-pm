@@ -3,7 +3,7 @@ import type PMPlugin from '../main'
 import { Project, Task, TaskStatus, FilterState } from '../types'
 import { flattenTasks, totalLoggedHours } from '../store/TaskTreeOps'
 import { matchesFilter } from '../store/TaskFilter'
-import { isTaskOverdue, isTerminalStatus, getPriorityConfig } from '../utils'
+import { isTaskOverdue, isTerminalStatus, getPriorityConfig, priorityRank } from '../utils'
 import { openTaskModal } from '../ui/ModalFactory'
 import { buildTaskContextMenu } from '../ui/TaskContextMenu'
 import { KanbanColumn, type KanbanCardData } from '../ui/composites/KanbanColumn'
@@ -82,10 +82,12 @@ export class KanbanView implements SubView {
     if (pending.some((t) => t.description)) this.renderBoard()
   }
 
+  /** A column's cards, most urgent first. Ties keep tree order (the sort is stable). */
   private getTasksForStatus(status: TaskStatus): Task[] {
-    return this.cardTasks().filter(
-      (t) => t.status === status && matchesFilter(t, this.filter, this.plugin.settings.statuses)
-    )
+    const priorities = this.plugin.settings.priorities
+    return this.cardTasks()
+      .filter((t) => t.status === status && matchesFilter(t, this.filter, this.plugin.settings.statuses))
+      .sort((a, b) => priorityRank(priorities, a.priority) - priorityRank(priorities, b.priority))
   }
 
   /** Cards on the board across all columns — leaf tasks passing the active filter. */
@@ -94,9 +96,9 @@ export class KanbanView implements SubView {
   }
 
   private buildCardData(task: Task): KanbanCardData {
-    const priorityConfig = getPriorityConfig(this.plugin.settings.priorities, task.priority)
-    const priorityColor =
-      priorityConfig && task.priority !== 'medium' && task.priority !== 'low' ? priorityConfig.color : undefined
+    // Every priority is tinted now: the marker carries the meaning, so low and medium
+    // need their colour too rather than being dropped as "not worth a colour strip".
+    const priorityColor = getPriorityConfig(this.plugin.settings.priorities, task.priority)?.color
 
     let descriptionPreview: string | undefined
     if (this.plugin.settings.kanbanShowDescriptionPreview && task.description.trim()) {

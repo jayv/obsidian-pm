@@ -103,10 +103,14 @@
   z-index: 100;
 }
 
-.pm-kanban-card-priority-bar {
-  height: 3px;
-  flex-shrink: 0;
-  opacity: 0.5;
+/* Priority arrowhead before the card title, matching the gantt bars. */
+.pm-kanban-card-priority {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: -0.06em; /* tuck the double-up chevron tight */
+  line-height: 1.45;
+  margin-right: 4px;
+  opacity: 0.9;
 }
 .pm-kanban-card-body {
   flex: 1;

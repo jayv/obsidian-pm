@@ -1,9 +1,9 @@
 import type { GanttGranularity, PriorityConfig, Project, StatusConfig, Task, TaskBadge } from '../../types'
 import { flattenTasks, collectAllAssignees } from '../../store/TaskTreeOps'
-import { getStatusConfig, getPriorityConfig, stringToColor } from '../../utils'
+import { getStatusConfig, getPriorityConfig, stringToColor, PRIORITY_MARK } from '../../utils'
 import { displayName, initialsFor } from '../../ui/primitives/Avatar'
 import { parsePlainDate, today } from '../../dates'
-import { buildTimelineConfig, dateToX, PRIORITY_MARK } from './TimelineConfig'
+import { buildTimelineConfig, dateToX } from './TimelineConfig'
 
 // ── Layout constants (base, zoom = 1) ───────────────────────────────────────
 const TITLE_COL_W = 240

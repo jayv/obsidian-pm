@@ -1,5 +1,5 @@
 import type { Task, TaskBadge } from '../../types'
-import { formatDateShort } from '../../utils'
+import { formatDateShort, PRIORITY_MARK } from '../../utils'
 import { AvatarStack } from '../primitives/AvatarStack'
 import { Chip } from '../primitives/Chip'
 import { renderTaskBadges } from '../primitives/TaskBadges'
@@ -8,6 +8,7 @@ import { TimeChip } from '../primitives/TimeChip'
 
 export interface KanbanCardProps {
   task: Task
+  /** Tint for the priority marker. */
   priorityColor?: string
   descriptionPreview?: string
   parentTitle?: string
@@ -32,11 +33,6 @@ export class KanbanCard {
     card.dataset.taskId = task.id
     this.el = card
 
-    if (props.priorityColor) {
-      const priorityBar = card.createDiv('pm-kanban-card-priority-bar')
-      priorityBar.setCssStyles({ background: props.priorityColor })
-    }
-
     const body = card.createDiv('pm-kanban-card-body')
 
     if (props.parentTitle) {
@@ -44,6 +40,13 @@ export class KanbanCard {
     }
 
     const titleRow = body.createDiv('pm-kanban-card-title-row')
+    // Priority arrowhead before the title, as on the gantt bars — replaces the colour
+    // strip that used to compete with the status colour for the same meaning.
+    const mark = PRIORITY_MARK[task.priority]
+    if (mark) {
+      const el = titleRow.createSpan({ text: mark, cls: 'pm-kanban-card-priority' })
+      if (props.priorityColor) el.setCssStyles({ color: props.priorityColor })
+    }
     titleRow.createSpan({ text: task.title, cls: 'pm-kanban-card-title' })
     if (task.type === 'milestone') {
       new Chip(titleRow)

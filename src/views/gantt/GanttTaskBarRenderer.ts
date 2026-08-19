@@ -1,7 +1,7 @@
 import { Notice } from 'obsidian'
 import type { Task } from '../../types'
 import { openTaskModal } from '../../ui/ModalFactory'
-import { svgEl, getStatusConfig, getPriorityConfig, safeAsync, stringToColor } from '../../utils'
+import { svgEl, getStatusConfig, getPriorityConfig, safeAsync, stringToColor, PRIORITY_MARK } from '../../utils'
 import { displayName, initialsFor } from '../../ui/primitives/Avatar'
 import { parsePlainDate } from '../../dates'
 import {
@@ -9,7 +9,6 @@ import {
   HEADER_HEIGHT,
   BAR_PADDING,
   BAR_BORDER_RADIUS,
-  PRIORITY_MARK,
   dateToX,
   xToDate,
   getSnapPoints,
