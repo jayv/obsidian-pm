@@ -1,6 +1,13 @@
 import type { GanttGranularity, PriorityConfig, Project, StatusConfig, Task, TaskBadge } from '../../types'
 import { flattenTasks, collectAllAssignees } from '../../store/TaskTreeOps'
-import { getStatusConfig, getPriorityConfig, stringToColor, PRIORITY_MARK } from '../../utils'
+import {
+  getStatusConfig,
+  getPriorityConfig,
+  stringToColor,
+  PRIORITY_MARK,
+  PRIORITY_MARK_ROTATE,
+  PRIORITY_MARK_W
+} from '../../utils'
 import { displayName, initialsFor } from '../../ui/primitives/Avatar'
 import { parsePlainDate, today } from '../../dates'
 import { buildTimelineConfig, dateToX } from './TimelineConfig'
@@ -264,7 +271,11 @@ export function buildGanttSvg(
         }
         const pmark = PRIORITY_MARK[task.priority]
         if (pmark && priority) {
-          parts.push(`<text class="pmark" x="${bx + 5}" y="${cy}" fill="${priority}">${esc(pmark)}</text>`)
+          // Centre-anchored (see .pmark) so the rotated "critical" glyph turns in place.
+          const pcx = bx + 5 + PRIORITY_MARK_W / 2
+          const spin = PRIORITY_MARK_ROTATE[task.priority]
+          const turn = spin ? ` transform="rotate(${spin} ${pcx} ${cy})"` : ''
+          parts.push(`<text class="pmark" x="${pcx}" y="${cy}" fill="${priority}"${turn}>${esc(pmark)}</text>`)
         }
         if (task.assignees.length) {
           parts.push(
@@ -345,7 +356,7 @@ export function buildGanttSvg(
     .dlabel { font-size: 9px; fill: var(--muted); text-anchor: middle; }
     .rlabel { font-size: 12px; dominant-baseline: middle; }
     .blabel { font-size: 11px; dominant-baseline: middle; fill: var(--label); }
-    .pmark { font-size: 11px; dominant-baseline: central; letter-spacing: -0.06em; paint-order: stroke; stroke: rgba(0,0,0,0.5); stroke-width: 2px; stroke-linejoin: round; }
+    .pmark { font-size: 11px; dominant-baseline: central; text-anchor: middle; paint-order: stroke; stroke: rgba(0,0,0,0.5); stroke-width: 2px; stroke-linejoin: round; }
     .ctoggle { font-size: 10px; dominant-baseline: middle; fill: var(--muted); cursor: pointer; }
     .ctoggle:hover { fill: var(--text); }
     .mspilltext { font-size: 10px; font-weight: 700; fill: #0b3d24; text-anchor: middle; dominant-baseline: central; }

@@ -1,5 +1,5 @@
 import type { Task, TaskBadge } from '../../types'
-import { formatDateShort, PRIORITY_MARK } from '../../utils'
+import { formatDateShort, PRIORITY_MARK, PRIORITY_MARK_ROTATE } from '../../utils'
 import { AvatarStack } from '../primitives/AvatarStack'
 import { Chip } from '../primitives/Chip'
 import { renderTaskBadges } from '../primitives/TaskBadges'
@@ -45,6 +45,8 @@ export class KanbanCard {
     const mark = PRIORITY_MARK[task.priority]
     if (mark) {
       const el = titleRow.createSpan({ text: mark, cls: 'pm-kanban-card-priority' })
+      const spin = PRIORITY_MARK_ROTATE[task.priority]
+      if (spin) el.addClass('pm-kanban-card-priority--turned')
       if (props.priorityColor) el.setCssStyles({ color: props.priorityColor })
     }
     titleRow.createSpan({ text: task.title, cls: 'pm-kanban-card-title' })

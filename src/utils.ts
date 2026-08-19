@@ -99,11 +99,21 @@ export function getPriorityConfig(priorities: PriorityConfig[], id: TaskPriority
  * colour and the completion fill for the same pixels.
  */
 export const PRIORITY_MARK: Record<string, string> = {
-  critical: '⌃⌃',
+  critical: '»',
   high: '⌃',
   medium: '=',
   low: '⌄'
 }
+
+/**
+ * Degrees to rotate a priority glyph. Unicode has no stacked pair of bare arrowheads, so
+ * "critical" is a "»" turned upright — one glyph that really is two chevrons above each
+ * other, the way Jira draws Highest, instead of two arrowheads side by side.
+ */
+export const PRIORITY_MARK_ROTATE: Record<string, number> = { critical: -90 }
+
+/** Width reserved for a priority glyph at its 11px render size. */
+export const PRIORITY_MARK_W = 10
 
 /**
  * Rank for sorting by priority, most urgent first, taken from the configured order

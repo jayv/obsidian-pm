@@ -1,7 +1,16 @@
 import { Notice } from 'obsidian'
 import type { Task } from '../../types'
 import { openTaskModal } from '../../ui/ModalFactory'
-import { svgEl, getStatusConfig, getPriorityConfig, safeAsync, stringToColor, PRIORITY_MARK } from '../../utils'
+import {
+  svgEl,
+  getStatusConfig,
+  getPriorityConfig,
+  safeAsync,
+  stringToColor,
+  PRIORITY_MARK,
+  PRIORITY_MARK_ROTATE,
+  PRIORITY_MARK_W
+} from '../../utils'
 import { displayName, initialsFor } from '../../ui/primitives/Avatar'
 import { parsePlainDate } from '../../dates'
 import {
@@ -178,15 +187,20 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   // Priority marker: a light tinted arrowhead at the bar's left, before the label
   // (Jira-style). Summaries roll up children, so they carry no priority mark.
   const priorityMark = isSummary ? '' : (PRIORITY_MARK[task.priority] ?? '')
-  const markW = priorityMark ? (priorityMark.length > 1 ? 15 : 9) : 0
+  const markW = priorityMark ? PRIORITY_MARK_W : 0
   if (priorityMark) {
+    // Anchored at its centre so a rotated glyph turns in place rather than swinging
+    // away from the bar's left edge.
+    const cx = x + 5 + markW / 2
     const mark = svgEl('text', {
-      x: x + 5,
+      x: cx,
       y: labelY,
       fill: getPriorityConfig(ctx.plugin.settings.priorities, task.priority)?.color ?? 'currentColor',
       class: 'pm-gantt-bar-priority',
       'pointer-events': 'none'
     })
+    const spin = PRIORITY_MARK_ROTATE[task.priority]
+    if (spin) mark.setAttribute('transform', `rotate(${spin} ${cx} ${labelY})`)
     mark.textContent = priorityMark
     barGroup.appendChild(mark)
   }

@@ -107,10 +107,14 @@
 .pm-kanban-card-priority {
   font-size: 11px;
   font-weight: 400;
-  letter-spacing: -0.06em; /* tuck the double-up chevron tight */
   line-height: 1.45;
   margin-right: 4px;
   opacity: 0.9;
+}
+/* "critical" is a "»" stood upright, so it reads as two stacked chevrons. */
+.pm-kanban-card-priority--turned {
+  display: inline-block;
+  transform: rotate(-90deg);
 }
 .pm-kanban-card-body {
   flex: 1;
