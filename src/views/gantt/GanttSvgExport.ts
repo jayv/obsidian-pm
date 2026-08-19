@@ -364,7 +364,7 @@ export function buildGanttSvg(
     .hdiv, .vdiv { stroke: var(--border); stroke-width: 1; }
     .bdg rect { fill: none; stroke: var(--muted); stroke-width: 1; opacity: 0.8; }
     .bdgt { font-size: 9px; font-weight: 600; fill: var(--muted); text-anchor: middle; dominant-baseline: central; }
-    .pmark--turned { font-size: 13.75px; }
+    .pmark--turned { font-size: 13.2px; }
     .av { font-size: 9px; font-weight: 700; fill: #fff; text-anchor: middle; dominant-baseline: central; }
     .depline { fill: none; stroke: ${ACCENT}; stroke-width: 1.3; stroke-dasharray: 4 3; opacity: 0.55; }
     .pm-ah { fill: ${ACCENT}; opacity: 0.7; }
