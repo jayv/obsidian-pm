@@ -51,10 +51,13 @@ export function setJiraApiDebug(on: boolean): void {
 }
 
 /**
- * Log one JIRA API exchange to the console (only when debug logging is on). Works for mock
- * and real. A failure whose body isn't JSON (empty, or an HTML page from a proxy/WAF in
- * front of Jira) would log as `null` and hide the reason, so the raw text and the response
- * headers are included too — Jira puts its refusal reason in `x-seraph-loginreason` /
+ * Log one JIRA API exchange to the console. Successes only when debug logging is on;
+ * failures always, because a rejected write is the thing you need to see and hunting it
+ * meant turning debug on and reproducing.
+ *
+ * A failure whose body isn't JSON (empty, or an HTML page from a proxy/WAF in front of
+ * Jira) would log as `null` and hide the reason, so the raw text and the response headers
+ * are included too — Jira puts its refusal reason in `x-seraph-loginreason` /
  * `x-authentication-denied-reason`.
  */
 function logApi(
@@ -66,14 +69,17 @@ function logApi(
   resHeaders?: Record<string, string | string[] | undefined>,
   ms?: number
 ): void {
-  if (!apiDebug) return
-  const parsed = parseJson(resText)
   const ok = status >= 200 && status < 300
-  console.debug(`[PM-JIRA] ${method} ${url} → ${status}${ms === undefined ? '' : ` (${ms}ms)`}`, {
+  if (ok && !apiDebug) return
+  const parsed = parseJson(resText)
+  const line = `[PM-JIRA] ${method} ${url} → ${status}${ms === undefined ? '' : ` (${ms}ms)`}`
+  const detail = {
     request: reqBody,
     response: parsed,
     ...(parsed === null && !ok ? { rawBody: resText?.slice(0, 2000) ?? '(empty)', headers: resHeaders } : {})
-  })
+  }
+  if (ok) console.debug(line, detail)
+  else console.warn(line, detail)
 }
 
 export interface JiraTransition {

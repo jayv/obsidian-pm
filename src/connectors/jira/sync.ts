@@ -248,6 +248,32 @@ async function childTypeFor(
   return typeName ? { typeName, level } : null
 }
 
+/**
+ * Write an edit, walking it through legal intermediate states when a move across
+ * hierarchy levels is refused as one request.
+ *
+ * Jira validates `parent` against the issue's *current* type, so "become a Task and take
+ * this Epic as parent" is rejected outright: while it's still an Epic, an Epic parent is
+ * the wrong level ("Given parent work item does not belong to appropriate hierarchy").
+ * Changing only the type doesn't help either — the parent it already has (the Initiative
+ * above it) becomes the wrong level the moment it stops being an Epic.
+ *
+ * So detach, convert, re-attach. Every step leaves the issue in a state Jira accepts: an
+ * Epic with no parent, then a Task with no parent, then a Task under its Epic.
+ *
+ * A partly-applied move is safe. The next sync still sees the parent diverged and picks up
+ * where this left off, so a failure halfway never needs manual repair.
+ */
+async function pushEdit(client: JiraClient, key: string, fields: Record<string, unknown>): Promise<boolean> {
+  if (await client.editIssue(key, fields)) return true
+  const { issuetype, ...rest } = fields
+  if (!issuetype || !rest.parent) return false
+  console.warn(`[PM] Jira: ${key} — retrying the level change as detach → convert → re-attach.`)
+  if (!(await client.editIssue(key, { parent: null }))) return false
+  if (!(await client.editIssue(key, { issuetype }))) return false
+  return client.editIssue(key, rest)
+}
+
 /** The native priority reference to write: prefer the persisted id, fall back to the name. */
 function priorityRef(entry: JiraValueMap): { id: string } | { name: string } {
   return entry.id ? { id: entry.id } : { name: entry.jira }
@@ -1038,7 +1064,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       if (a !== undefined) fields.assignee = a
       else held.push(`assignee "${t.assignees[0] ?? ''}" (no Jira user mapped)`)
     }
-    if (Object.keys(fields).length && !(await client.editIssue(ext.key, fields))) {
+    if (Object.keys(fields).length && !(await pushEdit(client, ext.key, fields))) {
       const names = Object.keys(fields).join(', ')
       // A type change across the standard/sub-task boundary is the one edit Jira can
       // refuse outright, so name it rather than leaving a bare "rejected".
