@@ -7,7 +7,7 @@ import { renderPropRow } from '../../ui/FormField'
 import { ProjectView } from '../../views/ProjectView'
 import { setJiraApiDebug } from './JiraClient'
 import { ensureMockServer, stopMockServer } from './JiraMockServer'
-import { JIRA_ID, getDebug, projectCfg, serverById, taskExt } from './types'
+import { JIRA_ID, getDebug, projectCfg, serverById, sharedAssignees, taskExt } from './types'
 import {
   defaultNewTaskSync,
   dueForSync,
@@ -85,7 +85,9 @@ export class JiraConnector implements Connector {
    */
   onAssigneeRenamed(project: Project, from: string, to: string): void {
     const cfg = projectCfg(project)
-    if (cfg) renameAssigneeMapping(cfg.assigneeMap, from, to)
+    if (!cfg) return
+    renameAssigneeMapping(sharedAssignees(this.plugin, cfg), from, to)
+    void this.plugin.saveSettings() // the map lives in plugin settings, not the project
   }
 
   /**

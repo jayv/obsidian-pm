@@ -6,7 +6,8 @@ import { safeAsync } from '../../../utils'
 import { JiraClient, setJiraApiDebug } from '../JiraClient'
 import { deleteMock } from '../JiraMock'
 import { ensureMockServer, isLocalhost, mockBaseUrl, stopMockServer } from '../JiraMockServer'
-import { getDebug, getToken, servers, setDebug, setToken, setServers } from '../types'
+import { assigneeMapFor, getDebug, getToken, servers, setDebug, setToken, setServers } from '../types'
+import { JiraAssigneeMapModal } from './JiraAssigneeMapModal'
 
 /**
  * Where Atlassian Cloud API tokens are created. Account-scoped rather than per-site,
@@ -76,6 +77,11 @@ export function renderJiraGlobalSettings(containerEl: HTMLElement, plugin: PMPlu
 
       const actions = card.createDiv('pm-jira-actions')
       const result = card.createDiv('pm-jira-result')
+      // Mappings are per server and shared by every project on it, so this is their home;
+      // the project panel shows the same list narrowed to that project's team.
+      new ButtonComponent(actions)
+        .setButtonText(`Assignee mapping (${assigneeMapFor(plugin, server.id).length})`)
+        .onClick(() => new JiraAssigneeMapModal(plugin.app, plugin, server).open())
       new ButtonComponent(actions).setButtonText('Test connection').onClick(
         safeAsync(async () => {
           result.setText('Testing…')

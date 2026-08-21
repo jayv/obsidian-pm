@@ -7,7 +7,7 @@ import { DEFAULT_PRIORITIES, DEFAULT_STATUSES, makeProject, makeTask } from '../
 import { addTaskToTree, updateTaskInTree } from '../../store/TaskTreeOps'
 import type { ProjectStore } from '../../store/ProjectStore'
 import { loadMock, saveMock, type JiraMockStore, type MockIssueRecord } from './JiraMock'
-import { ensureProjectCfg, ensureTaskExt, type JiraProjectConfig } from './types'
+import { assigneeMapFor, ensureProjectCfg, ensureTaskExt, type JiraAssignee, type JiraProjectConfig } from './types'
 
 /** The exact ProjectStore surface the connector relies on. Binding the fake to this
  *  means a signature change in ProjectStore breaks the build — catching core↔connector
@@ -70,9 +70,16 @@ export function harness(opts: { team?: string[]; adapter?: FakeAdapter } = {}): 
       connectorSecrets: {}
     },
     store: new FakeStore(),
-    refreshProjectViews() {}
+    refreshProjectViews() {},
+    // Assignee mappings live in plugin settings, so sync persists them through here.
+    saveSettings: () => Promise.resolve()
   } as unknown as PMPlugin
   return { plugin, adapter }
+}
+
+/** The server-wide assignee map for a harness plugin — where mappings actually live. */
+export function sharedMap(plugin: PMPlugin): JiraAssignee[] {
+  return assigneeMapFor(plugin, 's1')
 }
 
 /** Create an enabled JIRA project bound to the mock server + an epic key. */

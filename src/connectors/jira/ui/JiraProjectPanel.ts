@@ -10,7 +10,7 @@ import { cleanJira, diagnoseAccess, loadMappingValues, searchJiraUsers } from '.
 import { addMemberFromJira, setOutbound, stripJira, upsertAssigneeMapping } from '../taskLink'
 import { JiraImportModal } from './JiraImportModal'
 import { JiraExportModal } from './JiraExportModal'
-import type { JiraProjectConfig, JiraValueMap } from '../types'
+import type { JiraAssignee, JiraValueMap } from '../types'
 import {
   clearProjectCfg,
   ensureProjectCfg,
@@ -18,6 +18,7 @@ import {
   projectCfg,
   serverById,
   servers,
+  sharedAssignees,
   taskExt,
   validateValueMap
 } from '../types'
@@ -136,8 +137,15 @@ export function renderJiraProjectPanel(
   // each with a JIRA user picker. Mirrors the team list — no add/remove here.
   const amWrap = section.createDiv('pm-jira-assignees')
   amWrap.createEl('label', { text: 'Assignee map (team member → JIRA user)', cls: 'pm-label' })
+  // The mappings themselves live on the server, shared by every project pointing at it —
+  // this panel is one view onto that list, the settings dialog is the other.
+  const assignees = sharedAssignees(plugin, cfg)
+  const markMapDirty = (): void => {
+    markDirty()
+    void plugin.saveSettings()
+  }
   const isMapped = (member: string): boolean => {
-    const e = cfg.assigneeMap.find((x) => x.name === member)
+    const e = assignees.find((x) => x.name === member)
     return Boolean(e?.jiraUser && e.jiraUser.trim())
   }
   if (!project.teamMembers.length) {
@@ -160,8 +168,8 @@ export function renderJiraProjectPanel(
       // Badge sits BEFORE the picker so the input stays right-aligned with every other row.
       const badge = row.createSpan({ text: 'Not mapped', cls: 'pm-jira-am-unmapped' })
       const refreshBadge = (): void => badge.toggleClass('pm-hidden', isMapped(member))
-      renderUserPicker(row, plugin, project, cfg, member, () => {
-        markDirty()
+      renderUserPicker(row, plugin, project, assignees, member, () => {
+        markMapDirty()
         refreshBadge()
         updateSummary()
       })
@@ -169,7 +177,7 @@ export function renderJiraProjectPanel(
     }
     updateSummary()
   }
-  renderAddFromJira(amWrap, plugin, project, cfg, markDirty, rerender)
+  renderAddFromJira(amWrap, plugin, project, assignees, markMapDirty, rerender)
 
   // Sync interval.
   const intervalWrap = section.createDiv('pm-jira-field')
@@ -294,18 +302,18 @@ function renderUserPicker(
   row: HTMLElement,
   plugin: PMPlugin,
   project: Project,
-  cfg: JiraProjectConfig,
+  assignees: JiraAssignee[],
   member: string,
   markDirty: () => void
 ): void {
-  const existing = cfg.assigneeMap.find((e) => e.name === member)
+  const existing = assignees.find((e) => e.name === member)
   const wrap = row.createDiv('pm-jira-user')
   const input = wrap.createEl('input', { type: 'text', cls: 'pm-input' })
   input.placeholder = 'Search Jira user…'
   input.value = existing?.jiraDisplay ?? existing?.jiraUser ?? ''
 
   const setMapping = (jiraUser: string, jiraDisplay?: string): void => {
-    upsertAssigneeMapping(cfg.assigneeMap, member, jiraUser, jiraDisplay)
+    upsertAssigneeMapping(assignees, member, jiraUser, jiraDisplay)
     markDirty()
   }
 
@@ -334,7 +342,7 @@ function renderAddFromJira(
   parent: HTMLElement,
   plugin: PMPlugin,
   project: Project,
-  cfg: JiraProjectConfig,
+  assignees: JiraAssignee[],
   markDirty: () => void,
   rerender: () => void
 ): void {
@@ -344,7 +352,7 @@ function renderAddFromJira(
 
   attachUserSuggest(wrap, input, plugin, project, {
     onPick: (u) => {
-      const r = addMemberFromJira(project.teamMembers, cfg.assigneeMap, u)
+      const r = addMemberFromJira(project.teamMembers, assignees, u)
       if (!r) return
       markDirty()
       new Notice(r.added ? `Added ${r.name}.` : `Mapped "${r.name}" to ${u.displayName}.`)

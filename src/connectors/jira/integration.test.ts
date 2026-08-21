@@ -35,7 +35,8 @@ describe('jira ↔ core store integration (real ProjectStore) [both]', () => {
       manifest: { dir: 'plugins/pm' },
       settings,
       store,
-      refreshProjectViews() {}
+      refreshProjectViews() {},
+      saveSettings: () => Promise.resolve()
     } as unknown as PMPlugin
     return { plugin, store, app: app as unknown as App }
   }

@@ -112,8 +112,23 @@ export interface JiraEpicConfig {
 // ── Global servers + secrets (plugin settings) ───────────────────────────────
 interface JiraGlobalSettings {
   servers?: JiraServer[]
+  /**
+   * Assignee mappings keyed by server id. Held per server rather than per project: an
+   * accountId only means anything on the site it came from, but within a site a person is
+   * the same person on every project, so mapping them once is enough.
+   */
+  assignees?: Record<string, JiraAssignee[]>
   /** Verbose mock req/resp logging to the console (debugging only). */
   debug?: boolean
+}
+
+/** The stored settings object itself (created on demand), for callers that mutate in place. */
+function jiraGlobalLive(plugin: PMPlugin): JiraGlobalSettings {
+  const connectors = (plugin.settings.connectors = plugin.settings.connectors ?? {})
+  const existing = connectors[JIRA_ID] as JiraGlobalSettings | undefined
+  const live = existing ?? {}
+  connectors[JIRA_ID] = live
+  return live
 }
 function jiraGlobal(plugin: PMPlugin): JiraGlobalSettings {
   return (plugin.settings.connectors?.[JIRA_ID] as JiraGlobalSettings | undefined) ?? {}
@@ -134,6 +149,35 @@ export function getDebug(plugin: PMPlugin): boolean {
 export function setDebug(plugin: PMPlugin, on: boolean): void {
   setJiraGlobal(plugin, { debug: on })
 }
+/**
+ * The live mapping list for one server. Mutate it in place, then `plugin.saveSettings()`.
+ */
+export function assigneeMapFor(plugin: PMPlugin, serverId: string): JiraAssignee[] {
+  const global = jiraGlobalLive(plugin)
+  const maps = (global.assignees = global.assignees ?? {})
+  const list = (maps[serverId] = maps[serverId] ?? [])
+  return list
+}
+
+/**
+ * The mappings a project should use: its server's shared list.
+ *
+ * Any mappings still held on the project — an older vault, or a config just adopted from
+ * the epic — are folded in on the way through and then dropped, so the project file stops
+ * carrying its own copy and everything converges on the one list. Folding never clobbers:
+ * a name already mapped centrally wins.
+ */
+export function sharedAssignees(plugin: PMPlugin, cfg: JiraProjectConfig): JiraAssignee[] {
+  const shared = assigneeMapFor(plugin, cfg.serverId)
+  if (cfg.assigneeMap.length) {
+    for (const e of cfg.assigneeMap) {
+      if (e.name && !shared.some((x) => x.name === e.name)) shared.push(e)
+    }
+    cfg.assigneeMap = []
+  }
+  return shared
+}
+
 export function serverById(plugin: PMPlugin, id: string): JiraServer | undefined {
   return servers(plugin).find((s) => s.id === id)
 }

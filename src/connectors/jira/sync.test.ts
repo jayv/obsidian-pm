@@ -14,6 +14,7 @@ import {
   rewind,
   seedChain,
   setDefaultMaps,
+  sharedMap,
   statusObj
 } from './test-harness'
 import { stopMockServer } from './JiraMockServer'
@@ -82,7 +83,7 @@ describe('jira sync — setup & metadata [setup]', () => {
     const { membersAdded } = await loadMappingValues(b.plugin, projB.project)
     expect(membersAdded).toBe(2)
     expect(projB.project.teamMembers).toEqual(expect.arrayContaining(['Alice', 'Bob']))
-    expect(projB.cfg.assigneeMap.map((e) => e.name)).toEqual(expect.arrayContaining(['Alice', 'Bob']))
+    expect(sharedMap(b.plugin).map((e) => e.name)).toEqual(expect.arrayContaining(['Alice', 'Bob']))
   })
 
   it('userPicker autocompletes assignees by query', async () => {
@@ -291,7 +292,7 @@ describe('jira sync — import (JIRA → Obsidian) [J→O]', () => {
     const t = project.tasks.find((x) => x.title === 'Owned by Dana')
     expect(t?.assignees).toEqual(['Dana'])
     expect(project.teamMembers).toContain('Dana') // new project member
-    expect(cfg.assigneeMap.some((e) => e.name === 'Dana' && e.jiraUser === 'mock:dana')).toBe(true)
+    expect(sharedMap(plugin).some((e) => e.name === 'Dana' && e.jiraUser === 'mock:dana')).toBe(true)
   })
 
   it('adds assignees to team members even when the mapping is adopted from the epic config', async () => {
@@ -319,7 +320,7 @@ describe('jira sync — import (JIRA → Obsidian) [J→O]', () => {
     const stories = await fetchEpicStories(b.plugin, projB.project)
     await importStories(b.plugin, projB.project, stories) // pulls epic config (found mapping) then resolves
 
-    expect(projB.cfg.assigneeMap.some((e) => e.name === 'Alice')).toBe(true) // mapping adopted
+    expect(sharedMap(b.plugin).some((e) => e.name === 'Alice')).toBe(true) // mapping adopted
     expect(projB.project.teamMembers).toContain('Alice') // and the member is created
   })
 
@@ -640,7 +641,7 @@ describe('jira sync — assignees [both]', () => {
     await importStories(plugin, project, stories)
 
     expect(project.teamMembers).toContain('Carol')
-    expect(cfg.assigneeMap.some((e) => e.name === 'Carol' && e.jiraUser === 'mock:carol')).toBe(true)
+    expect(sharedMap(plugin).some((e) => e.name === 'Carol' && e.jiraUser === 'mock:carol')).toBe(true)
 
     // The new mapping rides along to the epic config on the next sync.
     await runSync(plugin, project)

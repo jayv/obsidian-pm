@@ -63,6 +63,32 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* Centralized assignee-mapping dialog: the list is as long as the team, so it scrolls
+   and gets its own filter box. */
+.pm-jira-am-list--tall {
+  max-height: 45vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.pm-jira-am-filter {
+  margin: 8px 0;
+}
+.pm-jira-am-filter .pm-input {
+  width: 100%;
+}
+.pm-jira-am-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.pm-jira-am-origin {
+  font-size: 10px;
+  color: var(--pm-text-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .pm-jira-am-summary {
   font-size: 12px;
   color: var(--color-orange, #c47070);

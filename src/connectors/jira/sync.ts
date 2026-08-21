@@ -24,6 +24,7 @@ import {
   ensureTaskExt,
   getToken,
   projectCfg,
+  sharedAssignees,
   serverById,
   taskExt
 } from './types'
@@ -63,17 +64,18 @@ function mapPriority(issue: JiraIssue, cfg: JiraProjectConfig): TaskPriority {
 }
 
 /** Resolve a JIRA assignee to our name; auto-create the member + mapping if unknown (marks config dirty). */
-export function resolveAssignee(project: Project, issue: JiraIssue): string | null {
+export function resolveAssignee(plugin: PMPlugin, project: Project, issue: JiraIssue): string | null {
   const cfg = projectCfg(project)
   if (!cfg) return null
   if (!issue.assigneeAccountId && !issue.assigneeName) return null
-  const found = cfg.assigneeMap.find(
+  const map = sharedAssignees(plugin, cfg)
+  const found = map.find(
     (e) => e.jiraUser && (e.jiraUser === issue.assigneeAccountId || e.jiraUser === issue.assigneeName)
   )
   const name = found?.name ?? issue.assigneeName ?? issue.assigneeAccountId ?? ''
   if (!name) return null
   if (!found) {
-    cfg.assigneeMap.push({
+    map.push({
       name,
       jiraUser: issue.assigneeAccountId ?? issue.assigneeName ?? name,
       jiraDisplay: issue.assigneeName ?? undefined
@@ -119,7 +121,8 @@ function withJiraKey(
   key: string,
   keyOf: Map<string, string>,
   cfg: JiraProjectConfig,
-  startField = ''
+  startField = '',
+  plugin: PMPlugin
 ): Record<string, unknown> {
   const shadow = shadowOf(task, keyOf)
   // Same reasoning as the assignee below: with no start field discovered the date was
@@ -130,7 +133,7 @@ function withJiraKey(
   // recording the local name here would make the next reconcile read Jira's empty
   // assignee as a remote deletion and drop it. Leaving it out keeps the field "to push",
   // surfaced as a conflict until the member is mapped, never silently lost.
-  if (assigneeField(task, cfg) === undefined) shadow.assignees = []
+  if (assigneeField(plugin, task, cfg) === undefined) shadow.assignees = []
   return { ...task.ext, [JIRA_ID]: { ...taskExt(task), key, sync: true, shadow } }
 }
 
@@ -196,9 +199,9 @@ export async function resolveConflict(
  *   - mapped assignee    → `{ accountId }`
  *   - assignee unmapped  → `undefined` (leave JIRA's value untouched — don't clobber)
  */
-function assigneeField(task: Task, cfg: JiraProjectConfig): { accountId: string } | null | undefined {
+function assigneeField(plugin: PMPlugin, task: Task, cfg: JiraProjectConfig): { accountId: string } | null | undefined {
   if (!task.assignees[0]) return null
-  const am = cfg.assigneeMap.find((e) => e.name === task.assignees[0])
+  const am = sharedAssignees(plugin, cfg).find((e) => e.name === task.assignees[0])
   return am?.jiraUser ? { accountId: am.jiraUser } : undefined
 }
 
@@ -285,7 +288,8 @@ function createFields(
   parentKey: string,
   typeName: string,
   cfg: JiraProjectConfig,
-  startField: string
+  startField: string,
+  plugin: PMPlugin
 ): Record<string, unknown> {
   const fields: Record<string, unknown> = {
     project: { key: projectKey(cfg) },
@@ -297,13 +301,14 @@ function createFields(
   if (startField && task.start) fields[startField] = task.start
   const priority = mapOutboundEntry(cfg.priorityMap, task.priority)
   if (priority) fields.priority = priorityRef(priority)
-  const assignee = assigneeField(task, cfg)
+  const assignee = assigneeField(plugin, task, cfg)
   if (assignee !== undefined) fields.assignee = assignee
   return fields
 }
 
 /** Create one issue for a task (status via transition, milestone via property). Returns its key or null. */
 async function pushNewIssue(
+  plugin: PMPlugin,
   client: JiraClient,
   cfg: JiraProjectConfig,
   task: Task,
@@ -311,7 +316,7 @@ async function pushNewIssue(
   typeName: string,
   startField: string
 ): Promise<string | null> {
-  const created = await client.createIssue(createFields(task, parentKey, typeName, cfg, startField))
+  const created = await client.createIssue(createFields(task, parentKey, typeName, cfg, startField, plugin))
   if (!('key' in created)) {
     console.error('[PM] Jira create failed', created.error)
     return null
@@ -351,12 +356,12 @@ async function reconcileLinks(
 
 // ── Epic-wide mapping config (shared via the epic's entity property) ────────────
 
-function epicConfigOf(cfg: JiraProjectConfig): JiraEpicConfig {
-  return { statusMap: cfg.statusMap, priorityMap: cfg.priorityMap, assigneeMap: cfg.assigneeMap }
+function epicConfigOf(plugin: PMPlugin, cfg: JiraProjectConfig): JiraEpicConfig {
+  return { statusMap: cfg.statusMap, priorityMap: cfg.priorityMap, assigneeMap: sharedAssignees(plugin, cfg) }
 }
 
 /** Merge a remote epic config into local maps (adopt others' additions; no clobber). */
-function mergeEpicConfig(cfg: JiraProjectConfig, remote: JiraEpicConfig): void {
+function mergeEpicConfig(plugin: PMPlugin, cfg: JiraProjectConfig, remote: JiraEpicConfig): void {
   // Dedup by JIRA value (a status/priority maps to ONE of ours): keep the local
   // rule for a JIRA value, only adopt remote rules for JIRA values we don't have.
   const addValues = (local: JiraValueMap[], rem: JiraValueMap[] = []) => {
@@ -366,26 +371,34 @@ function mergeEpicConfig(cfg: JiraProjectConfig, remote: JiraEpicConfig): void {
   }
   addValues(cfg.statusMap, remote.statusMap)
   addValues(cfg.priorityMap, remote.priorityMap)
+  // Adopted mappings land in the server-wide list, so a teammate's mapping published on
+  // one project is available on every project pointing at the same Jira site.
+  const map = sharedAssignees(plugin, cfg)
   for (const r of remote.assigneeMap ?? []) {
-    if (!cfg.assigneeMap.some((e) => e.name === r.name)) cfg.assigneeMap.push(r)
+    if (!map.some((e) => e.name === r.name)) map.push(r)
   }
 }
 
-async function pullEpicConfig(client: JiraClient, cfg: JiraProjectConfig): Promise<void> {
+async function pullEpicConfig(plugin: PMPlugin, client: JiraClient, cfg: JiraProjectConfig): Promise<void> {
   if (!cfg.epicId) return // no epic configured yet — `/issue//properties/…` is a malformed request
   const remote = (await client.getProperty(cfg.epicId, CONFIG_PROP)) as JiraEpicConfig | undefined
   if (remote) {
-    mergeEpicConfig(cfg, remote)
+    mergeEpicConfig(plugin, cfg, remote)
     return
   }
   // No config on the epic yet: bootstrap it from our local maps on the next push.
-  if (cfg.statusMap.length || cfg.priorityMap.length || cfg.assigneeMap.length) cfg.mappingsDirty = true
+  if (cfg.statusMap.length || cfg.priorityMap.length || sharedAssignees(plugin, cfg).length) {
+    cfg.mappingsDirty = true
+  }
 }
 
-async function pushEpicConfig(client: JiraClient, cfg: JiraProjectConfig): Promise<void> {
+async function pushEpicConfig(plugin: PMPlugin, client: JiraClient, cfg: JiraProjectConfig): Promise<void> {
   if (!cfg.mappingsDirty || !cfg.epicId) return
-  await client.setProperty(cfg.epicId, CONFIG_PROP, epicConfigOf(cfg))
+  await client.setProperty(cfg.epicId, CONFIG_PROP, epicConfigOf(plugin, cfg))
   cfg.mappingsDirty = false
+  // Mappings live in plugin settings now, so a mapping the sync discovered has to be
+  // written there — the project file no longer carries it.
+  await plugin.saveSettings()
 }
 
 // ── Setup / import (all over HTTP) ────────────────────────────────────────────
@@ -400,13 +413,14 @@ export function importedKeys(project: Project): Set<string> {
 }
 
 async function issueToTask(
+  plugin: PMPlugin,
   issue: JiraIssue,
   client: JiraClient,
   cfg: JiraProjectConfig,
   project: Project,
   fallback: string
 ): Promise<Task> {
-  const assignee = resolveAssignee(project, issue)
+  const assignee = resolveAssignee(plugin, project, issue)
   const task = makeTask({
     title: issue.summary || issue.key,
     type: issue.milestone ? 'milestone' : 'task',
@@ -436,11 +450,11 @@ export async function loadMappingValues(
   const r = await ready(plugin, project)
   if (!r) return { statusesAdded: 0, prioritiesAdded: 0, membersAdded: 0 }
   const { client, cfg } = r
-  await pullEpicConfig(client, cfg) // status + priority + assignee maps from the epic
+  await pullEpicConfig(plugin, client, cfg) // status + priority + assignee maps from the epic
   // Create a team member for every assignee mapping (adopted or local) — so the
   // shared config's people show up on this project, mirroring the import flow.
   const beforeMembers = project.teamMembers.length
-  for (const e of cfg.assigneeMap) {
+  for (const e of sharedAssignees(plugin, cfg)) {
     if (e.name && !project.teamMembers.includes(e.name)) project.teamMembers.push(e.name)
   }
   const jiraStatuses = cfg.epicId ? await client.projectStatuses(cfg.epicId) : []
@@ -508,7 +522,7 @@ export async function importStories(
   if (!r) return { created: 0 }
   const { client, cfg } = r
   if (cfg.epicId) await client.startFieldId(cfg.epicId) // so the search parses the start field
-  await pullEpicConfig(client, cfg)
+  await pullEpicConfig(plugin, client, cfg)
   // Imported tasks become files under the project folder, so make sure the project
   // itself exists first (a brand-new modal project has no file until now).
   await plugin.store.ensureCreated(project, plugin.settings.projectsFolder)
@@ -520,7 +534,7 @@ export async function importStories(
 
   const byKey = new Map<string, { issue: JiraIssue; task: Task }>()
   for (const issue of picked) {
-    byKey.set(issue.key, { issue, task: await issueToTask(issue, client, cfg, project, fallback) })
+    byKey.set(issue.key, { issue, task: await issueToTask(plugin, issue, client, cfg, project, fallback) })
   }
   // key → local task id, for this batch AND tasks already imported earlier, so a child
   // nests under a parent that was imported in a previous run.
@@ -590,7 +604,7 @@ export async function linkStoriesToTasks(
   if (!r || !pairs.length) return { linked: 0, conflicted: 0 }
   const { client, cfg } = r
   if (cfg.epicId) await client.startFieldId(cfg.epicId) // so the fetch parses the start field
-  await pullEpicConfig(client, cfg)
+  await pullEpicConfig(plugin, client, cfg)
   await plugin.store.ensureCreated(project, plugin.settings.projectsFolder)
   const fallback = plugin.settings.statuses[0]?.id ?? 'todo'
 
@@ -603,7 +617,7 @@ export async function linkStoriesToTasks(
     const issue = issueByKey.get(issueKey)
     const task = taskById.get(taskId)
     if (!issue || !task || taskExt(task).key) continue // missing, or already linked — skip
-    const assigneeName = resolveAssignee(project, issue)
+    const assigneeName = resolveAssignee(plugin, project, issue)
     const theirs: JiraShadow = {
       title: issue.summary || task.title,
       status: mapInbound(cfg.statusMap, issue.status, fallback),
@@ -629,7 +643,7 @@ export async function linkStoriesToTasks(
     }
     patches.push({ taskId: task.id, patch: { ext: { ...task.ext, [JIRA_ID]: jx } } })
   }
-  await pushEpicConfig(client, cfg) // resolveAssignee may have added a mapping
+  await pushEpicConfig(plugin, client, cfg) // resolveAssignee may have added a mapping
   await plugin.store.applyExternalUpdates(project, patches)
   return { linked: patches.length, conflicted }
 }
@@ -667,7 +681,7 @@ export async function exportTasks(
   const r = await ready(plugin, project)
   if (!r || !r.cfg.epicId || !taskIds.length) return { created: 0, skipped: [] }
   const { client, cfg } = r
-  await pullEpicConfig(client, cfg)
+  await pullEpicConfig(plugin, client, cfg)
   const startField = await client.startFieldId(cfg.epicId)
   const plan = await buildTypePlan(client, cfg)
   const selected = new Set(taskIds)
@@ -703,18 +717,18 @@ export async function exportTasks(
       console.warn(`[PM] Jira export: "${f.task.title}" is nested too deep for the Jira hierarchy — skipped.`)
       continue
     }
-    const key = await pushNewIssue(client, cfg, f.task, parentKey, ct.typeName, startField)
+    const key = await pushNewIssue(plugin, client, cfg, f.task, parentKey, ct.typeName, startField)
     if (!key) continue
     plan.levelByKey.set(key, ct.level)
     keyOf.set(f.task.id, key)
     createdIds.add(f.task.id)
-    patches.push({ taskId: f.task.id, patch: { ext: withJiraKey(f.task, key, keyOf, cfg, startField) } })
+    patches.push({ taskId: f.task.id, patch: { ext: withJiraKey(f.task, key, keyOf, cfg, startField, plugin) } })
   }
   for (const f of flat) {
     const blockedKey = createdIds.has(f.task.id) ? keyOf.get(f.task.id) : undefined
     if (blockedKey) await reconcileLinks(client, blockedKey, [], desiredBlockerKeys(f.task, keyOf))
   }
-  await pushEpicConfig(client, cfg)
+  await pushEpicConfig(plugin, client, cfg)
   await plugin.store.applyExternalUpdates(project, patches)
   return { created: patches.length, skipped }
 }
@@ -882,7 +896,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   // Adopt any mapping updates other users published to the epic. The epic config has no
   // `updated` watermark (entity-property writes don't bump it), so it can't be polled
   // incrementally — only a full sync pulls it; periodic ticks rely on the last full sync.
-  if (full) await pullEpicConfig(client, cfg)
+  if (full) await pullEpicConfig(plugin, client, cfg)
 
   const flat = flattenTasks(project.tasks)
   const byKey = new Map<string, Task>()
@@ -925,13 +939,13 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       console.warn(`[PM] Jira sync: "${f.task.title}" is nested too deep for the Jira hierarchy — not created.`)
       continue
     }
-    const key = await pushNewIssue(client, cfg, f.task, parentKey, ct.typeName, startField)
+    const key = await pushNewIssue(plugin, client, cfg, f.task, parentKey, ct.typeName, startField)
     if (!key) continue
     typePlan.levelByKey.set(key, ct.level)
     keyOf.set(f.task.id, key)
     createdKeys.add(key)
     createdIds.add(f.task.id)
-    patches.push({ taskId: f.task.id, patch: { ext: withJiraKey(f.task, key, keyOf, cfg, startField) } })
+    patches.push({ taskId: f.task.id, patch: { ext: withJiraKey(f.task, key, keyOf, cfg, startField, plugin) } })
   }
   // Newly created issues have no links yet → add their dependencies.
   for (const f of flat) {
@@ -1000,7 +1014,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     if (!localDiverged && issue.updated <= prev && ext.reconciled !== false) continue
 
     // `theirs` from the issue (resolveAssignee may auto-create a mapped member).
-    const assigneeName = resolveAssignee(project, issue)
+    const assigneeName = resolveAssignee(plugin, project, issue)
     const theirs: JiraShadow = {
       title: issue.summary || t.title,
       status: mapInbound(cfg.statusMap, issue.status, fallback),
@@ -1057,7 +1071,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       }
     }
     if (tw.push.includes('assignees')) {
-      const a = assigneeField(t, cfg)
+      const a = assigneeField(plugin, t, cfg)
       // `undefined` = a local assignee with no JIRA-user mapping. Don't silently drop
       // it (that would advance the shadow as if synced); surface it as a conflict so
       // the user maps the member instead of losing the change.
@@ -1135,7 +1149,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   cfg.lastSyncAt = new Date().toISOString()
 
   // Publish local mapping changes (incl. auto-created assignees) to the epic.
-  await pushEpicConfig(client, cfg)
+  await pushEpicConfig(plugin, client, cfg)
   await plugin.store.applyExternalUpdates(project, patches)
   return {
     changed: patches.length > 0,

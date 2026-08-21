@@ -1,8 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { findTask } from '../../store/TaskTreeOps'
-import { connect, harness, localTask, must, mutateMock, readMock, rewind, setDefaultMaps } from './test-harness'
+import {
+  connect,
+  harness,
+  localTask,
+  must,
+  mutateMock,
+  readMock,
+  rewind,
+  setDefaultMaps,
+  sharedMap
+} from './test-harness'
 import { stopMockServer } from './JiraMockServer'
-import { taskExt } from './types'
+import { sharedAssignees, taskExt } from './types'
 import {
   exportTasks,
   fetchEpicStories,
@@ -254,5 +264,81 @@ describe('jira assignee map — add a member from Jira [local]', () => {
     const team: string[] = []
     expect(addMemberFromJira(team, [], { accountId: 'acc:x', displayName: '  ' })).toBeNull()
     expect(team).toEqual([])
+  })
+})
+
+/*
+ * Mappings are stored per Jira server in plugin settings, not per project: an accountId
+ * only means anything on the site it came from, but within a site a person is the same
+ * person on every project. Team member *names* stay on the project — assignment, avatars
+ * and filters all read project.teamMembers, and that has nothing to do with Jira.
+ */
+describe('jira assignee map — centralized per server [local]', () => {
+  it('folds a project-held map into the server list and stops the project carrying it', () => {
+    const { plugin } = harness()
+    const { cfg } = connect(plugin)
+    cfg.assigneeMap = [{ name: 'Alice', jiraUser: 'mock:alice' }]
+
+    const shared = sharedAssignees(plugin, cfg)
+
+    expect(shared).toEqual([{ name: 'Alice', jiraUser: 'mock:alice' }])
+    expect(cfg.assigneeMap).toEqual([]) // moved, not copied
+    expect(sharedMap(plugin)).toBe(shared) // and it is the server's own list
+  })
+
+  it('shares one list between two projects on the same server', () => {
+    const { plugin } = harness()
+    const a = connect(plugin, { title: 'A' })
+    const b = connect(plugin, { title: 'B' })
+    a.cfg.assigneeMap = [{ name: 'Alice', jiraUser: 'mock:alice' }]
+
+    sharedAssignees(plugin, a.cfg)
+
+    expect(sharedAssignees(plugin, b.cfg).map((e) => e.name)).toEqual(['Alice'])
+  })
+
+  it('keeps servers apart — an accountId only means something on its own site', () => {
+    const { plugin } = harness()
+    const a = connect(plugin, { title: 'A' })
+    const b = connect(plugin, { title: 'B' })
+    b.cfg.serverId = 's2'
+    a.cfg.assigneeMap = [{ name: 'Alice', jiraUser: 'mock:alice' }]
+
+    sharedAssignees(plugin, a.cfg)
+
+    expect(sharedAssignees(plugin, b.cfg)).toEqual([])
+  })
+
+  it('folding never clobbers a mapping already held centrally', () => {
+    const { plugin } = harness()
+    const { cfg } = connect(plugin)
+    sharedMap(plugin).push({ name: 'Alice', jiraUser: 'central:alice' })
+    cfg.assigneeMap = [{ name: 'Alice', jiraUser: 'stale:alice' }]
+
+    expect(sharedAssignees(plugin, cfg)).toEqual([{ name: 'Alice', jiraUser: 'central:alice' }])
+  })
+
+  it('a mapping the sync discovers lands centrally, so a sibling project already has it', async () => {
+    const { plugin } = harness({ team: ['Alice'] })
+    const a = connect(plugin, { title: 'A', team: ['Alice'] })
+    setDefaultMaps(a.cfg)
+    await runSync(plugin, a.project)
+    // Dana exists only in Jira; importing her should map her once, for the whole server.
+    await mutateMock(plugin, (s) => {
+      s.registerUser('mock:dana', 'Dana')
+      s.createIssue({
+        project: { key: 'DEMO' },
+        issuetype: { name: 'Story' },
+        summary: 'Owned by Dana',
+        parent: { key: 'DEMO-100' },
+        assignee: { accountId: 'mock:dana', displayName: 'Dana' }
+      })
+    })
+    await importStories(plugin, a.project, await fetchEpicStories(plugin, a.project))
+    expect(sharedMap(plugin).some((e) => e.name === 'Dana')).toBe(true)
+
+    // A second project on the same server sees her without any sync of its own.
+    const b = connect(plugin, { title: 'B' })
+    expect(sharedAssignees(plugin, b.cfg).some((e) => e.name === 'Dana')).toBe(true)
   })
 })
