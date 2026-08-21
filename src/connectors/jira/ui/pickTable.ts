@@ -12,14 +12,21 @@ import { Chip } from '../../../ui/primitives/Chip'
 import { formatBadgeText, formatDateLong } from '../../../utils'
 import { Temporal, parsePlainDate, today } from '../../../dates'
 
-/** Assignee cell: a coloured avatar + name, mirroring the main task grid. */
-export function pickAssigneeCell(cell: HTMLElement, name: string | null | undefined): void {
+/**
+ * Assignee cell: a coloured avatar + name, mirroring the main task grid — `roster` keeps
+ * the initials identical to the rest of the project (see projectRoster).
+ */
+export function pickAssigneeCell(
+  cell: HTMLElement,
+  name: string | null | undefined,
+  roster?: Map<string, string>
+): void {
   if (!name) {
     cell.setText('—')
     return
   }
   const wrap = cell.createDiv('pm-pick-assignee-cell')
-  new Avatar(wrap).setName(name)
+  new Avatar(wrap).setName(name, roster)
   wrap.createSpan({ text: displayName(name) })
 }
 

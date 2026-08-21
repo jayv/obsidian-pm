@@ -1,6 +1,7 @@
 /* eslint-disable obsidianmd/ui/sentence-case -- "Jira" is a product name */
 import { App, ButtonComponent, Modal, Notice } from 'obsidian'
 import type PMPlugin from '../../../main'
+import { projectRoster } from '../../../ui/roster'
 import type { Project } from '../../../types'
 import { getStatusConfig, isTerminalStatus, safeAsync } from '../../../utils'
 import { exportTasks, exportableTasks, type ExportCandidate } from '../sync'
@@ -22,6 +23,11 @@ export class JiraExportModal extends Modal {
     private onDone: () => void | Promise<void>
   ) {
     super(app)
+  }
+
+  /** Avatar initials matching the project's own views — see projectRoster. */
+  private roster(): Map<string, string> {
+    return projectRoster(this.project, this.plugin.settings)
   }
 
   onOpen(): void {
@@ -63,7 +69,11 @@ export class JiraExportModal extends Modal {
             pickStatusCell(td, cfg?.label ?? t.status, { color: cfg?.color, icon: cfg?.icon })
           }
         },
-        { header: 'Assignee', cls: 'pm-pick-assignee', render: (t, td) => pickAssigneeCell(td, t.assignees[0]) },
+        {
+          header: 'Assignee',
+          cls: 'pm-pick-assignee',
+          render: (t, td) => pickAssigneeCell(td, t.assignees[0], this.roster())
+        },
         {
           header: 'Due',
           cls: 'pm-pick-due',

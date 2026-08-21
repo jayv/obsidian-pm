@@ -1,5 +1,6 @@
 import { App, Modal } from 'obsidian'
 import type PMPlugin from '../../../main'
+import { projectRoster } from '../../../ui/roster'
 import type { Project, Task } from '../../../types'
 import { makeDefaultFilter } from '../../../types'
 import { matchesFilter } from '../../../store/TaskFilter'
@@ -22,6 +23,11 @@ export class JiraMatchSearchModal extends Modal {
     private onPick: (taskId: string) => void
   ) {
     super(app)
+  }
+
+  /** Avatar initials matching the project's own views — see projectRoster. */
+  private roster(): Map<string, string> {
+    return projectRoster(this.project, this.plugin.settings)
   }
 
   onOpen(): void {
@@ -76,7 +82,7 @@ export class JiraMatchSearchModal extends Modal {
         color: sc?.color,
         icon: sc?.icon
       })
-      pickAssigneeCell(tr.createEl('td', { cls: 'pm-pick-assignee' }), task.assignees[0])
+      pickAssigneeCell(tr.createEl('td', { cls: 'pm-pick-assignee' }), task.assignees[0], this.roster())
       pickDueCell(tr.createEl('td', { cls: 'pm-pick-due' }), task.due)
       tr.addEventListener('click', () => {
         this.onPick(task.id)

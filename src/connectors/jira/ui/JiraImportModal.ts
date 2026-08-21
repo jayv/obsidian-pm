@@ -1,6 +1,7 @@
 /* eslint-disable obsidianmd/ui/sentence-case -- "Jira" is a product name */
 import { App, ButtonComponent, Modal, Notice } from 'obsidian'
 import type PMPlugin from '../../../main'
+import { projectRoster } from '../../../ui/roster'
 import type { Project, Task } from '../../../types'
 import { getStatusConfig, safeAsync } from '../../../utils'
 import { flattenTasks } from '../../../store/TaskTreeOps'
@@ -39,6 +40,11 @@ export class JiraImportModal extends Modal {
     private onDone: () => void | Promise<void>
   ) {
     super(app)
+  }
+
+  /** Avatar initials matching the project's own views — see projectRoster. */
+  private roster(): Map<string, string> {
+    return projectRoster(this.project, this.plugin.settings)
   }
 
   onOpen(): void {
@@ -125,7 +131,11 @@ export class JiraImportModal extends Modal {
             pickStatusCell(td, sc?.label ?? s.status, { color: sc?.color, icon: sc?.icon })
           }
         },
-        { header: 'Assignee', cls: 'pm-pick-assignee', render: (s, td) => pickAssigneeCell(td, s.assigneeName) },
+        {
+          header: 'Assignee',
+          cls: 'pm-pick-assignee',
+          render: (s, td) => pickAssigneeCell(td, s.assigneeName, this.roster())
+        },
         {
           header: 'Due',
           cls: 'pm-pick-due',
@@ -203,7 +213,7 @@ export class JiraImportModal extends Modal {
     wrap.createSpan({ text: task.title || '(untitled)', cls: 'pm-jira-match-linked-title' })
     const sc = getStatusConfig(this.plugin.settings.statuses, task.status)
     pickStatusCell(wrap.createSpan(), sc?.label ?? task.status, { color: sc?.color, icon: sc?.icon })
-    pickAssigneeCell(wrap.createSpan(), task.assignees[0])
+    pickAssigneeCell(wrap.createSpan(), task.assignees[0], this.roster())
     pickDueCell(wrap.createSpan(), task.due)
     row.after(sub)
   }
