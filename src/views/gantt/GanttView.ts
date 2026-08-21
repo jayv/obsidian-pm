@@ -25,6 +25,7 @@ import type { RendererContext } from './GanttRenderer'
 import { renderTaskLabel } from './TaskLabelRenderer'
 import { computeResourceConflicts } from './ResourceConflicts'
 import { buildGanttSvg } from './GanttSvgExport'
+import { projectRoster } from '../../ui/roster'
 import type { TaskConflicts } from './ResourceConflicts'
 
 // Shift+wheel zoom: a multiplier on the granularity's base day width.
@@ -165,7 +166,8 @@ export class GanttView implements SubView {
         this.plugin.settings.statuses,
         this.plugin.settings.priorities,
         this.granularity,
-        new Date().toLocaleString()
+        new Date().toLocaleString(),
+        { roster: this.roster() }
       )
       // Trigger a save dialog so the user picks where to write the file.
       const blob = new Blob([svg], { type: 'image/svg+xml' })
@@ -377,11 +379,20 @@ export class GanttView implements SubView {
 
     // Iterate the resolved row model so the conflicts-only filter applies and
     // row indexes line up with dependency arrows / grid (both use flatTasks).
-    const labelCtx = { plugin: this.plugin, project: this.project, onRefresh: this.onRefresh }
+    const labelCtx = { plugin: this.plugin, project: this.project, onRefresh: this.onRefresh, roster: this.roster() }
     this.flatTasks.forEach((f, rowIndex) => {
       renderTaskLabel(leftBody, f.task, f.depth, rowIndex, labelCtx)
       renderTaskBar(barsGroup, f.task, rowIndex, f.depth, ctx)
     })
+  }
+
+  /**
+   * Avatar initials for this project, resolved once per render. Everything in the chart —
+   * bars, tree column, exported SVG — reads the same set, so a person's initials don't
+   * change between them.
+   */
+  private roster(): Map<string, string> {
+    return projectRoster(this.project, this.plugin.settings)
   }
 
   private makeRendererContext(): RendererContext {
@@ -391,6 +402,7 @@ export class GanttView implements SubView {
       cfg: this.cfg,
       plugin: this.plugin,
       project: this.project,
+      roster: this.roster(),
       flatTasks: this.flatTasks,
       drag: this.drag,
       link: this.link,

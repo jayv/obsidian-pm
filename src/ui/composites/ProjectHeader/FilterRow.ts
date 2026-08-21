@@ -12,7 +12,7 @@ import { collectAllAssignees, collectAllTags } from '../../../store'
 import { UNASSIGNED, countActiveFilters } from '../../../store/TaskFilter'
 import { renderFilterDropdown } from '../../FilterDropdown'
 import { Pill } from '../../primitives/Pill'
-import { Avatar, displayName } from '../../primitives/Avatar'
+import { Avatar, displayName, initialsRoster } from '../../primitives/Avatar'
 import { SegmentedToggleGroup } from '../../primitives/SegmentedControl'
 import { formatBadgeText } from '../../../utils'
 import type { HeaderUiState } from './ProjectHeader'
@@ -115,6 +115,9 @@ export class FilterRow {
    */
   private renderAssigneeFilter(notify: () => void, names: string[]): void {
     const { filter } = this.props
+    // The filter row shows the whole roster, so it's the natural place to resolve initials
+    // for it: every other view of this project renders against the same set.
+    const roster = initialsRoster(names)
     const pill = new Pill(this.el).setAriaLabel('Filter by assignee')
     const zone = createDiv('pm-assignee-filter')
 
@@ -177,7 +180,7 @@ export class FilterRow {
     const soloHint = ' — shift- or double-click to show only this'
     for (const name of names) {
       addChip(name, (btn) => {
-        new Avatar(btn).setName(name).setSize('sm')
+        new Avatar(btn).setName(name, roster).setSize('sm')
         setTooltip(btn, displayName(name) + soloHint)
       })
     }

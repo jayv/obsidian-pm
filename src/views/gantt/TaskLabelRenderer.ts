@@ -13,6 +13,8 @@ export interface LabelContext {
   onRefresh: () => Promise<void>
   /** Short labels (e.g. a linked issue key) to show beside the title, as in the table. */
   badgesOf?: (task: Task) => TaskBadge[]
+  /** View-wide initials for avatars — see projectRoster. */
+  roster?: Map<string, string>
 }
 
 export function renderTaskLabel(
@@ -89,7 +91,7 @@ export function renderTaskLabel(
   // Assignee avatars (colored initials), matching the bars and table
   if (task.assignees.length) {
     const avatars = el.createDiv('pm-gantt-label-avatars')
-    new AvatarStack(avatars).setNames(task.assignees).setMax(3).setSize('sm')
+    new AvatarStack(avatars).setRoster(ctx.roster).setNames(task.assignees).setMax(3).setSize('sm')
   }
 
   // Progress %

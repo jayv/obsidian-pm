@@ -10,6 +10,8 @@ export interface KanbanCardProps {
   task: Task
   /** Tint for the priority marker. */
   priorityColor?: string
+  /** View-wide initials, so a person reads the same here as everywhere else. */
+  roster?: Map<string, string>
   descriptionPreview?: string
   parentTitle?: string
   /** Short labels (e.g. a linked issue key); rendered at the card's top right. */
@@ -104,7 +106,7 @@ export class KanbanCard {
     }
 
     const footer = body.createDiv('pm-kanban-card-footer')
-    new AvatarStack(footer).setNames(task.assignees).setMax(3).setSize('sm')
+    new AvatarStack(footer).setRoster(props.roster).setNames(task.assignees).setMax(3).setSize('sm')
 
     // Badges sit with the due date on the footer's right, rather than crowding the title
     // row alongside the type/recurrence chips and tags.

@@ -12,6 +12,8 @@ export interface KanbanColumnStatus {
 export interface KanbanCardData {
   task: Task
   priorityColor?: string
+  /** View-wide avatar initials — see projectRoster. */
+  roster?: Map<string, string>
   descriptionPreview?: string
   parentTitle?: string
   subtaskProgress?: { done: number; total: number }

@@ -45,7 +45,7 @@ function badgeChipW(label: string): number {
  * with a "+N" bubble for the rest. Shared by the bars and the label column so both
  * stacks look identical.
  */
-function avatarStack(names: string[], rightX: number): string {
+function avatarStack(names: string[], rightX: number, roster?: Map<string, string>): string {
   const shown = Math.min(3, names.length)
   const overflow = names.length - shown
   const out: string[] = []
@@ -53,7 +53,7 @@ function avatarStack(names: string[], rightX: number): string {
     const cx = rightX - AVATAR_R - AVATAR_EDGE_GAP - k * AVATAR_STEP
     const isOver = overflow > 0 && k === shown - 1
     const fill = isOver ? '#555b66' : stringToColor(names[k])
-    const text = isOver ? `+${overflow + 1}` : initialsFor(names[k])
+    const text = isOver ? `+${overflow + 1}` : (roster?.get(names[k]) ?? initialsFor(names[k]))
     out.push(`<circle cx="${cx}" cy="0" r="${AVATAR_R}" fill="${fill}" stroke="rgba(255,255,255,0.7)"/>`)
     out.push(`<text class="av" x="${cx}" y="0">${esc(text)}</text>`)
   }
@@ -75,6 +75,13 @@ interface RowGeom {
 export interface GanttSvgOptions {
   /** Short labels (e.g. a linked issue key) to show beside each task, as in the on-screen column. */
   badgesOf?: (task: Task) => TaskBadge[]
+  /**
+   * Avatar initials resolved across the whole project. Passed in rather than derived here
+   * so the export shows the same initials as the chart it was exported from — deriving it
+   * from `project.tasks` alone would miss team members with no task and could widen
+   * differently.
+   */
+  roster?: Map<string, string>
 }
 
 /**
@@ -225,7 +232,9 @@ export function buildGanttSvg(
       bx += w + BADGE_GAP
     }
     if (task.assignees.length) {
-      lparts.push(`<g transform="translate(0,${cy})">${avatarStack(task.assignees.map(displayName), avRight)}</g>`)
+      lparts.push(
+        `<g transform="translate(0,${cy})">${avatarStack(task.assignees.map(displayName), avRight, opts.roster)}</g>`
+      )
     }
     leftParts.push(`<g class="lrow" data-id="${esc(task.id)}" transform="translate(0,${y})">${lparts.join('')}</g>`)
 
@@ -280,7 +289,7 @@ export function buildGanttSvg(
         }
         if (task.assignees.length) {
           parts.push(
-            `<g class="avg" data-x0="${rightX0}" data-ty="${cy}" transform="translate(${LABEL_W + rightX0},${cy})">${avatarStack(task.assignees.map(displayName), 0)}</g>`
+            `<g class="avg" data-x0="${rightX0}" data-ty="${cy}" transform="translate(${LABEL_W + rightX0},${cy})">${avatarStack(task.assignees.map(displayName), 0, opts.roster)}</g>`
           )
         }
       }
@@ -320,7 +329,8 @@ export function buildGanttSvg(
   const assigneeChips = collectAllAssignees(project.tasks)
     .map((a) => {
       const name = displayName(a)
-      return `<div class="avf" data-name="${esc(name)}" title="${esc(name)}" style="background:${stringToColor(name)}">${esc(initialsFor(name))}</div>`
+      const initials = opts.roster?.get(name) ?? initialsFor(name)
+      return `<div class="avf" data-name="${esc(name)}" title="${esc(name)}" style="background:${stringToColor(name)}">${esc(initials)}</div>`
     })
     .join('')
 

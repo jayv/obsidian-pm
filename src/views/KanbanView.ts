@@ -5,6 +5,7 @@ import { flattenTasks, totalLoggedHours } from '../store/TaskTreeOps'
 import { matchesFilter } from '../store/TaskFilter'
 import { isTaskOverdue, isTerminalStatus, getPriorityConfig, priorityRank } from '../utils'
 import { openTaskModal } from '../ui/ModalFactory'
+import { projectRoster } from '../ui/roster'
 import { buildTaskContextMenu } from '../ui/TaskContextMenu'
 import { KanbanColumn, type KanbanCardData } from '../ui/composites/KanbanColumn'
 import type { SubView } from './SubView'
@@ -128,6 +129,7 @@ export class KanbanView implements SubView {
     return {
       task,
       priorityColor,
+      roster: projectRoster(this.project, this.plugin.settings),
       descriptionPreview,
       parentTitle,
       subtaskProgress,

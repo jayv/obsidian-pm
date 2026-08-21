@@ -180,7 +180,7 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
 
   // Assignee avatars (colored initials) anchored at the right end of the bar.
   // Rendered before the label so the label can reserve room and avoid overlap.
-  const avatarZone = renderAssigneeAvatars(barGroup, task, x, width, y, height, conflict?.assignees)
+  const avatarZone = renderAssigneeAvatars(barGroup, task, x, width, y, height, conflict?.assignees, ctx.roster)
 
   const labelY = y + height / 2
 
@@ -659,7 +659,8 @@ function renderAssigneeAvatars(
   width: number,
   y: number,
   height: number,
-  conflicted?: Set<string>
+  conflicted?: Set<string>,
+  roster?: Map<string, string>
 ): number {
   if (!task.assignees.length) return 0
 
@@ -693,7 +694,7 @@ function renderAssigneeAvatars(
       y: cy,
       class: 'pm-gantt-bar-avatar-text'
     })
-    text.textContent = isOverflowSlot ? `+${overflow + 1}` : initialsFor(names[i])
+    text.textContent = isOverflowSlot ? `+${overflow + 1}` : (roster?.get(names[i]) ?? initialsFor(names[i]))
     group.appendChild(text)
 
     const tt = svgEl('title', {})

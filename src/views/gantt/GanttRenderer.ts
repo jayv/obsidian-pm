@@ -24,6 +24,8 @@ export interface RendererContext {
   link: LinkState
   /** Per-task resource-conflict overlays, or null when the toggle is off. */
   conflicts: Map<string, TaskConflicts> | null
+  /** View-wide avatar initials — see projectRoster. */
+  roster: Map<string, string>
   onRefresh: () => Promise<void>
   cleanupFns: (() => void)[]
 }

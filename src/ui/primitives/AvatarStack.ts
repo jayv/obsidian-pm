@@ -10,6 +10,14 @@ export class AvatarStack {
     this.el = parentEl.createDiv('pm-avatar-stack')
   }
 
+  private roster?: Map<string, string>
+
+  /** Initials made unique across the whole view — see {@link initialsRoster}. */
+  setRoster(roster: Map<string, string> | undefined): this {
+    this.roster = roster
+    return this
+  }
+
   setNames(names: string[]): this {
     this.names = names
     this.render()
@@ -32,7 +40,7 @@ export class AvatarStack {
     this.el.empty()
     const visible = this.names.slice(0, this.max)
     for (const name of visible) {
-      new Avatar(this.el).setName(name).setSize(this.size)
+      new Avatar(this.el).setName(name, this.roster).setSize(this.size)
     }
     const overflow = this.names.length - visible.length
     if (overflow > 0) {

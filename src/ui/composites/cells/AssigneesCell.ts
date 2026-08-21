@@ -10,6 +10,8 @@ export interface AssigneesCellProps {
   onChange: (assignees: string[]) => void
   /** Prompt for a brand-new assignee name; resolves null if cancelled. */
   promptNewName: () => Promise<string | null>
+  /** View-wide initials, so a person reads the same here as on the board and the chart. */
+  roster?: Map<string, string>
 }
 
 export class AssigneesCell {
@@ -18,7 +20,7 @@ export class AssigneesCell {
   constructor(parentRow: HTMLElement, props: AssigneesCellProps) {
     this.el = parentRow.createEl('td', { cls: 'pm-table-cell pm-table-cell-assignees pm-assignees-editable' })
     if (props.task.assignees.length) {
-      new AvatarStack(this.el).setNames(props.task.assignees).setMax(3)
+      new AvatarStack(this.el).setRoster(props.roster).setNames(props.task.assignees).setMax(3)
     } else {
       this.el.createSpan({ cls: 'pm-assignees-empty', text: '+' })
     }
