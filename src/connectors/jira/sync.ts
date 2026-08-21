@@ -356,8 +356,20 @@ async function reconcileLinks(
 
 // ── Epic-wide mapping config (shared via the epic's entity property) ────────────
 
-function epicConfigOf(plugin: PMPlugin, cfg: JiraProjectConfig): JiraEpicConfig {
-  return { statusMap: cfg.statusMap, priorityMap: cfg.priorityMap, assigneeMap: sharedAssignees(plugin, cfg) }
+/**
+ * What we publish to the root issue's property for other Obsidian users.
+ *
+ * Only mappings for people on *this* project. The stored list is server-wide now, and
+ * writing all of it onto every epic would push people from unrelated projects into each
+ * one — a wider spread of name↔accountId than the project itself justifies.
+ */
+function epicConfigOf(plugin: PMPlugin, cfg: JiraProjectConfig, project: Project): JiraEpicConfig {
+  const mine = new Set(project.teamMembers)
+  return {
+    statusMap: cfg.statusMap,
+    priorityMap: cfg.priorityMap,
+    assigneeMap: sharedAssignees(plugin, cfg).filter((e) => mine.has(e.name))
+  }
 }
 
 /** Merge a remote epic config into local maps (adopt others' additions; no clobber). */
@@ -392,9 +404,14 @@ async function pullEpicConfig(plugin: PMPlugin, client: JiraClient, cfg: JiraPro
   }
 }
 
-async function pushEpicConfig(plugin: PMPlugin, client: JiraClient, cfg: JiraProjectConfig): Promise<void> {
+async function pushEpicConfig(
+  plugin: PMPlugin,
+  client: JiraClient,
+  cfg: JiraProjectConfig,
+  project: Project
+): Promise<void> {
   if (!cfg.mappingsDirty || !cfg.epicId) return
-  await client.setProperty(cfg.epicId, CONFIG_PROP, epicConfigOf(plugin, cfg))
+  await client.setProperty(cfg.epicId, CONFIG_PROP, epicConfigOf(plugin, cfg, project))
   cfg.mappingsDirty = false
   // Mappings live in plugin settings now, so a mapping the sync discovered has to be
   // written there — the project file no longer carries it.
@@ -643,7 +660,7 @@ export async function linkStoriesToTasks(
     }
     patches.push({ taskId: task.id, patch: { ext: { ...task.ext, [JIRA_ID]: jx } } })
   }
-  await pushEpicConfig(plugin, client, cfg) // resolveAssignee may have added a mapping
+  await pushEpicConfig(plugin, client, cfg, project) // resolveAssignee may have added a mapping
   await plugin.store.applyExternalUpdates(project, patches)
   return { linked: patches.length, conflicted }
 }
@@ -728,7 +745,7 @@ export async function exportTasks(
     const blockedKey = createdIds.has(f.task.id) ? keyOf.get(f.task.id) : undefined
     if (blockedKey) await reconcileLinks(client, blockedKey, [], desiredBlockerKeys(f.task, keyOf))
   }
-  await pushEpicConfig(plugin, client, cfg)
+  await pushEpicConfig(plugin, client, cfg, project)
   await plugin.store.applyExternalUpdates(project, patches)
   return { created: patches.length, skipped }
 }
@@ -1149,7 +1166,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   cfg.lastSyncAt = new Date().toISOString()
 
   // Publish local mapping changes (incl. auto-created assignees) to the epic.
-  await pushEpicConfig(plugin, client, cfg)
+  await pushEpicConfig(plugin, client, cfg, project)
   await plugin.store.applyExternalUpdates(project, patches)
   return {
     changed: patches.length > 0,
