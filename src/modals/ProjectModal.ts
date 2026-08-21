@@ -4,6 +4,7 @@ import { Project, CustomFieldDef, makeId, makeProject } from '../types'
 import { rebuildTaskIndex } from '../store'
 import { safeAsync } from '../utils'
 import { Avatar } from '../ui/primitives/Avatar'
+import { projectRoster } from '../ui/roster'
 
 const PROJECT_COLORS = [
   '#8b72be',
@@ -169,11 +170,14 @@ export class ProjectModal extends Modal {
     memberSection.createEl('label', { text: 'Team members', cls: 'pm-label' })
     const memberWrap = memberSection.createDiv('pm-member-list')
     const renderMembers = () => {
+      // Same initials as every view of this project — this list is where you'd compare
+      // them, so naive two-letter initials here would contradict the board and the chart.
+      const roster = projectRoster(this.project, this.plugin.settings)
       memberWrap.empty()
       for (let i = 0; i < this.project.teamMembers.length; i++) {
         const row = memberWrap.createDiv('pm-member-row')
         const name = this.project.teamMembers[i] || '?'
-        new Avatar(row).setName(name)
+        new Avatar(row).setName(name, roster)
         const input = row.createEl('input', {
           type: 'text',
           value: this.project.teamMembers[i],
