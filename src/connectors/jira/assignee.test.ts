@@ -324,7 +324,7 @@ describe('jira assignee map — centralized per server [local]', () => {
 
     // Renaming in A: the store does A itself, the connector carries it to the rest.
     plugin.store.renameAssignee(a.project, 'Ada', 'Ada Lovelace')
-    await renameAcrossProjects(plugin, a.project, a.cfg, 'Ada', 'Ada Lovelace')
+    await renameAcrossProjects(plugin, a.cfg.serverId, 'Ada', 'Ada Lovelace', a.project.filePath)
 
     expect(b.project.teamMembers).toEqual(['Ada Lovelace'])
     expect(must(findTask(b.project.tasks, bTask.id)).assignees).toEqual(['Ada Lovelace'])

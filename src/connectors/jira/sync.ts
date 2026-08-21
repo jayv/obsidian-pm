@@ -400,14 +400,34 @@ async function pushEpicConfig(client: JiraClient, cfg: JiraProjectConfig): Promi
  * adds the new name when the old one is absent, which would quietly put the person on
  * projects they have nothing to do with. Returns how many projects changed.
  */
+let renaming = false
+
 export async function renameAcrossProjects(
   plugin: PMPlugin,
-  current: Project,
-  cfg: JiraProjectConfig,
+  serverId: string,
   from: string,
-  to: string
+  to: string,
+  skipFilePath?: string
 ): Promise<number> {
   if (!from || from === to) return 0
+  // Each project this renames fires the store's rename hook, which lands back here.
+  // Whoever started the walk finishes it; the nested calls are no-ops.
+  if (renaming) return 0
+  renaming = true
+  try {
+    return await walkRename(plugin, serverId, from, to, skipFilePath)
+  } finally {
+    renaming = false
+  }
+}
+
+async function walkRename(
+  plugin: PMPlugin,
+  serverId: string,
+  from: string,
+  to: string,
+  skipFilePath?: string
+): Promise<number> {
   let projects: Project[] = []
   try {
     projects = await plugin.store.loadAllProjects(plugin.settings.projectsFolder)
@@ -417,9 +437,9 @@ export async function renameAcrossProjects(
   }
   let touched = 0
   for (const other of projects) {
-    if (other.filePath === current.filePath) continue // the caller already did this one
+    if (skipFilePath && other.filePath === skipFilePath) continue // the caller already did this one
     const otherCfg = projectCfg(other)
-    if (!otherCfg?.enabled || otherCfg.serverId !== cfg.serverId) continue
+    if (!otherCfg?.enabled || otherCfg.serverId !== serverId) continue
     const knows =
       other.teamMembers.includes(from) || flattenTasks(other.tasks).some((f) => f.task.assignees.includes(from))
     if (!knows) continue
@@ -429,7 +449,7 @@ export async function renameAcrossProjects(
   }
   if (touched) {
     plugin.refreshProjectViews()
-    console.debug(`[PM] Jira: renamed "${from}" → "${to}" across ${touched} other project(s).`)
+    console.debug(`[PM] Jira: renamed "${from}" → "${to}" across ${touched} project(s).`)
   }
   return touched
 }

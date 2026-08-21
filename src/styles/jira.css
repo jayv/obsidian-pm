@@ -63,8 +63,27 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* Centralized assignee-mapping dialog: the list is as long as the team, so it scrolls
-   and gets its own filter box. */
+/* Centralized assignee-mapping dialog: two aligned columns (local name → Jira user) plus
+   a remove button, scrolling under a filter box. */
+.pm-jira-am-grid .pm-jira-am-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 24px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.pm-jira-am-grid .pm-input {
+  width: 100%;
+}
+.pm-jira-am-row--head {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pm-text-muted);
+  margin-bottom: 4px;
+}
+.pm-jira-am-row--new .pm-input {
+  border-style: dashed;
+}
 .pm-jira-am-list--tall {
   max-height: 45vh;
   overflow-y: auto;
@@ -75,19 +94,6 @@
 }
 .pm-jira-am-filter .pm-input {
   width: 100%;
-}
-.pm-jira-am-label {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-.pm-jira-am-origin {
-  font-size: 10px;
-  color: var(--pm-text-muted);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .pm-jira-am-summary {
   font-size: 12px;

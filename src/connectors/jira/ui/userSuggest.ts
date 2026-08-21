@@ -1,7 +1,3 @@
-/* eslint-disable obsidianmd/ui/sentence-case -- "Jira" is a product name */
-import type { JiraAssignee } from '../types'
-import { upsertAssigneeMapping } from '../taskLink'
-
 export interface JiraUser {
   accountId: string
   displayName: string
@@ -55,35 +51,4 @@ export function attachUserSuggest(
     timer = window.setTimeout(() => void run(q), 250)
   })
   input.addEventListener('blur', () => window.setTimeout(close, 150))
-}
-
-/**
- * One "member → Jira user" row: a text box showing the current mapping, with type-ahead.
- * Typed text is kept as a literal accountId/name until a pick replaces it, and clearing
- * the box removes the mapping.
- */
-export function renderMappingInput(
-  row: HTMLElement,
-  assignees: JiraAssignee[],
-  member: string,
-  search: (query: string) => Promise<JiraUser[]>,
-  onChange: () => void
-): void {
-  const existing = assignees.find((e) => e.name === member)
-  const wrap = row.createDiv('pm-jira-user')
-  const input = wrap.createEl('input', { type: 'text', cls: 'pm-input' })
-  input.placeholder = 'Search Jira user…'
-  input.value = existing?.jiraDisplay ?? existing?.jiraUser ?? ''
-
-  const set = (jiraUser: string, jiraDisplay?: string): void => {
-    upsertAssigneeMapping(assignees, member, jiraUser, jiraDisplay)
-    onChange()
-  }
-  attachUserSuggest(wrap, input, search, {
-    onPick: (u) => {
-      set(u.accountId, u.displayName)
-      input.value = u.displayName
-    },
-    onType: (text) => set(text)
-  })
 }
