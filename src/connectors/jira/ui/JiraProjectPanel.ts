@@ -64,11 +64,9 @@ export function renderJiraProjectPanel(
       return
     }
     try {
-      const { statusesAdded, prioritiesAdded, membersAdded } = await loadMappingValues(plugin, project)
+      const { statusesAdded, prioritiesAdded } = await loadMappingValues(plugin, project)
       const epicHint = cfg.epicId ? '' : ' (set an epic key to load the shared config)'
-      new Notice(
-        `Jira: loaded project settings — +${statusesAdded} status, +${prioritiesAdded} priority, +${membersAdded} member(s)${epicHint}.`
-      )
+      new Notice(`Jira: loaded project settings — +${statusesAdded} status, +${prioritiesAdded} priority${epicHint}.`)
       rerender()
     } catch (e) {
       new Notice('Failed to load project settings from Jira. Check the console.')

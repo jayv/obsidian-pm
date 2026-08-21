@@ -65,7 +65,10 @@ describe('jira sync — setup & metadata [setup]', () => {
     expect(cfg.mappingsDirty).toBe(true)
   })
 
-  it('loadMappingValues adopts the epic assignee map and creates team members', async () => {
+  // Status and priority maps are project configuration and worth sharing. Assignee
+  // mappings are name↔accountId pairs, and there's no reason to put those in Jira — so
+  // they stay local, and a second user maps their own people.
+  it('never publishes assignee mappings to the epic config', async () => {
     const shared = new FakeAdapter()
     const a = harness({ adapter: shared, team: ['Alice', 'Bob'] })
     const projA = connect(a.plugin, { team: ['Alice', 'Bob'] })
@@ -75,15 +78,20 @@ describe('jira sync — setup & metadata [setup]', () => {
       { name: 'Bob', jiraUser: 'mock:bob' }
     ]
     projA.cfg.mappingsDirty = true
-    await runSync(a.plugin, projA.project) // publish the shared config to the epic
+    await runSync(a.plugin, projA.project)
+
+    const published = (await readMock(a.plugin)).getProperty(EPIC, CONFIG_PROP) as Record<string, unknown>
+    expect(published.statusMap).toBeDefined() // the shareable half still goes
+    expect(published.assigneeMap).toBeUndefined()
+    expect(JSON.stringify(published)).not.toContain('mock:alice')
     stopMockServer()
 
+    // A second user reading that config inherits the value maps and nobody's identity.
     const b = harness({ adapter: shared })
-    const projB = connect(b.plugin) // empty team
-    const { membersAdded } = await loadMappingValues(b.plugin, projB.project)
-    expect(membersAdded).toBe(2)
-    expect(projB.project.teamMembers).toEqual(expect.arrayContaining(['Alice', 'Bob']))
-    expect(sharedMap(b.plugin).map((e) => e.name)).toEqual(expect.arrayContaining(['Alice', 'Bob']))
+    const projB = connect(b.plugin)
+    await loadMappingValues(b.plugin, projB.project)
+    expect(sharedMap(b.plugin)).toEqual([])
+    expect(projB.project.teamMembers).toEqual([])
   })
 
   it('userPicker autocompletes assignees by query', async () => {
@@ -372,8 +380,7 @@ describe('jira sync — import (JIRA → Obsidian) [J→O]', () => {
     await mutateMock(plugin, (s) => {
       s.setProperty(EPIC, CONFIG_PROP, {
         statusMap: [{ jira: 'In Review', target: 'done', outbound: true }],
-        priorityMap: [],
-        assigneeMap: []
+        priorityMap: []
       } satisfies JiraEpicConfig)
     })
     const fresh = connect(plugin) // a different project, empty maps
@@ -622,7 +629,7 @@ describe('jira sync — assignees [both]', () => {
     expect(project.tasks.find((t) => t.title === 'Assigned')?.assignees).toEqual(['Alice'])
   })
 
-  it('auto-creates an unknown assignee (member + mapping) and propagates to the epic config', async () => {
+  it('auto-creates an unknown assignee (member + mapping), keeping the mapping out of Jira', async () => {
     const { plugin } = harness()
     const { project, cfg } = connect(plugin)
     setDefaultMaps(cfg)
@@ -643,10 +650,10 @@ describe('jira sync — assignees [both]', () => {
     expect(project.teamMembers).toContain('Carol')
     expect(sharedMap(plugin).some((e) => e.name === 'Carol' && e.jiraUser === 'mock:carol')).toBe(true)
 
-    // The new mapping rides along to the epic config on the next sync.
+    // The mapping is ours alone — the next sync must not carry Carol into Jira.
     await runSync(plugin, project)
-    const epicCfg = (await readMock(plugin)).getProperty(EPIC, CONFIG_PROP) as JiraEpicConfig
-    expect(epicCfg.assigneeMap.some((e) => e.name === 'Carol')).toBe(true)
+    const epicCfg = (await readMock(plugin)).getProperty(EPIC, CONFIG_PROP) as Record<string, unknown>
+    expect(JSON.stringify(epicCfg)).not.toContain('Carol')
   })
 })
 

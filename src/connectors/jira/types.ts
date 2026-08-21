@@ -103,10 +103,14 @@ export interface JiraIssueProps {
  * config, so other Obsidian users can bootstrap + import from the epic.
  */
 export const CONFIG_PROP = 'obsidian-pm-config'
+/**
+ * Mapping config published to the root issue's entity property so other Obsidian users
+ * syncing the same tree inherit it. Deliberately status + priority only: assignee
+ * mappings are name↔accountId pairs, and there's no reason to put those in Jira.
+ */
 export interface JiraEpicConfig {
   statusMap: JiraValueMap[]
   priorityMap: JiraValueMap[]
-  assigneeMap: JiraAssignee[]
 }
 
 // ── Global servers + secrets (plugin settings) ───────────────────────────────

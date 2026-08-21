@@ -222,7 +222,7 @@
     <tr class="group"><td colspan="2">jira sync — setup &amp; metadata <span class="dir dir-setup">setup</span> <span class="muted">4</span></td></tr>
     <tr><td>seeds mock meta from settings + creates the epic issue on first sync</td><td class="file">sync.test.ts</td></tr>
 <tr><td>loadMappingValues prefills status + priority maps and marks them dirty</td><td class="file">sync.test.ts</td></tr>
-<tr><td>loadMappingValues adopts the epic assignee map and creates team members</td><td class="file">sync.test.ts</td></tr>
+<tr><td>never publishes assignee mappings to the epic config</td><td class="file">sync.test.ts</td></tr>
 <tr><td>userPicker autocompletes assignees by query</td><td class="file">sync.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">jira sync — export (Obsidian → JIRA) <span class="dir dir-OJ">O→J</span> <span class="muted">6</span></td></tr>
@@ -259,7 +259,7 @@
 
     <tr class="group"><td colspan="2">jira sync — assignees <span class="dir dir-both">both</span> <span class="muted">2</span></td></tr>
     <tr><td>resolves a known assignee mapping inbound</td><td class="file">sync.test.ts</td></tr>
-<tr><td>auto-creates an unknown assignee (member + mapping) and propagates to the epic config</td><td class="file">sync.test.ts</td></tr>
+<tr><td>auto-creates an unknown assignee (member + mapping), keeping the mapping out of Jira</td><td class="file">sync.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">jira sync — epic config sharing (multi-user) <span class="dir dir-both">both</span> <span class="muted">3</span></td></tr>
     <tr><td>publishes dirty maps to the epic config property</td><td class="file">sync.test.ts</td></tr>

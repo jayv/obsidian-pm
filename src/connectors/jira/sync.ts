@@ -80,7 +80,7 @@ export function resolveAssignee(plugin: PMPlugin, project: Project, issue: JiraI
       jiraUser: issue.assigneeAccountId ?? issue.assigneeName ?? name,
       jiraDisplay: issue.assigneeName ?? undefined
     })
-    cfg.mappingsDirty = true // propagate the new mapping to the epic config
+    void plugin.saveSettings() // its only home is plugin settings — write it there now
   }
   // Always ensure the resolved assignee is a project team member — even when the
   // mapping already existed (e.g. adopted from the shared epic config on import).
@@ -356,24 +356,12 @@ async function reconcileLinks(
 
 // ── Epic-wide mapping config (shared via the epic's entity property) ────────────
 
-/**
- * What we publish to the root issue's property for other Obsidian users.
- *
- * Only mappings for people on *this* project. The stored list is server-wide now, and
- * writing all of it onto every epic would push people from unrelated projects into each
- * one — a wider spread of name↔accountId than the project itself justifies.
- */
-function epicConfigOf(plugin: PMPlugin, cfg: JiraProjectConfig, project: Project): JiraEpicConfig {
-  const mine = new Set(project.teamMembers)
-  return {
-    statusMap: cfg.statusMap,
-    priorityMap: cfg.priorityMap,
-    assigneeMap: sharedAssignees(plugin, cfg).filter((e) => mine.has(e.name))
-  }
+function epicConfigOf(cfg: JiraProjectConfig): JiraEpicConfig {
+  return { statusMap: cfg.statusMap, priorityMap: cfg.priorityMap }
 }
 
 /** Merge a remote epic config into local maps (adopt others' additions; no clobber). */
-function mergeEpicConfig(plugin: PMPlugin, cfg: JiraProjectConfig, remote: JiraEpicConfig): void {
+function mergeEpicConfig(cfg: JiraProjectConfig, remote: JiraEpicConfig): void {
   // Dedup by JIRA value (a status/priority maps to ONE of ours): keep the local
   // rule for a JIRA value, only adopt remote rules for JIRA values we don't have.
   const addValues = (local: JiraValueMap[], rem: JiraValueMap[] = []) => {
@@ -383,39 +371,23 @@ function mergeEpicConfig(plugin: PMPlugin, cfg: JiraProjectConfig, remote: JiraE
   }
   addValues(cfg.statusMap, remote.statusMap)
   addValues(cfg.priorityMap, remote.priorityMap)
-  // Adopted mappings land in the server-wide list, so a teammate's mapping published on
-  // one project is available on every project pointing at the same Jira site.
-  const map = sharedAssignees(plugin, cfg)
-  for (const r of remote.assigneeMap ?? []) {
-    if (!map.some((e) => e.name === r.name)) map.push(r)
-  }
 }
 
-async function pullEpicConfig(plugin: PMPlugin, client: JiraClient, cfg: JiraProjectConfig): Promise<void> {
+async function pullEpicConfig(client: JiraClient, cfg: JiraProjectConfig): Promise<void> {
   if (!cfg.epicId) return // no epic configured yet — `/issue//properties/…` is a malformed request
   const remote = (await client.getProperty(cfg.epicId, CONFIG_PROP)) as JiraEpicConfig | undefined
   if (remote) {
-    mergeEpicConfig(plugin, cfg, remote)
+    mergeEpicConfig(cfg, remote)
     return
   }
   // No config on the epic yet: bootstrap it from our local maps on the next push.
-  if (cfg.statusMap.length || cfg.priorityMap.length || sharedAssignees(plugin, cfg).length) {
-    cfg.mappingsDirty = true
-  }
+  if (cfg.statusMap.length || cfg.priorityMap.length) cfg.mappingsDirty = true
 }
 
-async function pushEpicConfig(
-  plugin: PMPlugin,
-  client: JiraClient,
-  cfg: JiraProjectConfig,
-  project: Project
-): Promise<void> {
+async function pushEpicConfig(client: JiraClient, cfg: JiraProjectConfig): Promise<void> {
   if (!cfg.mappingsDirty || !cfg.epicId) return
-  await client.setProperty(cfg.epicId, CONFIG_PROP, epicConfigOf(plugin, cfg, project))
+  await client.setProperty(cfg.epicId, CONFIG_PROP, epicConfigOf(cfg))
   cfg.mappingsDirty = false
-  // Mappings live in plugin settings now, so a mapping the sync discovered has to be
-  // written there — the project file no longer carries it.
-  await plugin.saveSettings()
 }
 
 // ── Setup / import (all over HTTP) ────────────────────────────────────────────
@@ -463,17 +435,11 @@ async function issueToTask(
 export async function loadMappingValues(
   plugin: PMPlugin,
   project: Project
-): Promise<{ statusesAdded: number; prioritiesAdded: number; membersAdded: number }> {
+): Promise<{ statusesAdded: number; prioritiesAdded: number }> {
   const r = await ready(plugin, project)
-  if (!r) return { statusesAdded: 0, prioritiesAdded: 0, membersAdded: 0 }
+  if (!r) return { statusesAdded: 0, prioritiesAdded: 0 }
   const { client, cfg } = r
-  await pullEpicConfig(plugin, client, cfg) // status + priority + assignee maps from the epic
-  // Create a team member for every assignee mapping (adopted or local) — so the
-  // shared config's people show up on this project, mirroring the import flow.
-  const beforeMembers = project.teamMembers.length
-  for (const e of sharedAssignees(plugin, cfg)) {
-    if (e.name && !project.teamMembers.includes(e.name)) project.teamMembers.push(e.name)
-  }
+  await pullEpicConfig(client, cfg) // status + priority maps from the epic
   const jiraStatuses = cfg.epicId ? await client.projectStatuses(cfg.epicId) : []
   // Scope to the mapped project: its priority scheme may expose only a subset of the
   // instance's priorities, and writing one outside it is rejected on create/edit.
@@ -488,8 +454,7 @@ export async function loadMappingValues(
   await plugin.store.ensureCreated(project, plugin.settings.projectsFolder)
   return {
     statusesAdded: cfg.statusMap.length - beforeStatuses,
-    prioritiesAdded: cfg.priorityMap.length - beforePriorities,
-    membersAdded: project.teamMembers.length - beforeMembers
+    prioritiesAdded: cfg.priorityMap.length - beforePriorities
   }
 }
 
@@ -539,7 +504,7 @@ export async function importStories(
   if (!r) return { created: 0 }
   const { client, cfg } = r
   if (cfg.epicId) await client.startFieldId(cfg.epicId) // so the search parses the start field
-  await pullEpicConfig(plugin, client, cfg)
+  await pullEpicConfig(client, cfg)
   // Imported tasks become files under the project folder, so make sure the project
   // itself exists first (a brand-new modal project has no file until now).
   await plugin.store.ensureCreated(project, plugin.settings.projectsFolder)
@@ -621,7 +586,7 @@ export async function linkStoriesToTasks(
   if (!r || !pairs.length) return { linked: 0, conflicted: 0 }
   const { client, cfg } = r
   if (cfg.epicId) await client.startFieldId(cfg.epicId) // so the fetch parses the start field
-  await pullEpicConfig(plugin, client, cfg)
+  await pullEpicConfig(client, cfg)
   await plugin.store.ensureCreated(project, plugin.settings.projectsFolder)
   const fallback = plugin.settings.statuses[0]?.id ?? 'todo'
 
@@ -660,7 +625,7 @@ export async function linkStoriesToTasks(
     }
     patches.push({ taskId: task.id, patch: { ext: { ...task.ext, [JIRA_ID]: jx } } })
   }
-  await pushEpicConfig(plugin, client, cfg, project) // resolveAssignee may have added a mapping
+  await pushEpicConfig(client, cfg) // resolveAssignee may have added a mapping
   await plugin.store.applyExternalUpdates(project, patches)
   return { linked: patches.length, conflicted }
 }
@@ -698,7 +663,7 @@ export async function exportTasks(
   const r = await ready(plugin, project)
   if (!r || !r.cfg.epicId || !taskIds.length) return { created: 0, skipped: [] }
   const { client, cfg } = r
-  await pullEpicConfig(plugin, client, cfg)
+  await pullEpicConfig(client, cfg)
   const startField = await client.startFieldId(cfg.epicId)
   const plan = await buildTypePlan(client, cfg)
   const selected = new Set(taskIds)
@@ -745,7 +710,7 @@ export async function exportTasks(
     const blockedKey = createdIds.has(f.task.id) ? keyOf.get(f.task.id) : undefined
     if (blockedKey) await reconcileLinks(client, blockedKey, [], desiredBlockerKeys(f.task, keyOf))
   }
-  await pushEpicConfig(plugin, client, cfg, project)
+  await pushEpicConfig(client, cfg)
   await plugin.store.applyExternalUpdates(project, patches)
   return { created: patches.length, skipped }
 }
@@ -913,7 +878,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   // Adopt any mapping updates other users published to the epic. The epic config has no
   // `updated` watermark (entity-property writes don't bump it), so it can't be polled
   // incrementally — only a full sync pulls it; periodic ticks rely on the last full sync.
-  if (full) await pullEpicConfig(plugin, client, cfg)
+  if (full) await pullEpicConfig(client, cfg)
 
   const flat = flattenTasks(project.tasks)
   const byKey = new Map<string, Task>()
@@ -1166,7 +1131,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   cfg.lastSyncAt = new Date().toISOString()
 
   // Publish local mapping changes (incl. auto-created assignees) to the epic.
-  await pushEpicConfig(plugin, client, cfg, project)
+  await pushEpicConfig(client, cfg)
   await plugin.store.applyExternalUpdates(project, patches)
   return {
     changed: patches.length > 0,
