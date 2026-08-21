@@ -4,7 +4,6 @@ import type PMPlugin from '../../main'
 import type { Project, Task, TaskBadge } from '../../types'
 import type { Connector, ConnectorDescriptor } from '../registry'
 import { renderPropRow } from '../../ui/FormField'
-import { ProjectView } from '../../views/ProjectView'
 import { setJiraApiDebug } from './JiraClient'
 import { ensureMockServer, stopMockServer } from './JiraMockServer'
 import { JIRA_ID, getDebug, projectCfg, serverById, sharedAssignees, taskExt } from './types'
@@ -33,25 +32,6 @@ export class JiraConnector implements Connector {
   constructor(private plugin: PMPlugin) {}
 
   onload(plugin: PMPlugin): void {
-    plugin.addCommand({
-      id: 'jira-sync-now',
-      name: 'Jira: sync active project now',
-      // Two bindings: Mod+Shift+S is the obvious one, but it's contended — another command
-      // that registered first keeps it, and Linux desktops often grab it for screenshots.
-      // Alt+Shift+S sits in the same family as the plugin's other Alt bindings and is free.
-      // eslint-disable-next-line obsidianmd/commands/no-default-hotkeys -- deliberate: only active when a Jira-enabled project view is focused
-      hotkeys: [
-        { modifiers: ['Mod', 'Shift'], key: 's' },
-        { modifiers: ['Alt', 'Shift'], key: 's' }
-      ],
-      checkCallback: (checking: boolean) => {
-        const project = plugin.app.workspace.getActiveViewOfType(ProjectView)?.project
-        if (!project || !this.isEnabled(project)) return false
-        if (!checking) void this.syncNow(project)
-        return true
-      }
-    })
-
     setJiraApiDebug(getDebug(plugin)) // apply the saved API debug-logging preference
     // Host the JIRA mock over HTTP only when a "localhost" server is configured
     // (and Node is available). Idempotent; re-checked at each client entry point.

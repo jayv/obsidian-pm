@@ -133,6 +133,25 @@ export default class PMPlugin extends Plugin {
     })
 
     this.addCommand({
+      id: 'sync-connectors',
+      name: 'Sync this project with its connectors',
+      // Two bindings: Mod+Shift+S is the obvious one but it's contended — a command that
+      // registered first keeps it, and Linux desktops often grab it for screenshots.
+      // Alt+Shift+S sits with the plugin's other Alt bindings and is free.
+      // eslint-disable-next-line obsidianmd/commands/no-default-hotkeys -- deliberate: only active when a project view with a syncable connector is focused
+      hotkeys: [
+        { modifiers: ['Mod', 'Shift'], key: 's' },
+        { modifiers: ['Alt', 'Shift'], key: 's' }
+      ],
+      checkCallback: (checking: boolean) => {
+        const project = this.app.workspace.getActiveViewOfType(ProjectView)?.project
+        if (!project || !this.connectors.syncable(project).length) return false
+        if (!checking) void this.connectors.syncNow(project)
+        return true
+      }
+    })
+
+    this.addCommand({
       id: 'import-notes-as-tasks',
       name: 'Import notes as tasks',
       callback: () => {

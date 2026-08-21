@@ -155,6 +155,18 @@ export class ConnectorRegistry {
     for (const c of this.activeFor(project)) await c.onProjectSaved?.(project)
   }
 
+  /** Connectors on this project that can sync on demand. */
+  syncable(project: Project): Connector[] {
+    // `in` rather than reading the method off the object — it's a prototype method, and
+    // taking a reference to it just to test for existence trips the unbound-method rule.
+    return this.activeFor(project).filter((c) => 'syncNow' in c)
+  }
+
+  /** Run every on-demand sync this project has. Each connector reports its own result. */
+  async syncNow(project: Project): Promise<void> {
+    for (const c of this.syncable(project)) await c.syncNow?.(project)
+  }
+
   assigneeRenamed(project: Project, from: string, to: string): void {
     for (const c of this.activeFor(project)) c.onAssigneeRenamed?.(project, from, to)
   }
