@@ -22,6 +22,7 @@ import { ProjectHeader, type HeaderUiState } from '../ui/composites/ProjectHeade
 import { flattenTasks, type FlatTask } from '../store/TaskTreeOps'
 import { cloneFilter, filterEquals, isFilterActive, matchesFilter } from '../store/TaskFilter'
 import { computeResourceConflicts } from './gantt/ResourceConflicts'
+import { projectRoster } from '../ui/roster'
 import { displayName } from '../ui/primitives/Avatar'
 
 export const PM_PROJECT_VIEW_TYPE = 'pm-project'
@@ -240,6 +241,7 @@ export class ProjectView extends ItemView {
       project: this.project,
       statuses: this.plugin.settings.statuses,
       priorities: this.plugin.settings.priorities,
+      roster: projectRoster(this.project, this.plugin.settings),
       filter: this.filter,
       activeSavedViewId: this.activeSavedViewId,
       uiState: this.headerUi,

@@ -16,6 +16,12 @@ export interface ProjectHeaderProps {
   project: Project
   statuses: StatusConfig[]
   priorities: PriorityConfig[]
+  /**
+   * Avatar initials for the whole project. Passed in rather than derived here: the filter
+   * row only knows the people who have tasks, so resolving initials from that alone gave
+   * it different initials from every other view of the same project.
+   */
+  roster: Map<string, string>
   filter: FilterState
   activeSavedViewId: string | null
   /** Persisted, by-reference UI state (filter bar / assignee zone open flags). */
@@ -132,6 +138,7 @@ export class ProjectHeader {
       project: this.props.project,
       statuses: this.props.statuses,
       priorities: this.props.priorities,
+      roster: this.props.roster,
       filter: this.props.filter,
       uiState: this.props.uiState,
       onFilterChange: this.props.onFilterChange,

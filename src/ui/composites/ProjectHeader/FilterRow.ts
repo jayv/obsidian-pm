@@ -12,7 +12,7 @@ import { collectAllAssignees, collectAllTags } from '../../../store'
 import { UNASSIGNED, countActiveFilters } from '../../../store/TaskFilter'
 import { renderFilterDropdown } from '../../FilterDropdown'
 import { Pill } from '../../primitives/Pill'
-import { Avatar, displayName, initialsRoster } from '../../primitives/Avatar'
+import { Avatar, displayName } from '../../primitives/Avatar'
 import { SegmentedToggleGroup } from '../../primitives/SegmentedControl'
 import { formatBadgeText } from '../../../utils'
 import type { HeaderUiState } from './ProjectHeader'
@@ -21,6 +21,8 @@ export interface FilterRowProps {
   project: Project
   statuses: StatusConfig[]
   priorities: PriorityConfig[]
+  /** Avatar initials for the whole project — see projectRoster. */
+  roster: Map<string, string>
   filter: FilterState
   /** Persisted UI state — the assignee zone open flag survives view switches. */
   uiState: HeaderUiState
@@ -114,10 +116,7 @@ export class FilterRow {
    * selection reads clearly even on a projector.
    */
   private renderAssigneeFilter(notify: () => void, names: string[]): void {
-    const { filter } = this.props
-    // The filter row shows the whole roster, so it's the natural place to resolve initials
-    // for it: every other view of this project renders against the same set.
-    const roster = initialsRoster(names)
+    const { filter, roster } = this.props
     const pill = new Pill(this.el).setAriaLabel('Filter by assignee')
     const zone = createDiv('pm-assignee-filter')
 
