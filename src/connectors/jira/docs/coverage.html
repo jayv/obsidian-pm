@@ -23,7 +23,7 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>187</strong> tests</span>
+    <span class="stat"><strong>188</strong> tests</span>
     <span class="stat"><strong>49</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
@@ -134,8 +134,9 @@
 <tr><td>reuses an existing member instead of adding a duplicate name</td><td class="file">assignee.test.ts</td></tr>
 <tr><td>ignores a Jira user with no display name</td><td class="file">assignee.test.ts</td></tr>
 
-    <tr class="group"><td colspan="2">jira assignee map — centralized per server <span class="dir dir-local">local</span> <span class="muted">5</span></td></tr>
+    <tr class="group"><td colspan="2">jira assignee map — centralized per server <span class="dir dir-local">local</span> <span class="muted">6</span></td></tr>
     <tr><td>folds a project-held map into the server list and stops the project carrying it</td><td class="file">assignee.test.ts</td></tr>
+<tr><td>persists the moment it takes ownership, so a restart can’t lose the mapping</td><td class="file">assignee.test.ts</td></tr>
 <tr><td>shares one list between two projects on the same server</td><td class="file">assignee.test.ts</td></tr>
 <tr><td>keeps servers apart — an accountId only means something on its own site</td><td class="file">assignee.test.ts</td></tr>
 <tr><td>folding never clobbers a mapping already held centrally</td><td class="file">assignee.test.ts</td></tr>

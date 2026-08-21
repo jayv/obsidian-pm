@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { findTask } from '../../store/TaskTreeOps'
 import {
   connect,
@@ -284,6 +284,21 @@ describe('jira assignee map — centralized per server [local]', () => {
     expect(shared).toEqual([{ name: 'Alice', jiraUser: 'mock:alice' }])
     expect(cfg.assigneeMap).toEqual([]) // moved, not copied
     expect(sharedMap(plugin)).toBe(shared) // and it is the server's own list
+  })
+
+  it('persists the moment it takes ownership, so a restart can’t lose the mapping', () => {
+    const { plugin } = harness()
+    const { cfg } = connect(plugin)
+    const saved = vi.fn<() => Promise<void>>(() => Promise.resolve())
+    plugin.saveSettings = saved
+    cfg.assigneeMap = [{ name: 'Alice', jiraUser: 'mock:alice' }]
+
+    sharedAssignees(plugin, cfg)
+    expect(saved).toHaveBeenCalledTimes(1)
+
+    // Nothing left to fold — the hot path must not write settings on every read.
+    sharedAssignees(plugin, cfg)
+    expect(saved).toHaveBeenCalledTimes(1)
   })
 
   it('shares one list between two projects on the same server', () => {

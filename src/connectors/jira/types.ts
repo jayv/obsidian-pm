@@ -174,6 +174,10 @@ export function sharedAssignees(plugin: PMPlugin, cfg: JiraProjectConfig): JiraA
       if (e.name && !shared.some((x) => x.name === e.name)) shared.push(e)
     }
     cfg.assigneeMap = []
+    // Persist the moment we take ownership. The project file loses its copy on its next
+    // save, so leaving the central copy unwritten would open a window where a restart
+    // loses the mapping from both places.
+    void plugin.saveSettings()
   }
   return shared
 }

@@ -43,6 +43,16 @@ export class JiraConnector implements Connector {
     return Boolean(projectCfg(project)?.enabled)
   }
 
+  /**
+   * Migrate on load: pull any mapping still held on the project into the server-wide list.
+   * Without this the settings dialog would read empty until the project had been synced or
+   * its panel opened, which looks exactly like the mappings having been lost.
+   */
+  onProjectLoaded(project: Project): void {
+    const cfg = projectCfg(project)
+    if (cfg?.serverId) sharedAssignees(this.plugin, cfg)
+  }
+
   onTaskChanged(project: Project, task: Task): void {
     const cfg = projectCfg(project)
     if (cfg) queueDirty(cfg, task)
