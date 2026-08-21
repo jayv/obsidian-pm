@@ -391,54 +391,47 @@ async function pushEpicConfig(client: JiraClient, cfg: JiraProjectConfig): Promi
 }
 
 /**
- * Names the sync just learned about — people who appeared as a Jira assignee we had no
- * mapping for. Diffed against the server-wide list rather than threaded out of
- * `resolveAssignee`, which is called from several places.
- */
-function newlyMapped(plugin: PMPlugin, cfg: JiraProjectConfig, before: Set<string>): string[] {
-  return sharedAssignees(plugin, cfg)
-    .map((e) => e.name)
-    .filter((name) => name && !before.has(name))
-}
-
-/**
- * Put newly discovered people on every project synced with the same Jira server.
+ * Carry a rename to every other project on the same Jira server that knew the old name:
+ * its member list and every task assigned to them. One mapping serves all of them, so a
+ * name changed in only one place would leave the others with tasks assigned to someone
+ * who is no longer on the team — which reads as unassigned.
  *
- * The mapping is central, but team lists aren't — assignment, avatars and filters all read
- * `project.teamMembers`. So a person who turns up in Jira has to join the other projects
- * too, or they'd be mapped yet unassignable there.
- *
- * Only ever adds. A project that already knows them, or one on another server, is left
- * alone, and only projects that actually changed are written.
+ * Only projects that already knew the name are touched. That part matters: renameAssignee
+ * adds the new name when the old one is absent, which would quietly put the person on
+ * projects they have nothing to do with. Returns how many projects changed.
  */
-async function trickleDownMembers(
+export async function renameAcrossProjects(
   plugin: PMPlugin,
+  current: Project,
   cfg: JiraProjectConfig,
-  names: string[],
-  current: Project
-): Promise<void> {
-  if (!names.length) return
-  // Reaching into sibling projects is a convenience; a problem reading one of them must
-  // never take the sync down with it.
+  from: string,
+  to: string
+): Promise<number> {
+  if (!from || from === to) return 0
   let projects: Project[] = []
   try {
     projects = await plugin.store.loadAllProjects(plugin.settings.projectsFolder)
   } catch (e) {
-    console.warn('[PM] Jira: could not share new team members with the other projects', e)
-    return
+    console.warn('[PM] Jira: could not carry the rename to the other projects', e)
+    return 0
   }
+  let touched = 0
   for (const other of projects) {
-    if (other.filePath === current.filePath) continue // the sync's own project is already updated
+    if (other.filePath === current.filePath) continue // the caller already did this one
     const otherCfg = projectCfg(other)
     if (!otherCfg?.enabled || otherCfg.serverId !== cfg.serverId) continue
-    let changed = false
-    for (const name of names) {
-      if (other.teamMembers.some((m) => m.trim().toLowerCase() === name.toLowerCase())) continue
-      other.teamMembers.push(name)
-      changed = true
-    }
-    if (changed) await plugin.store.saveProject(other)
+    const knows =
+      other.teamMembers.includes(from) || flattenTasks(other.tasks).some((f) => f.task.assignees.includes(from))
+    if (!knows) continue
+    plugin.store.renameAssignee(other, from, to)
+    await plugin.store.saveProject(other)
+    touched++
   }
+  if (touched) {
+    plugin.refreshProjectViews()
+    console.debug(`[PM] Jira: renamed "${from}" → "${to}" across ${touched} other project(s).`)
+  }
+  return touched
 }
 
 // ── Setup / import (all over HTTP) ────────────────────────────────────────────
@@ -560,7 +553,6 @@ export async function importStories(
   // itself exists first (a brand-new modal project has no file until now).
   await plugin.store.ensureCreated(project, plugin.settings.projectsFolder)
   const fallback = plugin.settings.statuses[0]?.id ?? 'todo'
-  const knownPeople = new Set(sharedAssignees(plugin, cfg).map((e) => e.name))
   const already = importedKeys(project)
   // `stories` is the full selected subtree (from fetchEpicStories); import all of it.
   const picked = stories.filter((s) => !already.has(s.key))
@@ -591,7 +583,6 @@ export async function importStories(
 
   cfg.lastSeenUpdated = picked.reduce((m, i) => (i.updated > m ? i.updated : m), cfg.lastSeenUpdated ?? '')
   await plugin.store.importTasks(project, entries)
-  await trickleDownMembers(plugin, cfg, newlyMapped(plugin, cfg, knownPeople), project)
   return { created: entries.length }
 }
 
@@ -927,7 +918,6 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   const skippedNoParent: string[] = []
   const fallback = plugin.settings.statuses[0]?.id ?? 'todo'
   const membersBefore = project.teamMembers.length
-  const knownPeople = new Set(sharedAssignees(plugin, cfg).map((e) => e.name))
 
   // Adopt any mapping updates other users published to the epic. The epic config has no
   // `updated` watermark (entity-property writes don't bump it), so it can't be polled
@@ -1187,8 +1177,6 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   // Publish local mapping changes to the epic (status + priority only).
   await pushEpicConfig(client, cfg)
   await plugin.store.applyExternalUpdates(project, patches)
-  // Anyone Jira introduced this run joins the other projects on this server.
-  await trickleDownMembers(plugin, cfg, newlyMapped(plugin, cfg, knownPeople), project)
   return {
     changed: patches.length > 0,
     jiraCreated: createdIds.size,

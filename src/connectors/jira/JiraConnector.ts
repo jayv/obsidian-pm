@@ -17,7 +17,7 @@ import {
   renameAssigneeMapping,
   unlinkTask
 } from './taskLink'
-import { hasConflicts, runSync } from './sync'
+import { hasConflicts, renameAcrossProjects, runSync } from './sync'
 import { renderJiraGlobalSettings } from './ui/JiraGlobalSettings'
 import { renderJiraProjectPanel } from './ui/JiraProjectPanel'
 import { JiraImportModal } from './ui/JiraImportModal'
@@ -26,6 +26,9 @@ import { SyncProgress } from './ui/SyncProgress'
 
 /** The JIRA integration as a self-contained connector (read-only / dry-run). */
 export class JiraConnector implements Connector {
+  /** Guards the cross-project rename walk against re-entering itself. */
+  private renaming = false
+
   readonly id = JIRA_ID
   readonly name = 'Jira'
 
@@ -48,6 +51,20 @@ export class JiraConnector implements Connector {
    * Without this the settings dialog would read empty until the project had been synced or
    * its panel opened, which looks exactly like the mappings having been lost.
    */
+  private async fanOutRename(
+    project: Project,
+    cfg: Parameters<typeof renameAcrossProjects>[2],
+    from: string,
+    to: string
+  ): Promise<void> {
+    this.renaming = true
+    try {
+      await renameAcrossProjects(this.plugin, project, cfg, from, to)
+    } finally {
+      this.renaming = false
+    }
+  }
+
   onProjectLoaded(project: Project): void {
     const cfg = projectCfg(project)
     if (cfg?.serverId) sharedAssignees(this.plugin, cfg)
@@ -78,8 +95,11 @@ export class JiraConnector implements Connector {
     if (!cfg) return
     renameAssigneeMapping(sharedAssignees(this.plugin, cfg), from, to)
     void this.plugin.saveSettings() // the map lives in plugin settings, not the project
+    // renameAssignee fires this hook again for each project we touch, so only the
+    // outermost rename fans out — otherwise every project would restart the walk.
+    if (this.renaming) return
+    void this.fanOutRename(project, cfg, from, to)
   }
-
   /**
    * The linked Jira issue key, shown as a pill in the table, the gantt label column and
    * on kanban cards. Carries the browse URL so it opens the issue, like the task editor's

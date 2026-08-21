@@ -4,7 +4,7 @@
 import type PMPlugin from '../../main'
 import type { Project, Task } from '../../types'
 import { DEFAULT_PRIORITIES, DEFAULT_STATUSES, makeProject, makeTask } from '../../types'
-import { addTaskToTree, updateTaskInTree } from '../../store/TaskTreeOps'
+import { addTaskToTree, flattenTasks, updateTaskInTree } from '../../store/TaskTreeOps'
 import type { ProjectStore } from '../../store/ProjectStore'
 import { loadMock, saveMock, type JiraMockStore, type MockIssueRecord } from './JiraMock'
 import { assigneeMapFor, ensureProjectCfg, ensureTaskExt, type JiraAssignee, type JiraProjectConfig } from './types'
@@ -14,7 +14,7 @@ import { assigneeMapFor, ensureProjectCfg, ensureTaskExt, type JiraAssignee, typ
  *  drift at compile time. Keep in sync with the methods sync.ts/the panel call. */
 type ConnectorStore = Pick<
   ProjectStore,
-  'applyExternalUpdates' | 'importTasks' | 'saveProject' | 'ensureCreated' | 'loadAllProjects'
+  'applyExternalUpdates' | 'importTasks' | 'saveProject' | 'ensureCreated' | 'loadAllProjects' | 'renameAssignee'
 >
 
 /** A clearly-future JIRA timestamp, for simulating teammate edits past any watermark. */
@@ -43,6 +43,23 @@ class FakeStore implements ConnectorStore {
   loadAllProjects(folder: string): Promise<Project[]> {
     void folder
     return Promise.resolve(this.projects)
+  }
+  /** Mirrors ProjectStore.renameAssignee: the member slot plus every task naming them. */
+  renameAssignee(project: Project, from: string, to: string): number {
+    const at = project.teamMembers.indexOf(from)
+    if (at >= 0) {
+      if (!to || project.teamMembers.includes(to)) project.teamMembers.splice(at, 1)
+      else project.teamMembers[at] = to
+    }
+    if (!from || from === to) return 0
+    let changed = 0
+    for (const { task } of flattenTasks(project.tasks)) {
+      if (!task.assignees.includes(from)) continue
+      const kept = task.assignees.filter((n) => n !== from)
+      task.assignees = to && !kept.includes(to) ? [...kept, to] : kept
+      changed++
+    }
+    return changed
   }
 
   applyExternalUpdates(project: Project, entries: { taskId: string; patch: Partial<Task> }[]): Promise<void> {

@@ -17,6 +17,7 @@ import {
   exportTasks,
   fetchEpicStories,
   importStories,
+  renameAcrossProjects,
   resolveConflict,
   runSync,
   searchJiraUsers,
@@ -312,31 +313,23 @@ describe('jira assignee map — centralized per server [local]', () => {
     expect(sharedAssignees(plugin, b.cfg).map((e) => e.name)).toEqual(['Alice'])
   })
 
-  it('a user Jira introduces joins every project on that server', async () => {
+  it('carries a rename to the other projects that knew the old name', async () => {
     const { plugin } = harness()
-    const a = connect(plugin, { title: 'A' })
-    setDefaultMaps(a.cfg)
-    const b = connect(plugin, { title: 'B' })
-    setDefaultMaps(b.cfg)
-    const elsewhere = connect(plugin, { title: 'Other site' })
-    elsewhere.cfg.serverId = 's2'
-    await runSync(plugin, a.project)
+    const a = connect(plugin, { title: 'A', team: ['Ada'] })
+    const b = connect(plugin, { title: 'B', team: ['Ada'] })
+    const untouched = connect(plugin, { title: 'C', team: ['Grace'] })
+    const otherSite = connect(plugin, { title: 'D', team: ['Ada'] })
+    otherSite.cfg.serverId = 's2'
+    const bTask = localTask(b.project, { title: 'Hers', assignees: ['Ada'] })
 
-    await mutateMock(plugin, (m) => {
-      m.registerUser('mock:dana', 'Dana')
-      m.createIssue({
-        project: { key: 'DEMO' },
-        issuetype: { name: 'Story' },
-        summary: 'Owned by Dana',
-        parent: { key: 'DEMO-100' },
-        assignee: { accountId: 'mock:dana', displayName: 'Dana' }
-      })
-    })
-    await importStories(plugin, a.project, await fetchEpicStories(plugin, a.project))
+    // Renaming in A: the store does A itself, the connector carries it to the rest.
+    plugin.store.renameAssignee(a.project, 'Ada', 'Ada Lovelace')
+    await renameAcrossProjects(plugin, a.project, a.cfg, 'Ada', 'Ada Lovelace')
 
-    expect(a.project.teamMembers).toContain('Dana') // the project that found her
-    expect(b.project.teamMembers).toContain('Dana') // and its sibling on the same server
-    expect(elsewhere.project.teamMembers).not.toContain('Dana') // but not another site
+    expect(b.project.teamMembers).toEqual(['Ada Lovelace'])
+    expect(must(findTask(b.project.tasks, bTask.id)).assignees).toEqual(['Ada Lovelace'])
+    expect(untouched.project.teamMembers).toEqual(['Grace']) // never knew her — untouched
+    expect(otherSite.project.teamMembers).toEqual(['Ada']) // different Jira site
   })
 
   it('keeps servers apart — an accountId only means something on its own site', () => {
