@@ -36,6 +36,8 @@ export class JiraConnector implements Connector {
     plugin.addCommand({
       id: 'jira-sync-now',
       name: 'Jira: sync active project now',
+      // eslint-disable-next-line obsidianmd/commands/no-default-hotkeys -- deliberate: Mod+Shift+S syncs, only active when a Jira-enabled project view is focused
+      hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 's' }],
       checkCallback: (checking: boolean) => {
         const project = plugin.app.workspace.getActiveViewOfType(ProjectView)?.project
         if (!project || !this.isEnabled(project)) return false
