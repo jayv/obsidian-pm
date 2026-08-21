@@ -62,14 +62,11 @@ export class KanbanColumn {
     cardsEl.dataset.status = props.status.id
 
     for (const card of props.cards) {
+      // Spread rather than copying field by field: the data half of KanbanCardProps *is*
+      // KanbanCardData, and listing them by hand silently dropped `roster` when it was
+      // added — an optional prop, so nothing complained.
       new KanbanCard(cardsEl, {
-        task: card.task,
-        priorityColor: card.priorityColor,
-        descriptionPreview: card.descriptionPreview,
-        parentTitle: card.parentTitle,
-        subtaskProgress: card.subtaskProgress,
-        loggedHours: card.loggedHours,
-        overdue: card.overdue,
+        ...card,
         onClick: () => props.onCardClick(card.task),
         onContextMenu: (e) => props.onCardContextMenu(card.task, e),
         onDragStart: () => props.onCardDragStart(card.task),
