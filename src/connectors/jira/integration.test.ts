@@ -23,6 +23,7 @@ describe('jira ↔ core store integration (real ProjectStore) [both]', () => {
     const { app } = makeFakeApp()
     ;(app.vault as unknown as { adapter: FakeAdapter }).adapter = new FakeAdapter() // for jira-mock.json
     const settings = {
+      projectsFolder: 'Projects',
       statuses: DEFAULT_STATUSES,
       priorities: DEFAULT_PRIORITIES,
       globalTeamMembers: team,

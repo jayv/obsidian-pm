@@ -12,7 +12,10 @@ import { assigneeMapFor, ensureProjectCfg, ensureTaskExt, type JiraAssignee, typ
 /** The exact ProjectStore surface the connector relies on. Binding the fake to this
  *  means a signature change in ProjectStore breaks the build — catching core↔connector
  *  drift at compile time. Keep in sync with the methods sync.ts/the panel call. */
-type ConnectorStore = Pick<ProjectStore, 'applyExternalUpdates' | 'importTasks' | 'saveProject' | 'ensureCreated'>
+type ConnectorStore = Pick<
+  ProjectStore,
+  'applyExternalUpdates' | 'importTasks' | 'saveProject' | 'ensureCreated' | 'loadAllProjects'
+>
 
 /** A clearly-future JIRA timestamp, for simulating teammate edits past any watermark. */
 export const FUTURE = '2099-01-01T00:00:00.000+0000'
@@ -35,6 +38,13 @@ export class FakeAdapter {
 /** Minimal store: applies the same tree ops the real ProjectStore uses, no file IO.
  *  `implements ConnectorStore` ties it to ProjectStore's real signatures. */
 class FakeStore implements ConnectorStore {
+  /** Every project `connect()` made, so cross-project fan-out has something to walk. */
+  readonly projects: Project[] = []
+  loadAllProjects(folder: string): Promise<Project[]> {
+    void folder
+    return Promise.resolve(this.projects)
+  }
+
   applyExternalUpdates(project: Project, entries: { taskId: string; patch: Partial<Task> }[]): Promise<void> {
     for (const { taskId, patch } of entries) updateTaskInTree(project.tasks, taskId, patch)
     return Promise.resolve()
@@ -87,13 +97,13 @@ export function connect(
   plugin: PMPlugin,
   opts: { team?: string[]; epicId?: string; title?: string } = {}
 ): { project: Project; cfg: JiraProjectConfig } {
-  void plugin
-  const project = makeProject(opts.title ?? 'Demo Project', 'Projects/Demo.md')
+  const project = makeProject(opts.title ?? 'Demo Project', `Projects/${opts.title ?? 'Demo'}.md`)
   project.teamMembers = opts.team ?? []
   const cfg = ensureProjectCfg(project)
   cfg.enabled = true
   cfg.serverId = 's1'
   cfg.epicId = opts.epicId ?? 'DEMO-100'
+  ;(plugin.store as unknown as FakeStore).projects.push(project)
   return { project, cfg }
 }
 

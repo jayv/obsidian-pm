@@ -447,7 +447,7 @@ serverId: string
 epicId: string
 statusMap: JiraValueMap[]
 priorityMap: JiraValueMap[]
-assigneeMap: { jiraUser: string; name: string; jiraDisplay?: string }[]
+assigneeMap: { jiraUser: string; name: string; jiraDisplay?: string }[] // legacy — migrated out on load
 ignoredKeys: string[]
 dirtyQueue: string[]
 mappingsDirty?: boolean
@@ -472,8 +472,10 @@ bags (stored on JIRA issues)</h3>
 <li><code>ISSUE_PROP</code> on each issue —
 <code>{ milestone?: boolean }</code>. Shared fact only.</li>
 <li><code>CONFIG_PROP</code> on the epic —
-<code>{ statusMap, priorityMap, assigneeMap }</code>. The shared mapping
-config other Obsidian users adopt.</li>
+<code>{ statusMap, priorityMap }</code>. The shared mapping config other
+Obsidian users adopt. Assignee mappings are deliberately
+<strong>not</strong> published: they are name↔︎accountId pairs, and there
+is no reason to store identities in Jira.</li>
 </ul>
 <h3 id="settings-accessors">3.6 Settings accessors</h3>
 <ul>
@@ -1096,12 +1098,11 @@ ones; <code>pushEpicConfig</code>; <code>applyExternalUpdates</code>.
 Returns <code>{created}</code>.</p>
 <h3 id="loadmappingvalues-load-project-settings">9.4
 <code>loadMappingValues</code> (“Load project settings”)</h3>
-<p><code>pullEpicConfig</code>; add every <code>assigneeMap.name</code>
-to <code>project.teamMembers</code>;
+<p><code>pullEpicConfig</code>;
 <code>mergeStatusMap</code>/<code>mergePriorityMap</code> from
 <code>projectStatuses</code>/<code>priorities</code>; mark dirty if maps
 grew; <code>store.saveProject</code> (persist immediately). Returns
-<code>{statusesAdded, prioritiesAdded, membersAdded}</code>.</p>
+<code>{statusesAdded, prioritiesAdded}</code>.</p>
 <hr />
 <h2 id="ui">10. UI</h2>
 <h3 id="global-settings-renderjiraglobalsettings">10.1 Global settings

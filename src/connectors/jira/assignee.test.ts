@@ -312,6 +312,33 @@ describe('jira assignee map — centralized per server [local]', () => {
     expect(sharedAssignees(plugin, b.cfg).map((e) => e.name)).toEqual(['Alice'])
   })
 
+  it('a user Jira introduces joins every project on that server', async () => {
+    const { plugin } = harness()
+    const a = connect(plugin, { title: 'A' })
+    setDefaultMaps(a.cfg)
+    const b = connect(plugin, { title: 'B' })
+    setDefaultMaps(b.cfg)
+    const elsewhere = connect(plugin, { title: 'Other site' })
+    elsewhere.cfg.serverId = 's2'
+    await runSync(plugin, a.project)
+
+    await mutateMock(plugin, (m) => {
+      m.registerUser('mock:dana', 'Dana')
+      m.createIssue({
+        project: { key: 'DEMO' },
+        issuetype: { name: 'Story' },
+        summary: 'Owned by Dana',
+        parent: { key: 'DEMO-100' },
+        assignee: { accountId: 'mock:dana', displayName: 'Dana' }
+      })
+    })
+    await importStories(plugin, a.project, await fetchEpicStories(plugin, a.project))
+
+    expect(a.project.teamMembers).toContain('Dana') // the project that found her
+    expect(b.project.teamMembers).toContain('Dana') // and its sibling on the same server
+    expect(elsewhere.project.teamMembers).not.toContain('Dana') // but not another site
+  })
+
   it('keeps servers apart — an accountId only means something on its own site', () => {
     const { plugin } = harness()
     const a = connect(plugin, { title: 'A' })

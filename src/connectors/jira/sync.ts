@@ -390,6 +390,57 @@ async function pushEpicConfig(client: JiraClient, cfg: JiraProjectConfig): Promi
   cfg.mappingsDirty = false
 }
 
+/**
+ * Names the sync just learned about — people who appeared as a Jira assignee we had no
+ * mapping for. Diffed against the server-wide list rather than threaded out of
+ * `resolveAssignee`, which is called from several places.
+ */
+function newlyMapped(plugin: PMPlugin, cfg: JiraProjectConfig, before: Set<string>): string[] {
+  return sharedAssignees(plugin, cfg)
+    .map((e) => e.name)
+    .filter((name) => name && !before.has(name))
+}
+
+/**
+ * Put newly discovered people on every project synced with the same Jira server.
+ *
+ * The mapping is central, but team lists aren't — assignment, avatars and filters all read
+ * `project.teamMembers`. So a person who turns up in Jira has to join the other projects
+ * too, or they'd be mapped yet unassignable there.
+ *
+ * Only ever adds. A project that already knows them, or one on another server, is left
+ * alone, and only projects that actually changed are written.
+ */
+async function trickleDownMembers(
+  plugin: PMPlugin,
+  cfg: JiraProjectConfig,
+  names: string[],
+  current: Project
+): Promise<void> {
+  if (!names.length) return
+  // Reaching into sibling projects is a convenience; a problem reading one of them must
+  // never take the sync down with it.
+  let projects: Project[] = []
+  try {
+    projects = await plugin.store.loadAllProjects(plugin.settings.projectsFolder)
+  } catch (e) {
+    console.warn('[PM] Jira: could not share new team members with the other projects', e)
+    return
+  }
+  for (const other of projects) {
+    if (other.filePath === current.filePath) continue // the sync's own project is already updated
+    const otherCfg = projectCfg(other)
+    if (!otherCfg?.enabled || otherCfg.serverId !== cfg.serverId) continue
+    let changed = false
+    for (const name of names) {
+      if (other.teamMembers.some((m) => m.trim().toLowerCase() === name.toLowerCase())) continue
+      other.teamMembers.push(name)
+      changed = true
+    }
+    if (changed) await plugin.store.saveProject(other)
+  }
+}
+
 // ── Setup / import (all over HTTP) ────────────────────────────────────────────
 
 export function importedKeys(project: Project): Set<string> {
@@ -509,6 +560,7 @@ export async function importStories(
   // itself exists first (a brand-new modal project has no file until now).
   await plugin.store.ensureCreated(project, plugin.settings.projectsFolder)
   const fallback = plugin.settings.statuses[0]?.id ?? 'todo'
+  const knownPeople = new Set(sharedAssignees(plugin, cfg).map((e) => e.name))
   const already = importedKeys(project)
   // `stories` is the full selected subtree (from fetchEpicStories); import all of it.
   const picked = stories.filter((s) => !already.has(s.key))
@@ -539,6 +591,7 @@ export async function importStories(
 
   cfg.lastSeenUpdated = picked.reduce((m, i) => (i.updated > m ? i.updated : m), cfg.lastSeenUpdated ?? '')
   await plugin.store.importTasks(project, entries)
+  await trickleDownMembers(plugin, cfg, newlyMapped(plugin, cfg, knownPeople), project)
   return { created: entries.length }
 }
 
@@ -874,6 +927,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   const skippedNoParent: string[] = []
   const fallback = plugin.settings.statuses[0]?.id ?? 'todo'
   const membersBefore = project.teamMembers.length
+  const knownPeople = new Set(sharedAssignees(plugin, cfg).map((e) => e.name))
 
   // Adopt any mapping updates other users published to the epic. The epic config has no
   // `updated` watermark (entity-property writes don't bump it), so it can't be polled
@@ -1130,9 +1184,11 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   cfg.lastSeenUpdated = maxUpdated
   cfg.lastSyncAt = new Date().toISOString()
 
-  // Publish local mapping changes (incl. auto-created assignees) to the epic.
+  // Publish local mapping changes to the epic (status + priority only).
   await pushEpicConfig(client, cfg)
   await plugin.store.applyExternalUpdates(project, patches)
+  // Anyone Jira introduced this run joins the other projects on this server.
+  await trickleDownMembers(plugin, cfg, newlyMapped(plugin, cfg, knownPeople), project)
   return {
     changed: patches.length > 0,
     jiraCreated: createdIds.size,
