@@ -484,6 +484,7 @@ export class GanttView implements SubView {
       project: this.project,
       roster: this.roster(),
       readOnly: this.opts.readOnly,
+      ownerOf: this.opts.ownerOf,
       flatTasks: this.flatTasks,
       drag: this.drag,
       link: this.link,

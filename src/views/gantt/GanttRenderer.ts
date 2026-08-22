@@ -1,5 +1,5 @@
 import type PMPlugin from '../../main'
-import type { Project } from '../../types'
+import type { Project, Task } from '../../types'
 import type { FlatTask } from '../../store/TaskTreeOps'
 import type { TimelineCfg } from './TimelineConfig'
 import { ROW_HEIGHT, HEADER_HEIGHT, dateToX } from './TimelineConfig'
@@ -28,6 +28,8 @@ export interface RendererContext {
   roster: Map<string, string>
   /** Render without any way to change a task: no drags, no link dots, no add buttons. */
   readOnly?: boolean
+  /** Which project owns a task — see GanttViewOptions.ownerOf. */
+  ownerOf?: (task: Task) => Project
   onRefresh: () => Promise<void>
   cleanupFns: (() => void)[]
 }

@@ -231,6 +231,18 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   ttEl.textContent = `${task.title}\n${statusConfig?.label ?? task.status} \u00b7 ${task.priority}\nStart: ${startStr || '\u2014'}  Due: ${dueStr || '\u2014'}${summaryStr}\nProgress: ${task.progress}%${assigneesStr}${conflictStr}`
   rect.appendChild(ttEl)
 
+  // Click to open the task (suppressed if a drag just happened). Above the read-only
+  // cut-off: opening a task is a read, and the editor is bound to the owning project so
+  // any edit lands in the right file.
+  rect.setAttribute('cursor', 'pointer')
+  rect.addEventListener('click', () => {
+    if (ctx.drag.dragMoved) {
+      ctx.drag.dragMoved = false
+      return
+    }
+    openTaskModal(ctx.plugin, ctx.ownerOf?.(task) ?? ctx.project, { task, onSave: () => ctx.onRefresh() })
+  })
+
   // Everything below this point is a way to change the task. A read-only chart (the
   // cross-project view) renders the bars and stops here.
   if (ctx.readOnly) return
@@ -321,15 +333,6 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   } else {
     rect.setAttribute('cursor', 'pointer')
   }
-
-  // Click to open modal (suppressed if drag occurred)
-  rect.addEventListener('click', () => {
-    if (ctx.drag.dragMoved) {
-      ctx.drag.dragMoved = false
-      return
-    }
-    openTaskModal(ctx.plugin, ctx.project, { task, onSave: () => ctx.onRefresh() })
-  })
 }
 
 // ─── Empty row click-to-set-dates ─────────────────────────────────────────
@@ -438,7 +441,7 @@ function renderMilestoneDiamond(g: SVGGElement, task: Task, row: number, ctx: Re
   diamond.appendChild(tt)
 
   diamond.addEventListener('click', () => {
-    openTaskModal(ctx.plugin, ctx.project, { task, onSave: () => ctx.onRefresh() })
+    openTaskModal(ctx.plugin, ctx.ownerOf?.(task) ?? ctx.project, { task, onSave: () => ctx.onRefresh() })
   })
 }
 
