@@ -1,7 +1,8 @@
 import { TFile, Menu, ButtonComponent } from 'obsidian'
 import type PMPlugin from '../main'
-import type { Project, Task, StatusConfig } from '../types'
-import { safeAsync, isTerminalStatus } from '../utils'
+import type { Project } from '../types'
+import { safeAsync } from '../utils'
+import { countTasks } from '../store/TaskTreeOps'
 import { openProjectModal } from '../ui/ModalFactory'
 import { EmptyState } from '../ui/primitives/EmptyState'
 import { ProjectCard } from '../ui/composites/ProjectCard'
@@ -99,13 +100,4 @@ function openProjectContextMenu(ctx: ProjectListContext, project: Project, e: Mo
       )
   )
   menu.showAtMouseEvent(e)
-}
-
-function countTasks(tasks: Task[], doneOnly: boolean, statuses: StatusConfig[]): number {
-  let n = 0
-  for (const t of tasks) {
-    if (!doneOnly || isTerminalStatus(t.status, statuses)) n++
-    n += countTasks(t.subtasks, doneOnly, statuses)
-  }
-  return n
 }

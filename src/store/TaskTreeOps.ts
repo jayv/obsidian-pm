@@ -1,5 +1,6 @@
-import type { Task } from '../types'
+import type { StatusConfig, Task } from '../types'
 import { makeId } from '../types'
+import { isTerminalStatus } from '../utils'
 
 /** Flatten a task tree into a list, preserving depth info */
 export interface FlatTask {
@@ -138,6 +139,20 @@ export function filterArchived(tasks: Task[]): Task[] {
 }
 
 /** Collect all unique assignees from a task tree */
+/**
+ * How many tasks in the tree, or how many of them are finished. Counts every level, not
+ * just leaves — the same number the dashboard card shows and the timeline's project dial
+ * fills to, so the two can't disagree.
+ */
+export function countTasks(tasks: Task[], doneOnly: boolean, statuses: StatusConfig[]): number {
+  let n = 0
+  for (const t of tasks) {
+    if (!doneOnly || isTerminalStatus(t.status, statuses)) n++
+    n += countTasks(t.subtasks, doneOnly, statuses)
+  }
+  return n
+}
+
 export function collectAllAssignees(tasks: Task[], extra?: string[]): string[] {
   const set = new Set<string>()
   if (extra) for (const m of extra) set.add(m)

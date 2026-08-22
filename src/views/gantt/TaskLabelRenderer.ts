@@ -31,10 +31,11 @@ export interface LabelContext {
    */
   onOpenTask?: (task: Task) => boolean
   /**
-   * Colour for a row's title. The cross-project view uses it to give each project row its
-   * own project colour, which is otherwise only visible in settings.
+   * Colour for a row — its title and its dial. The cross-project view gives each project
+   * row its own project colour, which is otherwise only visible in settings, and whose
+   * status is meaningless anyway: a project isn't "to do".
    */
-  titleColorOf?: (task: Task) => string | undefined
+  rowColorOf?: (task: Task) => string | undefined
   /**
    * Take over collapsing entirely, including the refresh. The cross-project view needs it:
    * collapse is persisted per project file, and its own heading rows belong to no file.
@@ -117,15 +118,18 @@ export function renderTaskLabel(
   // Rounded to tenths: a dial this size can't show finer than that, and near-identical
   // wedges read as noise rather than information.
   const pct = Math.round(Math.min(100, Math.max(0, task.progress)) / 10) * 10
-  dot.style.setProperty('--pm-dot-color', statusConfig?.color ?? 'var(--text-muted)')
+  dot.style.setProperty('--pm-dot-color', ctx.rowColorOf?.(task) ?? statusConfig?.color ?? 'var(--text-muted)')
   dot.style.setProperty('--pm-dot-progress', `${pct}%`)
   dot.style.setProperty('--pm-dot-size', `${Math.round(ROW_HEIGHT * 0.4)}px`)
   setTooltip(dot, `${statusConfig?.label ?? task.status} \u00b7 ${task.progress}%`)
 
   // Title
   const titleEl = el.createSpan({ text: task.title, cls: 'pm-gantt-label-title' })
-  const titleColor = ctx.titleColorOf?.(task)
-  if (titleColor) titleEl.style.color = titleColor
+  const rowColor = ctx.rowColorOf?.(task)
+  if (rowColor) {
+    titleEl.addClass('pm-gantt-label-title--accent')
+    titleEl.style.setProperty('--pm-row-color', rowColor)
+  }
   titleEl.addEventListener('click', () => {
     if (ctx.onOpenTask?.(task)) return
     openTaskModal(ctx.plugin, owner, { task, onSave: () => ctx.onRefresh() })

@@ -3,7 +3,7 @@ import type PMPlugin from '../main'
 import { makeDefaultFilter, makeId, type FilterState, type Project, type SavedView, type Task } from '../types'
 import { buildUberProject, type UberProject } from '../store/UberProject'
 import { applyTaskFilterPromote } from '../store/TaskFilter'
-import { findTask, flattenTasks } from '../store/TaskTreeOps'
+import { countTasks, findTask, flattenTasks } from '../store/TaskTreeOps'
 import { projectRoster } from '../ui/roster'
 import { FilterRow } from '../ui/composites/ProjectHeader/FilterRow'
 import { PrimaryRow } from '../ui/composites/ProjectHeader/PrimaryRow'
@@ -320,7 +320,16 @@ export class UberProjectView extends ItemView {
     const roster = projectRoster(full.project, this.plugin.settings)
     // Heading collapse is ours to restore — it isn't persisted per project file, and the
     // rows are rebuilt on every render.
-    for (const heading of uber.project.tasks) heading.collapsed = this.collapsedHeadings.has(heading.id)
+    for (const heading of uber.project.tasks) {
+      heading.collapsed = this.collapsedHeadings.has(heading.id)
+      // A project row's dial shows how far the project has got, counted the way the
+      // dashboard card counts it. Over the project's whole tree, not the filtered subset:
+      // progress doesn't depend on what you happen to be looking at.
+      const owner = uber.ownerOf.get(heading.id)
+      const all = owner ? countTasks(owner.tasks, false, statuses) : 0
+      const done = owner ? countTasks(owner.tasks, true, statuses) : 0
+      heading.progress = all ? Math.round((done / all) * 100) : 0
+    }
 
     this.renderHeader(full.project, roster)
     this.bodyEl.empty()
@@ -332,8 +341,9 @@ export class UberProjectView extends ItemView {
       ownerOf: (task: Task) => uber.ownerOf.get(task.id) ?? uber.project,
       // A heading row is a project, not a task: open the project rather than a task
       // editor for something that has no dates, no status and no assignee.
-      // Each project row in its own colour, so the groups are scannable at a glance.
-      titleColorOf: (task: Task) => (uber.headings.has(task.id) ? uber.ownerOf.get(task.id)?.color : undefined),
+      // Each project row in its own colour, so the groups are scannable at a glance —
+      // and because a project row has no status worth colouring by.
+      rowColorOf: (task: Task) => (uber.headings.has(task.id) ? uber.ownerOf.get(task.id)?.color : undefined),
       // A project row carries the project's own badge — its Jira root issue — not a task's.
       badgesOf: (task: Task) => {
         const owner = uber.ownerOf.get(task.id)

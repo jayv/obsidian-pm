@@ -124,6 +124,14 @@
   text-overflow: ellipsis;
   cursor: pointer;
 }
+/* A project row in the cross-project timeline: underlined in the project's colour. Sized
+   to the text rather than flexed, so the underline marks the name and not the whole row —
+   which also brings the project's issue key alongside it instead of far right. */
+.pm-gantt-label-title--accent {
+  flex: 0 1 auto;
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--pm-row-color);
+}
 .pm-gantt-label-title:hover {
   color: var(--pm-accent);
 }
