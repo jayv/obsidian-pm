@@ -205,25 +205,13 @@
   min-height: min(500px, 58vh);
 }
 
-/* Actions beside the Description heading: edit-as-note, then expand/shrink. */
+/* Actions beside the Description heading: edit-as-note, then expand/shrink. Both are
+   Obsidian icon buttons, so they pick up its styling rather than ours. */
 .pm-desc-actions {
   display: flex;
   align-items: center;
   gap: 2px;
   margin-left: auto;
-}
-.pm-desc-expand {
-  padding: 0 6px;
-  background: none;
-  border: none;
-  box-shadow: none;
-  color: var(--pm-text-muted);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-}
-.pm-desc-expand:hover {
-  color: var(--pm-text);
 }
 
 /* Parent picker: a full-width type-ahead in place of the old dropdown. Wider than the

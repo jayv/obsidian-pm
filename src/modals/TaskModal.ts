@@ -1,13 +1,4 @@
-import {
-  App,
-  ButtonComponent,
-  Component,
-  ExtraButtonComponent,
-  Modal,
-  MarkdownRenderer,
-  Notice,
-  setTooltip
-} from 'obsidian'
+import { App, ButtonComponent, Component, ExtraButtonComponent, Modal, MarkdownRenderer, Notice } from 'obsidian'
 import type PMPlugin from '../main'
 import { Project, Task, makeTask } from '../types'
 import { flattenTasks } from '../store/TaskTreeOps'
@@ -86,6 +77,20 @@ export class TaskModal extends Modal {
     this.noteSuggest?.destroy()
     this.noteSuggest = null
     this.contentEl.empty()
+  }
+
+  /**
+   * Hand over to the note: save first so the note opens with what's on screen, then close.
+   * Saves regardless of the "save on close" setting — leaving to edit the same text
+   * elsewhere is a deliberate handover, not an abandoned dialog.
+   */
+  private async openAsNote(notePath: string): Promise<void> {
+    if (this.task.title.trim() && !this.plugin.store.findTaskFileConflict(this.project, this.task)) {
+      await this.persistTask()
+      this.saved = true // onClose must not persist a second time
+    }
+    this.close()
+    await this.app.workspace.openLinkText(notePath, '', true)
   }
 
   private persistTask(): Promise<void> {
@@ -227,11 +232,11 @@ export class TaskModal extends Modal {
       new ExtraButtonComponent(descActions)
         .setIcon('pencil')
         .setTooltip('Edit as note')
-        .onClick(() => {
-          void this.app.workspace.openLinkText(notePath, '', true)
-        })
+        .onClick(() => void this.openAsNote(notePath))
     }
-    const wideBtn = descActions.createEl('button', { cls: 'pm-desc-expand' })
+    // Same component as the button beside it, so the two match — and Obsidian styles its
+    // own icon buttons consistently with the rest of the app.
+    const wideBtn = new ExtraButtonComponent(descActions)
 
     const descPreview = descSection.createDiv('pm-modal-desc-preview')
     const descArea = descSection.createEl('textarea', { cls: 'pm-modal-description' })
@@ -258,10 +263,10 @@ export class TaskModal extends Modal {
     const setWide = (on: boolean) => {
       wide = on
       this.modalEl.toggleClass('pm-modal--wide', wide)
-      wideBtn.setText(wide ? '\u2921' : '\u2922')
-      setTooltip(wideBtn, wide ? 'Shrink the editor' : 'Expand the editor')
+      wideBtn.setIcon(wide ? 'minimize-2' : 'maximize-2')
+      wideBtn.setTooltip(wide ? 'Shrink the editor' : 'Expand the editor')
     }
-    wideBtn.addEventListener('click', () => {
+    wideBtn.onClick(() => {
       setWide(!wide)
       autoResize()
     })
