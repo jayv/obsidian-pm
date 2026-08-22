@@ -25,6 +25,12 @@ export interface LabelContext {
    */
   ownerOf?: (task: Task) => Project
   /**
+   * First refusal on opening a row. Return true to say "handled" and suppress the task
+   * editor — the cross-project view uses it for its project heading rows, which are Task
+   * objects but aren't tasks.
+   */
+  onOpenTask?: (task: Task) => boolean
+  /**
    * Take over collapsing entirely, including the refresh. The cross-project view needs it:
    * collapse is persisted per project file, and its own heading rows belong to no file.
    */
@@ -114,6 +120,7 @@ export function renderTaskLabel(
   // Title
   const titleEl = el.createSpan({ text: task.title, cls: 'pm-gantt-label-title' })
   titleEl.addEventListener('click', () => {
+    if (ctx.onOpenTask?.(task)) return
     openTaskModal(ctx.plugin, owner, { task, onSave: () => ctx.onRefresh() })
   })
 

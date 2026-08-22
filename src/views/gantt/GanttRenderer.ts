@@ -30,6 +30,8 @@ export interface RendererContext {
   readOnly?: boolean
   /** Which project owns a task — see GanttViewOptions.ownerOf. */
   ownerOf?: (task: Task) => Project
+  /** First refusal on opening a row — see LabelContext.onOpenTask. */
+  onOpenTask?: (task: Task) => boolean
   onRefresh: () => Promise<void>
   cleanupFns: (() => void)[]
 }

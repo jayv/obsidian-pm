@@ -236,6 +236,14 @@ export class UberProjectView extends ItemView {
       showControls: true,
       // A task's real home, so the editor writes to the right project file.
       ownerOf: (task: Task) => uber.ownerOf.get(task.id) ?? uber.project,
+      // A heading row is a project, not a task: open the project rather than a task
+      // editor for something that has no dates, no status and no assignee.
+      onOpenTask: (task: Task) => {
+        if (!uber.headings.has(task.id)) return false
+        const owner = uber.ownerOf.get(task.id)
+        if (owner) void this.plugin.router.openProjectByPath(owner.filePath)
+        return true
+      },
       onToggleCollapsed: (task: Task) => this.toggleCollapsed(uber, task),
       onSetAllCollapsed: (collapsed: boolean) => this.setAllCollapsed(uber, collapsed)
     })

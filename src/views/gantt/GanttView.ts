@@ -46,6 +46,8 @@ export interface GanttViewOptions {
   onToggleCollapsed?: (task: Task) => Promise<void>
   /** Take over Expand/Collapse all, for the same reason as onToggleCollapsed. */
   onSetAllCollapsed?: (collapsed: boolean) => Promise<void>
+  /** First refusal on opening a row — see LabelContext.onOpenTask. */
+  onOpenTask?: (task: Task) => boolean
   /**
    * Avatar initials to use instead of deriving them from the rendered project. The
    * cross-project view renders a filtered tree, and initials must not change with the
@@ -447,6 +449,7 @@ export class GanttView implements SubView {
       roster: this.roster(),
       readOnly: this.opts.readOnly,
       ownerOf: this.opts.ownerOf,
+      onOpenTask: this.opts.onOpenTask,
       onToggleCollapsed: this.opts.onToggleCollapsed,
       badgesOf: (task: Task) => this.plugin.connectors.taskBadges(this.ownerFor(task), task)
     }
@@ -485,6 +488,7 @@ export class GanttView implements SubView {
       roster: this.roster(),
       readOnly: this.opts.readOnly,
       ownerOf: this.opts.ownerOf,
+      onOpenTask: this.opts.onOpenTask,
       flatTasks: this.flatTasks,
       drag: this.drag,
       link: this.link,
