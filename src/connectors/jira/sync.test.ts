@@ -1104,3 +1104,47 @@ describe('jira sync — per-field conflict resolution [both]', () => {
     expect(mustIssue(await readMock(plugin), aKey).fields[startField]).toBe('2026-02-02') // pushed
   })
 })
+
+describe('jira sync — descriptions [J→O]', () => {
+  it('imports the issue description into the task, converted from ADF', async () => {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    await runSync(plugin, project)
+    await mutateMock(plugin, (s) => {
+      s.createIssue({
+        project: { key: 'DEMO' },
+        issuetype: { name: 'Story' },
+        summary: 'Documented',
+        parent: { key: EPIC },
+        description: {
+          type: 'doc',
+          version: 1,
+          content: [
+            { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Why' }] },
+            { type: 'paragraph', content: [{ type: 'text', text: 'Because.' }] }
+          ]
+        }
+      })
+    })
+
+    await importStories(plugin, project, await fetchEpicStories(plugin, project))
+
+    const task = project.tasks.find((t) => t.title === 'Documented')
+    expect(task?.description).toBe('## Why\n\nBecause.')
+  })
+
+  it('leaves the description empty when the issue has none', async () => {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    await runSync(plugin, project)
+    await mutateMock(plugin, (s) => {
+      s.createIssue({ project: { key: 'DEMO' }, issuetype: { name: 'Story' }, summary: 'Bare', parent: { key: EPIC } })
+    })
+
+    await importStories(plugin, project, await fetchEpicStories(plugin, project))
+
+    expect(project.tasks.find((t) => t.title === 'Bare')?.description).toBe('')
+  })
+})

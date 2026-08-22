@@ -1,5 +1,6 @@
 import type { PriorityConfig, StatusConfig, TaskPriority, TaskStatus } from '../../types'
 import type { JiraValueMap } from './types'
+import { adfToMarkdown } from './adf'
 import { ISSUE_PROP } from './types'
 
 /** Normalized JIRA issue — the subset of fields we map onto tasks. */
@@ -20,6 +21,11 @@ export interface JiraIssue {
   isSubtask: boolean
   /** Our `obsidian-pm` entity property's milestone flag, read inline from search. */
   milestone: boolean
+  /**
+   * The description as Markdown. Converted here, where every other field is normalised,
+   * so the rest of the connector never has to know Jira stores it as an ADF tree.
+   */
+  description: string
   /** Keys of issues this one "is blocked by" (its predecessors). */
   blockedBy: string[]
   /** The "is blocked by" links with their JIRA link ids, for reconciliation (add/remove). */
@@ -33,6 +39,8 @@ interface RawIssue {
   properties?: Record<string, unknown>
   fields?: {
     summary?: string
+    /** ADF document on the v3 API; a plain string on v2 and on un-migrated issues. */
+    description?: unknown
     status?: { name?: string; statusCategory?: { name?: string } }
     priority?: { name?: string }
     assignee?: { accountId?: string; displayName?: string } | null
@@ -62,6 +70,7 @@ export function normalizeIssue(raw: unknown, startFieldId?: string): JiraIssue {
   return {
     key: r.key ?? '',
     summary: f.summary ?? '',
+    description: adfToMarkdown(f.description),
     status: f.status?.name ?? '',
     statusCategory: f.status?.statusCategory?.name ?? '',
     priority: f.priority?.name ?? '',

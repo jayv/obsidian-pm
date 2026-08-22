@@ -476,6 +476,9 @@ async function issueToTask(
   const assignee = resolveAssignee(plugin, project, issue)
   const task = makeTask({
     title: issue.summary || issue.key,
+    // Imported once, into the note's body. Not part of the synced field set yet, so an
+    // edit on either side stays where it was made.
+    description: issue.description,
     type: issue.milestone ? 'milestone' : 'task',
     status: mapInbound(cfg.statusMap, issue.status, fallback),
     priority: mapPriority(issue, cfg),

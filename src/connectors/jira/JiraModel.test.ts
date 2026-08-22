@@ -75,6 +75,11 @@ describe('normalizeIssue', () => {
       key: 'DEMO-42',
       fields: {
         summary: 'Build widget',
+        description: {
+          type: 'doc',
+          version: 1,
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Ship it.' }] }]
+        },
         status: { name: 'In Review', statusCategory: { name: 'In Progress' } },
         priority: { name: 'High' },
         assignee: { accountId: 'acc-1', displayName: 'Alice' },
@@ -92,6 +97,7 @@ describe('normalizeIssue', () => {
     expect(normalizeIssue(raw, 'customfield_10015')).toEqual({
       key: 'DEMO-42',
       summary: 'Build widget',
+      description: 'Ship it.', // the ADF tree, converted where every other field is normalised
       status: 'In Review',
       statusCategory: 'In Progress',
       priority: 'High',

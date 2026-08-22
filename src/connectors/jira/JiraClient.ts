@@ -448,6 +448,7 @@ export class JiraClient {
   private searchFields(): string {
     const fields = [
       'summary',
+      'description',
       'status',
       'priority',
       'assignee',
