@@ -110,17 +110,49 @@ export function renderTaskFormFields(container: HTMLElement, ctx: TaskFormFields
   if (task.type === 'subtask') {
     renderPropRow(container, 'Parent task', () => {
       const wrap = createDiv('pm-prop-value')
-      const allTasks = flattenTasks(project.tasks)
-        .map((f) => f.task)
-        .filter((t) => t.id !== task.id)
-      const sel = wrap.createEl('select', { cls: 'pm-prop-select' })
-      sel.createEl('option', { value: '', text: ctx.parentId ? '' : '— Select parent —' })
-      for (const t of allTasks) {
-        const opt = sel.createEl('option', { value: t.id, text: t.title })
-        if (t.id === ctx.parentId) opt.selected = true
+      const flat = flattenTasks(project.tasks)
+      const byId = new Map(flat.map((f) => [f.task.id, f]))
+      // "Grandparent > Parent", so two tasks with the same title are still distinguishable
+      // — and typing any ancestor's name finds them.
+      const pathOf = (id: string): string => {
+        const parts: string[] = []
+        for (let at: string | null = id; at; ) {
+          const node = byId.get(at)
+          if (!node) break
+          parts.unshift(node.task.title)
+          at = node.parentId
+        }
+        return parts.join(' > ')
       }
-      sel.addEventListener('change', () => {
-        ctx.setParentId(sel.value || null)
+      const isBelow = (id: string, ancestorId: string): boolean => {
+        for (let at = byId.get(id)?.parentId; at; at = byId.get(at)?.parentId ?? null) {
+          if (at === ancestorId) return true
+        }
+        return false
+      }
+      const candidates = flat
+        .map((f) => f.task)
+        // Not itself, and not anything beneath it — a task can't become its own descendant's
+        // child. The old dropdown only excluded the task itself, so that cycle was offerable.
+        .filter((t) => t.id !== task.id && !isBelow(t.id, task.id))
+
+      const input = wrap.createEl('input', { type: 'text', cls: 'pm-input pm-parent-input' })
+      input.placeholder = 'Search tasks…'
+      input.value = ctx.parentId ? pathOf(ctx.parentId) : ''
+      new TextSuggest(
+        plugin.app,
+        input,
+        () => candidates,
+        (picked) => {
+          ctx.setParentId(picked.id)
+          input.value = pathOf(picked.id)
+        },
+        (t) => pathOf(t.id)
+      )
+      // Emptying the box detaches the subtask rather than silently keeping the old parent.
+      input.addEventListener('change', () => {
+        if (!input.value.trim()) ctx.setParentId(null)
+        else if (ctx.parentId) input.value = pathOf(ctx.parentId)
       })
       return wrap
     })

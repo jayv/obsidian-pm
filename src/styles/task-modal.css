@@ -190,6 +190,12 @@
 
 /* Type-ahead beside the "+ add" button. Narrow by default so it reads as one more
    control on the row rather than a form field, widening once it has focus. */
+/* Parent picker: a full-width type-ahead in place of the old dropdown. Wider than the
+   assignee box because it shows an ancestor path, not a name. */
+.pm-parent-input {
+  width: 100%;
+}
+
 .pm-assignee-suggest {
   width: 120px;
   height: 22px;
