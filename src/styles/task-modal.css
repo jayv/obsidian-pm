@@ -202,7 +202,7 @@
 .pm-modal--wide .pm-modal-desc-preview {
   /* Capped against the viewport too: a fixed 440px would force the whole modal to scroll
      on a short screen, which costs more than the extra height buys. */
-  min-height: min(440px, 52vh);
+  min-height: min(500px, 58vh);
 }
 
 /* Expand/shrink toggle beside the Description heading. */
