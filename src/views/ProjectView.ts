@@ -22,6 +22,7 @@ import { ProjectHeader, type HeaderUiState } from '../ui/composites/ProjectHeade
 import { flattenTasks, type FlatTask } from '../store/TaskTreeOps'
 import { cloneFilter, filterEquals, isFilterActive, matchesFilter } from '../store/TaskFilter'
 import { computeResourceConflicts } from './gantt/ResourceConflicts'
+import { renderTaskBadges } from '../ui/primitives/TaskBadges'
 import { projectRoster } from '../ui/roster'
 import { displayName } from '../ui/primitives/Avatar'
 
@@ -430,6 +431,11 @@ export class ProjectView extends ItemView {
         await this.plugin.store.saveProject(this.project)
       })
     )
+
+    // The project's own badge — its Jira root issue — beside the title, the same pill the
+    // dashboard cards and the cross-project timeline show. Linked, and the click is stopped
+    // from reaching the title behind it.
+    renderTaskBadges(left, this.plugin.connectors.projectBadges(this.project))
 
     // Description beside the title (smaller, muted), rendered as Markdown so internal
     // [[links]] and external links work. Edited via the project modal.
