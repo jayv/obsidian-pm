@@ -101,11 +101,19 @@
   flex-shrink: 0;
 }
 
+/* Status dot as a progress dial. conic-gradient starts at twelve and sweeps clockwise, so
+   the wedge reads as a clock; the inset ring keeps the status colour legible at 0%, where
+   there is no wedge at all. Sized from the row height in TaskLabelRenderer. */
 .pm-gantt-label-dot {
-  width: 8px;
-  height: 8px;
+  width: var(--pm-dot-size, 22px);
+  height: var(--pm-dot-size, 22px);
   border-radius: 50%;
   flex-shrink: 0;
+  background: conic-gradient(
+    var(--pm-dot-color) 0 var(--pm-dot-progress, 0%),
+    transparent var(--pm-dot-progress, 0%) 100%
+  );
+  box-shadow: inset 0 0 0 2px var(--pm-dot-color);
 }
 
 .pm-gantt-label-title {
@@ -122,13 +130,6 @@
 
 .pm-gantt-label-avatars {
   flex-shrink: 0;
-}
-
-.pm-gantt-label-progress {
-  font-size: 11px;
-  color: var(--pm-text-muted);
-  flex-shrink: 0;
-  margin-right: 8px;
 }
 
 /* Resize handle between left and right panels */

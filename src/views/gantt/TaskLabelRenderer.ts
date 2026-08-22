@@ -1,3 +1,4 @@
+import { setTooltip } from 'obsidian'
 import type PMPlugin from '../../main'
 import type { Project, Task, TaskBadge } from '../../types'
 import { CollapseToggle } from '../../ui/primitives/CollapseToggle'
@@ -97,10 +98,18 @@ export function renderTaskLabel(
     el.createSpan({ cls: 'pm-gantt-label-spacer' })
   }
 
-  // Color dot
+  // Status dot doubling as a progress dial: an empty ring is 0%, a full disc is 100%,
+  // and the wedge between sweeps clockwise from twelve. Replaces the "45%" text that used
+  // to sit at the end of the row, where a varying width pushed everything else around.
   const statusConfig = getStatusConfig(ctx.plugin.settings.statuses, task.status)
   const dot = el.createSpan({ cls: 'pm-gantt-label-dot' })
-  dot.style.background = statusConfig?.color ?? 'var(--text-muted)'
+  // Rounded to tenths: a dial this size can't show finer than that, and near-identical
+  // wedges read as noise rather than information.
+  const pct = Math.round(Math.min(100, Math.max(0, task.progress)) / 10) * 10
+  dot.style.setProperty('--pm-dot-color', statusConfig?.color ?? 'var(--text-muted)')
+  dot.style.setProperty('--pm-dot-progress', `${pct}%`)
+  dot.style.setProperty('--pm-dot-size', `${Math.round(ROW_HEIGHT * 0.7)}px`)
+  setTooltip(dot, `${statusConfig?.label ?? task.status} \u00b7 ${task.progress}%`)
 
   // Title
   const titleEl = el.createSpan({ text: task.title, cls: 'pm-gantt-label-title' })
@@ -114,11 +123,6 @@ export function renderTaskLabel(
   if (task.assignees.length) {
     const avatars = el.createDiv('pm-gantt-label-avatars')
     new AvatarStack(avatars).setRoster(ctx.roster).setNames(task.assignees).setMax(3).setSize('sm')
-  }
-
-  // Progress %
-  if (task.progress > 0) {
-    el.createSpan({ text: `${task.progress}%`, cls: 'pm-gantt-label-progress' })
   }
 
   if (ctx.readOnly) return
