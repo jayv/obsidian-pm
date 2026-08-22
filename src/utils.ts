@@ -88,6 +88,12 @@ export function getStatusConfig(statuses: StatusConfig[], id: string): StatusCon
   return statuses.find((s) => s.id === id)
 }
 
+/** True when the event target is a text field, so global key shortcuts should stand down. */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+}
+
 /** Look up a priority config by id */
 export function getPriorityConfig(priorities: PriorityConfig[], id: TaskPriority): PriorityConfig | undefined {
   return priorities.find((p) => p.id === id)

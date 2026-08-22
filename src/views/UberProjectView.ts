@@ -177,7 +177,10 @@ export class UberProjectView extends ItemView {
       cls: 'pm-uber-title',
       text: `All projects · ${uber.sources.length} of ${this.sources.length} shown`
     })
-    this.toolbarEl.createSpan({ cls: 'pm-uber-hint', text: 'Read-only — open a task to edit it' })
+    this.toolbarEl.createSpan({
+      cls: 'pm-uber-hint',
+      text: 'Read-only — open a task to edit it · shift+wheel or +/-/0 to zoom'
+    })
     new ButtonComponent(this.toolbarEl).setButtonText('Reload').onClick(() => void this.reload())
 
     this.bodyEl.empty()
@@ -185,6 +188,9 @@ export class UberProjectView extends ItemView {
     this.gantt = new GanttView(this.bodyEl, uber.project, this.plugin, () => this.reload(), makeDefaultFilter(), {
       readOnly: true,
       roster,
+      // No project header here, so the Timeline toggle that normally reveals the
+      // granularity bar doesn't exist — and granularity is the main control when planning.
+      showControls: true,
       // A task's real home, so the editor writes to the right project file.
       ownerOf: (task: Task) => uber.ownerOf.get(task.id) ?? uber.project,
       onToggleCollapsed: (task: Task) => this.toggleCollapsed(uber, task)

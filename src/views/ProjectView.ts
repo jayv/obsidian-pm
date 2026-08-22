@@ -10,7 +10,7 @@ import {
 } from 'obsidian'
 import type PMPlugin from '../main'
 import { Project, Task, ViewMode, FilterState, SavedView, makeDefaultFilter, makeId } from '../types'
-import { getStatusConfig, truncateTitle, safeAsync } from '../utils'
+import { getStatusConfig, truncateTitle, safeAsync, isEditableTarget } from '../utils'
 import type { SubView } from './SubView'
 import { TableView } from './table/TableView'
 import type { TableViewState } from './table/TableView'
@@ -26,12 +26,6 @@ import { projectRoster } from '../ui/roster'
 import { displayName } from '../ui/primitives/Avatar'
 
 export const PM_PROJECT_VIEW_TYPE = 'pm-project'
-
-/** True when the event target is a text field, so global key shortcuts should stand down. */
-function isEditableTarget(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null
-  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
-}
 
 interface ProjectViewState {
   filePath: string

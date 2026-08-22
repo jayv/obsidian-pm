@@ -19,7 +19,7 @@ import {
   renderDependencyArrows,
   renderMilestoneLabels
 } from './GanttRenderer'
-import { svgEl } from '../../utils'
+import { svgEl, isEditableTarget } from '../../utils'
 import { Temporal, today } from '../../dates'
 import type { RendererContext } from './GanttRenderer'
 import { renderTaskLabel } from './TaskLabelRenderer'
@@ -50,6 +50,11 @@ export interface GanttViewOptions {
    * filter.
    */
   roster?: Map<string, string>
+  /**
+   * Force the granularity/Today bar on. It's normally toggled from the project header's
+   * Timeline button, which a view without that header hasn't got.
+   */
+  showControls?: boolean
 }
 
 export class GanttView implements SubView {
@@ -124,6 +129,10 @@ export class GanttView implements SubView {
     cancelLink(this.link)
     this.container.empty()
     this.container.addClass('pm-gantt-view')
+    // Focusable so clicking the chart lets the keyboard zoom reach it. Not focused here:
+    // a re-render happens while the filter box is being typed in, and stealing focus
+    // mid-keystroke would be worse than needing one click.
+    if (!this.container.hasAttribute('tabindex')) this.container.setAttribute('tabindex', '-1')
 
     const activeTasks = this.getVisibleTasks()
     this.cfg = buildTimelineConfig(activeTasks, this.granularity, this.zoom)
@@ -148,7 +157,7 @@ export class GanttView implements SubView {
     this.flatTasks = flat
 
     // The controls bar is optional (toggled from the header, next to Filter).
-    if (this.plugin.settings.ganttControlsVisible) this.renderGranularityControls()
+    if (this.opts.showControls ?? this.plugin.settings.ganttControlsVisible) this.renderGranularityControls()
     this.renderGantt()
   }
 
@@ -348,6 +357,29 @@ export class GanttView implements SubView {
     }
     rightPanel.addEventListener('wheel', onZoomWheel, { passive: false })
     this.cleanupFns.push(() => rightPanel.removeEventListener('wheel', onZoomWheel))
+
+    // Keyboard zoom, anchored on the middle of the viewport rather than the cursor:
+    // +/- to zoom, 0 to reset. Bare keys, so they're ignored while typing in a field —
+    // and scoped to this chart, so two charts in two tabs don't both react.
+    const onZoomKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return // leave app zoom and undo alone
+      if (isEditableTarget(e.target)) return
+      const factor = e.key === '+' || e.key === '=' ? ZOOM_STEP : e.key === '-' ? 1 / ZOOM_STEP : 0
+      if (!factor && e.key !== '0') return
+      e.preventDefault()
+      const next = e.key === '0' ? 1 : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, this.zoom * factor))
+      if (next === this.zoom) return
+      const midX = rightPanel.clientWidth / 2
+      this.zoom = next
+      this.pendingScroll = {
+        top: rightPanel.scrollTop,
+        anchorDate: xToDate(this.cfg, rightPanel.scrollLeft + midX),
+        offsetX: midX
+      }
+      this.render()
+    }
+    this.container.addEventListener('keydown', onZoomKey)
+    this.cleanupFns.push(() => this.container.removeEventListener('keydown', onZoomKey))
 
     // Forward wheel events from left panel to the scroll container
     // (left panel has overflow:hidden, so wheel events are swallowed otherwise)
