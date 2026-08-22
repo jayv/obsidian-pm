@@ -83,3 +83,29 @@ describe('buildUberProject', () => {
     expect(buildUberProject([a, b]).project.teamMembers).toEqual(['Ada', 'Grace'])
   })
 })
+
+describe('buildUberProject — narrowed to what a filter left', () => {
+  it('shows only the narrowed tasks but still owns them through the real project', () => {
+    const source = projectWith('Athlon', 'Projects/Athlon.md', ['keep', 'drop'])
+    const kept = [source.tasks[0]]
+
+    const uber = buildUberProject([source], () => kept)
+
+    expect(uber.project.tasks[0].subtasks.map((t) => t.title)).toEqual(['keep'])
+    // The owner is the project object that was passed in, not a copy of it — a write has
+    // to reach the whole file, including the task the filter hid.
+    expect(uber.ownerOf.get(kept[0].id)).toBe(source)
+    expect(uber.sources[0]).toBe(source)
+    expect(source.tasks.map((t) => t.title)).toEqual(['keep', 'drop']) // untouched
+  })
+
+  it('resolves ids from a filtered copy of the tree back to the real project', () => {
+    const source = projectWith('Athlon', 'Projects/Athlon.md', ['a'])
+    // What applyTaskFilterPromote hands back: same ids, different objects.
+    const copies = source.tasks.map((t) => ({ ...t, subtasks: [] }))
+
+    const uber = buildUberProject([source], () => copies)
+
+    expect(uber.ownerOf.get(copies[0].id)).toBe(source)
+  })
+})

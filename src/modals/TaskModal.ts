@@ -151,8 +151,14 @@ export class TaskModal extends Modal {
     // Where this task lives: "Project ▸ Parent ▸ …". Opened from the cross-project
     // timeline the project is the only thing telling two similarly named tasks apart, and
     // a deep subtask is ambiguous without its ancestors even inside one project.
-    const trail = [this.project.title, ...this.ancestorTitles()]
-    contentEl.createDiv({ cls: 'pm-modal-breadcrumb', text: trail.join(' \u25b8 ') })
+    const crumbs = contentEl.createDiv('pm-modal-breadcrumb')
+    for (const ancestor of [this.project.title, ...this.ancestorTitles()]) {
+      crumbs.createSpan({ text: ancestor })
+      crumbs.createSpan({ cls: 'pm-modal-breadcrumb-sep', text: '\u25b8' })
+    }
+    // The current task ends the trail. Reflects the title as opened — it doesn't follow
+    // what you type into the field below, which is deliberate: it's a location, not a copy.
+    crumbs.createSpan({ cls: 'pm-modal-breadcrumb-current', text: this.task.title || 'New task' })
 
     // ── Header ──────────────────────────────────────────────────────────────
     const header = contentEl.createDiv('pm-modal-header')

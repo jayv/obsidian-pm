@@ -1,4 +1,4 @@
-import { makeProject, makeTask, type Project } from '../types'
+import { makeProject, makeTask, type Project, type Task } from '../types'
 import { flattenTasks } from './TaskTreeOps'
 import { buildTaskIndex } from './TaskIndex'
 
@@ -27,14 +27,18 @@ export interface UberProject {
  * flatten several projects into one file — the failure mode that matters most here.
  *
  * Writes are meant to be delegated instead: resolve the owning project through `ownerOf`
- * and call the store with that. The tasks themselves are shared by reference with the
- * loaded projects, so an edit applied through the owner is visible here without rebuilding.
+ * and call the store with that. `ownerOf` always resolves to the project object that was
+ * passed in — never a copy — because that object is what a write is applied to and saved.
+ *
+ * `visibleTasks` narrows what a project contributes (the cross-project view filters before
+ * building, so the timeline is sized from what's actually shown). Ids from the narrowed
+ * tree still resolve to the real project, so a write reaches the whole file.
  *
  * Each real project contributes a synthetic parent row so the tree reads
  * "Project → Task → Subtask". Those rows are milestones-in-name-only: they carry no dates
  * and are listed in `headings` so views can treat them as headings rather than work.
  */
-export function buildUberProject(projects: Project[]): UberProject {
+export function buildUberProject(projects: Project[], visibleTasks?: (project: Project) => Task[]): UberProject {
   const ownerOf = new Map<string, Project>()
   const headings = new Set<string>()
   const sources = [...projects].sort((a, b) => a.title.localeCompare(b.title))
@@ -49,13 +53,16 @@ export function buildUberProject(projects: Project[]): UberProject {
       title: source.title,
       start: '', // no dates of its own; the gantt rolls its span up from the children
       due: '',
-      subtasks: source.tasks,
+      subtasks: visibleTasks?.(source) ?? source.tasks,
       createdAt: source.createdAt,
       updatedAt: source.updatedAt
     })
     headings.add(heading.id)
     ownerOf.set(heading.id, source)
-    for (const { task } of flattenTasks(source.tasks)) ownerOf.set(task.id, source)
+    // Map ids from the *shown* tree, which may be a filtered copy, back to the real
+    // project. Anything else is a data-loss trap: saving a filtered copy would write the
+    // project file with the filtered-out tasks missing.
+    for (const { task } of flattenTasks(heading.subtasks)) ownerOf.set(task.id, source)
     return heading
   })
 

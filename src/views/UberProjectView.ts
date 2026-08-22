@@ -1,8 +1,18 @@
 import { ItemView, WorkspaceLeaf, ButtonComponent, Notice } from 'obsidian'
 import type PMPlugin from '../main'
-import { makeDefaultFilter, type FilterState, type Task } from '../types'
+import { makeDefaultFilter, type FilterState, type Project, type Task } from '../types'
 import { buildUberProject, type UberProject } from '../store/UberProject'
+import { applyTaskFilterPromote } from '../store/TaskFilter'
+import { projectRoster } from '../ui/roster'
+import { FilterRow } from '../ui/composites/ProjectHeader/FilterRow'
+import type { HeaderUiState } from '../ui/composites/ProjectHeader/ProjectHeader'
 import { GanttView } from './gantt/GanttView'
+
+/**
+ * Filter state key. Not a real path — `projectFilters` is keyed by project file, and this
+ * view has no file. A leading "::" can't collide with a vault path.
+ */
+const UBER_FILTER_KEY = '::all-projects'
 
 export const PM_UBER_VIEW_TYPE = 'pm-uber-project'
 
@@ -19,9 +29,12 @@ export class UberProjectView extends ItemView {
   private plugin: PMPlugin
   private toolbarEl!: HTMLElement
   private bodyEl!: HTMLElement
+  private sources: Project[] = []
   private uber: UberProject | null = null
   private gantt: GanttView | null = null
   private filter: FilterState = makeDefaultFilter()
+  private headerUi: HeaderUiState = { filterOpen: true, assigneeZoneOpen: true }
+  private filterEl!: HTMLElement
   private loading = false
   /**
    * Collapsed heading rows, by id. Kept here rather than in settings.collapsedTasks: that
@@ -52,7 +65,9 @@ export class UberProjectView extends ItemView {
     root.empty()
     root.addClass('pm-root')
     this.toolbarEl = root.createDiv('pm-toolbar')
+    this.filterEl = root.createDiv('pm-uber-filter')
     this.bodyEl = root.createDiv('pm-content')
+    this.filter = this.loadFilter()
     await this.reload()
   }
 
@@ -61,18 +76,27 @@ export class UberProjectView extends ItemView {
     return Promise.resolve()
   }
 
+  /**
+   * Everything across every project is almost never what you want to look at, so the view
+   * opens narrowed to the current week and remembers whatever you narrow it to after that.
+   */
+  private loadFilter(): FilterState {
+    const saved = this.plugin.settings.projectFilters?.[UBER_FILTER_KEY]?.filter
+    return saved ? { ...makeDefaultFilter(), ...saved } : { ...makeDefaultFilter(), activeWeeks: [0] }
+  }
+
+  private saveFilter(): void {
+    this.plugin.settings.projectFilters = this.plugin.settings.projectFilters ?? {}
+    this.plugin.settings.projectFilters[UBER_FILTER_KEY] = { filter: this.filter, activeSavedViewId: null }
+    void this.plugin.saveSettings()
+  }
+
   /** Re-read every project from disk and rebuild the chart. */
   private async reload(): Promise<void> {
     if (this.loading) return
     this.loading = true
     try {
-      const projects = await this.plugin.store.loadAllProjects(this.plugin.settings.projectsFolder)
-      this.uber = buildUberProject(projects)
-      // Real tasks get their collapsed flag from loadProject (per project file); the
-      // heading rows are ours to restore.
-      for (const heading of this.uber.project.tasks) {
-        heading.collapsed = this.collapsedHeadings.has(heading.id)
-      }
+      this.sources = await this.plugin.store.loadAllProjects(this.plugin.settings.projectsFolder)
       this.render()
     } catch (e) {
       new Notice('Could not load the projects. Check the console.')
@@ -87,6 +111,27 @@ export class UberProjectView extends ItemView {
    * that owns it, so it matches what that project's own view shows. Either way this
    * re-renders rather than reloading — collapsing shouldn't re-read every project file.
    */
+  private renderFilter(full: Project, roster: Map<string, string>): void {
+    this.filterEl.empty()
+    new FilterRow(this.filterEl, {
+      project: full,
+      statuses: this.plugin.settings.statuses,
+      priorities: this.plugin.settings.priorities,
+      roster,
+      filter: this.filter,
+      uiState: this.headerUi,
+      onFilterChange: () => {
+        this.saveFilter()
+        this.render()
+      },
+      onClear: () => {
+        this.filter = makeDefaultFilter()
+        this.saveFilter()
+        this.render()
+      }
+    })
+  }
+
   private async toggleCollapsed(uber: UberProject, task: Task): Promise<void> {
     const owner = uber.headings.has(task.id) ? null : uber.ownerOf.get(task.id)
     if (owner) {
@@ -102,21 +147,44 @@ export class UberProjectView extends ItemView {
   }
 
   private render(): void {
-    const uber = this.uber
-    if (!uber) return
+    // Filter each project's own tree, then build from what survived. Two reasons over
+    // letting the chart filter: a project with nothing left is dropped entirely rather
+    // than left as an empty heading, and the timeline is sized from the surviving dates —
+    // a week-scoped view spans a week, not every project's full history.
+    const statuses = this.plugin.settings.statuses
+    const shown = new Map<Project, Task[]>()
+    for (const source of this.sources) {
+      const tasks = applyTaskFilterPromote(source.tasks, this.filter, statuses)
+      if (tasks.length) shown.set(source, tasks)
+    }
+    // The real project objects go in — `ownerOf` has to resolve to them, not to copies
+    // carrying only the filtered tasks.
+    const uber = buildUberProject([...shown.keys()], (source) => shown.get(source) ?? [])
+    this.uber = uber
 
+    // The filter chips and the avatar initials must come from everything, not from what
+    // survived the filter: chips built from the filtered set would strand you on one
+    // assignee with no way back, and initials are meant to be stable whatever is showing.
+    const full = buildUberProject(this.sources)
+    const roster = projectRoster(full.project, this.plugin.settings)
+    // Heading collapse is ours to restore — it isn't persisted per project file, and the
+    // rows are rebuilt on every render.
+    for (const heading of uber.project.tasks) heading.collapsed = this.collapsedHeadings.has(heading.id)
+
+    this.renderFilter(full.project, roster)
     this.toolbarEl.empty()
     this.toolbarEl.createSpan({
       cls: 'pm-uber-title',
-      text: `All projects · ${uber.sources.length} project${uber.sources.length === 1 ? '' : 's'}`
+      text: `All projects · ${uber.sources.length} of ${this.sources.length} shown`
     })
     this.toolbarEl.createSpan({ cls: 'pm-uber-hint', text: 'Read-only — open a task to edit it' })
     new ButtonComponent(this.toolbarEl).setButtonText('Reload').onClick(() => void this.reload())
 
     this.bodyEl.empty()
     this.gantt?.destroy?.()
-    this.gantt = new GanttView(this.bodyEl, uber.project, this.plugin, () => this.reload(), this.filter, {
+    this.gantt = new GanttView(this.bodyEl, uber.project, this.plugin, () => this.reload(), makeDefaultFilter(), {
       readOnly: true,
+      roster,
       // A task's real home, so the editor writes to the right project file.
       ownerOf: (task: Task) => uber.ownerOf.get(task.id) ?? uber.project,
       onToggleCollapsed: (task: Task) => this.toggleCollapsed(uber, task)

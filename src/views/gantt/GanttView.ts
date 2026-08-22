@@ -44,6 +44,12 @@ export interface GanttViewOptions {
   ownerOf?: (task: Task) => Project
   /** Take over collapsing, including the refresh — see LabelContext.onToggleCollapsed. */
   onToggleCollapsed?: (task: Task) => Promise<void>
+  /**
+   * Avatar initials to use instead of deriving them from the rendered project. The
+   * cross-project view renders a filtered tree, and initials must not change with the
+   * filter.
+   */
+  roster?: Map<string, string>
 }
 
 export class GanttView implements SubView {
@@ -418,7 +424,7 @@ export class GanttView implements SubView {
    * change between them.
    */
   private roster(): Map<string, string> {
-    return projectRoster(this.project, this.plugin.settings)
+    return this.opts.roster ?? projectRoster(this.project, this.plugin.settings)
   }
 
   private makeRendererContext(): RendererContext {
