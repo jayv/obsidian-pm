@@ -332,6 +332,14 @@ export class UberProjectView extends ItemView {
       ownerOf: (task: Task) => uber.ownerOf.get(task.id) ?? uber.project,
       // A heading row is a project, not a task: open the project rather than a task
       // editor for something that has no dates, no status and no assignee.
+      // A project row carries the project's own badge — its Jira root issue — not a task's.
+      badgesOf: (task: Task) => {
+        const owner = uber.ownerOf.get(task.id)
+        if (!owner) return []
+        return uber.headings.has(task.id)
+          ? this.plugin.connectors.projectBadges(owner)
+          : this.plugin.connectors.taskBadges(owner, task)
+      },
       onOpenTask: (task: Task) => {
         if (!uber.headings.has(task.id)) return false
         const owner = uber.ownerOf.get(task.id)

@@ -1,6 +1,6 @@
 import { ButtonComponent, Notice } from 'obsidian'
 import type PMPlugin from '../../main'
-import type { Project, Task, GanttGranularity, FilterState } from '../../types'
+import type { Project, Task, GanttGranularity, FilterState, TaskBadge } from '../../types'
 import { type FlatTask, flattenTasks } from '../../store/TaskTreeOps'
 import { applyTaskFilterPromote, isFilterActive } from '../../store/TaskFilter'
 import { openTaskModal } from '../../ui/ModalFactory'
@@ -48,6 +48,11 @@ export interface GanttViewOptions {
   onSetAllCollapsed?: (collapsed: boolean) => Promise<void>
   /** First refusal on opening a row — see LabelContext.onOpenTask. */
   onOpenTask?: (task: Task) => boolean
+  /**
+   * Override the badges shown beside a row. The cross-project view needs it: its project
+   * rows aren't tasks, so they carry the project's own badge (its Jira root issue).
+   */
+  badgesOf?: (task: Task) => TaskBadge[]
   /**
    * Avatar initials to use instead of deriving them from the rendered project. The
    * cross-project view renders a filtered tree, and initials must not change with the
@@ -202,7 +207,7 @@ export class GanttView implements SubView {
         new Date().toLocaleString(),
         {
           roster: this.roster(),
-          badgesOf: (task: Task) => this.plugin.connectors.taskBadges(this.ownerFor(task), task)
+          badgesOf: (task: Task) => this.badgesFor(task)
         }
       )
       // Trigger a save dialog so the user picks where to write the file.
@@ -451,7 +456,7 @@ export class GanttView implements SubView {
       ownerOf: this.opts.ownerOf,
       onOpenTask: this.opts.onOpenTask,
       onToggleCollapsed: this.opts.onToggleCollapsed,
-      badgesOf: (task: Task) => this.plugin.connectors.taskBadges(this.ownerFor(task), task)
+      badgesOf: (task: Task) => this.badgesFor(task)
     }
     this.flatTasks.forEach((f, rowIndex) => {
       renderTaskLabel(leftBody, f.task, f.depth, rowIndex, labelCtx)
@@ -472,6 +477,10 @@ export class GanttView implements SubView {
    */
   private ownerFor(task: Task): Project {
     return this.opts.ownerOf?.(task) ?? this.project
+  }
+
+  private badgesFor(task: Task): TaskBadge[] {
+    return this.opts.badgesOf?.(task) ?? this.plugin.connectors.taskBadges(this.ownerFor(task), task)
   }
 
   private roster(): Map<string, string> {

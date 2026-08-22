@@ -53,6 +53,7 @@ export async function renderProjectListContent(ctx: ProjectListContext): Promise
       color: project.color,
       tasksDone: done,
       tasksTotal: total,
+      badges: ctx.plugin.connectors.projectBadges(project),
       onClick: safeAsync(async () => {
         const file = ctx.plugin.app.vault.getAbstractFileByPath(project.filePath)
         if (file instanceof TFile) await ctx.openProjectFile(file)

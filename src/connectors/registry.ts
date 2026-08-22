@@ -52,6 +52,12 @@ export interface Connector {
   toolbarActions?(project: Project): { label: string; onClick: () => void }[]
   /** A short label for a task (e.g. the issue key) shown as a pill in the table. */
   taskBadge?(task: Task, project: Project): TaskBadge | null
+  /**
+   * A short label for the project itself — the issue its tasks hang off, for Jira. Shown
+   * where projects are listed rather than their tasks: the dashboard cards, and the
+   * project rows of the cross-project timeline.
+   */
+  projectBadge?(project: Project): TaskBadge | null
 }
 
 /**
@@ -135,6 +141,14 @@ export class ConnectorRegistry {
   taskBadges(project: Project, task: Task): TaskBadge[] {
     return this.activeFor(project).flatMap((c) => {
       const badge = c.taskBadge?.(task, project)
+      return badge ? [badge] : []
+    })
+  }
+
+  /** Short labels for the project itself, contributed by its active connectors. */
+  projectBadges(project: Project): TaskBadge[] {
+    return this.activeFor(project).flatMap((c) => {
+      const badge = c.projectBadge?.(project)
       return badge ? [badge] : []
     })
   }

@@ -1,4 +1,6 @@
+import type { TaskBadge } from '../../types'
 import { ProgressBar } from '../primitives/ProgressBar'
+import { renderTaskBadges } from '../primitives/TaskBadges'
 
 export interface ProjectCardProps {
   title: string
@@ -6,6 +8,8 @@ export interface ProjectCardProps {
   color: string
   tasksDone: number
   tasksTotal: number
+  /** Short labels for the project (e.g. its Jira issue key), rendered beside the counts. */
+  badges?: TaskBadge[]
   onClick: () => void
   onContextMenu: (e: MouseEvent) => void
 }
@@ -29,6 +33,9 @@ export class ProjectCard {
       text: `${props.tasksDone}/${props.tasksTotal} tasks`,
       cls: 'pm-project-card-tasks'
     })
+    // Opening the issue must not also open the project behind it — renderTaskBadges stops
+    // the click for linked badges, which is exactly what a card needs.
+    renderTaskBadges(meta, props.badges)
 
     const percent = props.tasksTotal ? (props.tasksDone / props.tasksTotal) * 100 : 0
     new ProgressBar(body).setSize('sm').setValue(percent).setColor(props.color)

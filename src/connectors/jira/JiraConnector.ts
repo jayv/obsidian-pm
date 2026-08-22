@@ -94,6 +94,14 @@ export class JiraConnector implements Connector {
     return { label: key, href: site ? `https://${site}/browse/${key}` : undefined }
   }
 
+  /** The root issue the project's tasks hang off — its key identifies the project in Jira. */
+  projectBadge(project: Project): TaskBadge | null {
+    const cfg = projectCfg(project)
+    if (!cfg?.enabled || !cfg.epicId) return null
+    const site = serverById(this.plugin, cfg.serverId)?.site
+    return { label: cfg.epicId, href: site ? `https://${site}/browse/${cfg.epicId}` : undefined }
+  }
+
   async syncTick(project: Project): Promise<{ changed: boolean }> {
     const cfg = projectCfg(project)
     if (!cfg?.enabled || !dueForSync(cfg, Date.now())) return { changed: false }
