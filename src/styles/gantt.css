@@ -105,8 +105,8 @@
    the wedge reads as a clock; the inset ring keeps the status colour legible at 0%, where
    there is no wedge at all. Sized from the row height in TaskLabelRenderer. */
 .pm-gantt-label-dot {
-  width: var(--pm-dot-size, 22px);
-  height: var(--pm-dot-size, 22px);
+  width: var(--pm-dot-size, 19px);
+  height: var(--pm-dot-size, 19px);
   border-radius: 50%;
   flex-shrink: 0;
   background: conic-gradient(
