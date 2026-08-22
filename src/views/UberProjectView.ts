@@ -37,6 +37,7 @@ export class UberProjectView extends ItemView {
   private headerUi: HeaderUiState = { filterOpen: true, assigneeZoneOpen: true }
   private filterEl!: HTMLElement
   private loading = false
+  private maximized = false
   /**
    * Collapsed heading rows, by id. Kept here rather than in settings.collapsedTasks: that
    * map is keyed by project file, and these rows belong to no file. Ids are derived from
@@ -74,7 +75,25 @@ export class UberProjectView extends ItemView {
 
   onClose(): Promise<void> {
     this.gantt?.destroy?.()
+    // The body class outlives the view, so a maximized view closing would leave Obsidian
+    // without its tab bar.
+    this.containerEl.ownerDocument.body.removeClass('pm-maximized')
     return Promise.resolve()
+  }
+
+  /**
+   * Alt+Z, same as a project view: hide this plugin's chrome and Obsidian's own pane
+   * header and tab bar. The assignee avatars stay — picking who you're looking at is the
+   * point of the view, not chrome. Shares the classes with ProjectView, so the rules and
+   * the "what survives" decision live in one place.
+   */
+  toggleMaximize(force?: boolean): void {
+    const next = force ?? !this.maximized
+    if (next === this.maximized) return
+    this.maximized = next
+    this.contentEl.toggleClass('pm-root--maximized', this.maximized)
+    this.containerEl.ownerDocument.body.toggleClass('pm-maximized', this.maximized)
+    if (this.maximized) new Notice('Maximized — Alt+Z to restore.')
   }
 
   /**

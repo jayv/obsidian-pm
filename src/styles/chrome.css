@@ -285,11 +285,15 @@
    Both live outside the view, hence the body class (set only while maximized, and
    cleared when the view closes). Scoped with :has() to the tab group holding a project
    view, so other panes keep their headers; a browser without :has() simply keeps them. */
-body.pm-maximized .workspace-leaf-content[data-type='pm-project'] > .view-header {
+body.pm-maximized .workspace-leaf-content[data-type='pm-project'] > .view-header,
+body.pm-maximized .workspace-leaf-content[data-type='pm-uber-project'] > .view-header {
   display: none;
 }
 body.pm-maximized
-  .workspace-tabs:has(.workspace-leaf-content[data-type='pm-project'])
+  .workspace-tabs:has(
+    .workspace-leaf-content[data-type='pm-project'],
+    .workspace-leaf-content[data-type='pm-uber-project']
+  )
   > .workspace-tab-header-container {
   display: none;
 }

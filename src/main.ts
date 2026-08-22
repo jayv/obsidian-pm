@@ -197,7 +197,10 @@ export default class PMPlugin extends Plugin {
       // eslint-disable-next-line obsidianmd/commands/no-default-hotkeys -- deliberate: Alt+Z hides the chrome, only active when a project view is focused
       hotkeys: [{ modifiers: ['Alt'], key: 'z' }],
       checkCallback: (checking: boolean) => {
-        const view = this.app.workspace.getActiveViewOfType(ProjectView)
+        // Either view: both hide the same chrome, and the cross-project timeline is
+        // exactly where the extra vertical space is worth most.
+        const view =
+          this.app.workspace.getActiveViewOfType(ProjectView) ?? this.app.workspace.getActiveViewOfType(UberProjectView)
         if (!view) return false
         if (!checking) view.toggleMaximize()
         return true
