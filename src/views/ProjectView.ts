@@ -414,6 +414,9 @@ export class ProjectView extends ItemView {
     })
 
     this.titleEl2 = left.createEl('h2', { text: this.project.title, cls: 'pm-toolbar-title' })
+    // Every project has a colour and nothing showed it. The toolbar sits above all three
+    // views, so colouring the title once covers table, gantt and board.
+    this.titleEl2.style.color = this.project.color
     this.titleEl2.contentEditable = 'true'
     this.titleEl2.addEventListener(
       'blur',

@@ -31,6 +31,11 @@ export interface LabelContext {
    */
   onOpenTask?: (task: Task) => boolean
   /**
+   * Colour for a row's title. The cross-project view uses it to give each project row its
+   * own project colour, which is otherwise only visible in settings.
+   */
+  titleColorOf?: (task: Task) => string | undefined
+  /**
    * Take over collapsing entirely, including the refresh. The cross-project view needs it:
    * collapse is persisted per project file, and its own heading rows belong to no file.
    */
@@ -119,6 +124,8 @@ export function renderTaskLabel(
 
   // Title
   const titleEl = el.createSpan({ text: task.title, cls: 'pm-gantt-label-title' })
+  const titleColor = ctx.titleColorOf?.(task)
+  if (titleColor) titleEl.style.color = titleColor
   titleEl.addEventListener('click', () => {
     if (ctx.onOpenTask?.(task)) return
     openTaskModal(ctx.plugin, owner, { task, onSave: () => ctx.onRefresh() })

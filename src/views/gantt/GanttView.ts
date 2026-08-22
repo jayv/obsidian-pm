@@ -53,6 +53,8 @@ export interface GanttViewOptions {
    * rows aren't tasks, so they carry the project's own badge (its Jira root issue).
    */
   badgesOf?: (task: Task) => TaskBadge[]
+  /** Colour a row's title — see LabelContext.titleColorOf. */
+  titleColorOf?: (task: Task) => string | undefined
   /**
    * Avatar initials to use instead of deriving them from the rendered project. The
    * cross-project view renders a filtered tree, and initials must not change with the
@@ -455,6 +457,7 @@ export class GanttView implements SubView {
       readOnly: this.opts.readOnly,
       ownerOf: this.opts.ownerOf,
       onOpenTask: this.opts.onOpenTask,
+      titleColorOf: this.opts.titleColorOf,
       onToggleCollapsed: this.opts.onToggleCollapsed,
       badgesOf: (task: Task) => this.badgesFor(task)
     }
