@@ -219,7 +219,19 @@ export class TaskModal extends Modal {
     const descSection = contentEl.createDiv('pm-modal-section pm-modal-desc-section')
     const descHeader = descSection.createDiv('pm-modal-section-header')
     descHeader.createEl('h4', { text: 'Description', cls: 'pm-modal-section-title' })
-    const wideBtn = descHeader.createEl('button', { cls: 'pm-desc-expand' })
+    const descActions = descHeader.createDiv('pm-desc-actions')
+    // The description *is* the note's body, so the note is where Obsidian's own editor
+    // (live preview, embeds, everything) already works on exactly this text.
+    if (!this.isNew && this.task.filePath) {
+      const notePath = this.task.filePath
+      new ExtraButtonComponent(descActions)
+        .setIcon('pencil')
+        .setTooltip('Edit as note')
+        .onClick(() => {
+          void this.app.workspace.openLinkText(notePath, '', true)
+        })
+    }
+    const wideBtn = descActions.createEl('button', { cls: 'pm-desc-expand' })
 
     const descPreview = descSection.createDiv('pm-modal-desc-preview')
     const descArea = descSection.createEl('textarea', { cls: 'pm-modal-description' })

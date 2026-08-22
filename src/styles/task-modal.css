@@ -205,9 +205,14 @@
   min-height: min(500px, 58vh);
 }
 
-/* Expand/shrink toggle beside the Description heading. */
-.pm-desc-expand {
+/* Actions beside the Description heading: edit-as-note, then expand/shrink. */
+.pm-desc-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   margin-left: auto;
+}
+.pm-desc-expand {
   padding: 0 6px;
   background: none;
   border: none;
