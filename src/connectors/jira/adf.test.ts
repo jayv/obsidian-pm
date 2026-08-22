@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { adfToMarkdown } from './adf'
+import { adfToMarkdown, markdownToAdf } from './adf'
 
 const doc = (...content: unknown[]) => ({ type: 'doc', version: 1, content })
 const p = (...content: unknown[]) => ({ type: 'paragraph', content })
@@ -92,5 +92,71 @@ describe('adfToMarkdown', () => {
     expect(adfToMarkdown(null)).toBe('')
     expect(adfToMarkdown(undefined)).toBe('')
     expect(adfToMarkdown({ type: 'doc', version: 1 })).toBe('')
+  })
+})
+
+describe('markdownToAdf', () => {
+  const doc = (...content: unknown[]) => ({ type: 'doc', version: 1, content })
+
+  it('makes a paragraph, with blank lines separating them', () => {
+    expect(markdownToAdf('One.\n\nTwo.')).toEqual(doc(p(t('One.')), p(t('Two.'))))
+  })
+
+  it('turns a single newline into a hard break, not a new paragraph', () => {
+    expect(markdownToAdf('one\ntwo')).toEqual(doc(p(t('one'), { type: 'hardBreak' }, t('two'))))
+  })
+
+  it('reads the inline marks back', () => {
+    expect(markdownToAdf('**b** _i_ `c` ~~s~~')).toEqual(
+      doc(
+        p(
+          t('b', [{ type: 'strong' }]),
+          t(' '),
+          t('i', [{ type: 'em' }]),
+          t(' '),
+          t('c', [{ type: 'code' }]),
+          t(' '),
+          t('s', [{ type: 'strike' }])
+        )
+      )
+    )
+  })
+
+  it('reads a link back', () => {
+    expect(markdownToAdf('[text](https://x.test)')).toEqual(
+      doc(p(t('text', [{ type: 'link', attrs: { href: 'https://x.test' } }])))
+    )
+  })
+
+  it('stores "no description" the way Jira does, not as an empty doc', () => {
+    expect(markdownToAdf('')).toEqual(doc({ type: 'paragraph', content: [] }))
+  })
+})
+
+/*
+ * The property the sync depends on. If a description that came from Jira doesn't survive
+ * the trip home unchanged, every sync would see a remote edit nobody made and rewrite the
+ * note — so these are the cases we're allowed to claim support for.
+ */
+describe('adf round trip', () => {
+  // The property the sync depends on. If a description that came from Jira doesn't survive
+  // the trip home unchanged, every sync would see a remote edit nobody made and rewrite the
+  // note — so this list is exactly what we're allowed to claim support for.
+  it.each([
+    ['paragraphs', 'One.\n\nTwo.'],
+    ['a hard break', 'one\ntwo'],
+    ['inline marks', '**b** _i_ `c` ~~s~~'],
+    ['a link', 'See [the doc](https://x.test) first.'],
+    ['headings', '# One\n\n## Two\n\n### Three'],
+    ['a bullet list', '- a\n- b\n- c'],
+    ['an ordered list', '1. a\n2. b'],
+    ['a fenced code block', '```bash\necho hi\nexit 0\n```'],
+    ['a quote', '> quoted'],
+    ['a rule', '---'],
+    ['a mixed document', '# Title\n\nSome **bold** text.\n\n- one\n- two\n\n```js\nconst a = 1\n```\n\n> note'],
+    // Not in the subset, so it can't be structured — but the words still reach Jira.
+    ['unsupported syntax, as plain text', '| a | b |']
+  ])('survives %s', (_name, md) => {
+    expect(adfToMarkdown(markdownToAdf(md))).toBe(md)
   })
 })

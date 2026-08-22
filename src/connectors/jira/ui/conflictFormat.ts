@@ -15,6 +15,7 @@ export const FIELD_LABEL: Record<SyncField, string> = {
   due: 'Due date',
   assignees: 'Assignee',
   milestone: 'Type',
+  description: 'Description',
   blockedBy: 'Blocked by'
 }
 
@@ -23,6 +24,10 @@ export function formatField(settings: LabelSettings, field: SyncField, s: JiraSh
   switch (field) {
     case 'title':
       return s.title || '—'
+    case 'description':
+      // A description can be pages long; the resolver shows a row per field, so give it a
+      // recognisable first line rather than a wall of prose.
+      return summarise(s.description)
     case 'status':
       return settings.statuses.find((x) => x.id === s.status)?.label ?? s.status
     case 'priority':
@@ -38,4 +43,11 @@ export function formatField(settings: LabelSettings, field: SyncField, s: JiraSh
     case 'blockedBy':
       return s.blockedBy.length ? s.blockedBy.join(', ') : 'None'
   }
+}
+
+/** First line of a description, trimmed to something that fits a table row. */
+function summarise(text: string): string {
+  const first = (text ?? '').trim().split('\n')[0] ?? ''
+  if (!first) return '—'
+  return first.length > 80 ? `${first.slice(0, 79)}…` : first
 }

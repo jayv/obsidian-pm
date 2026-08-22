@@ -14,8 +14,9 @@ import {
   typeForLevel
 } from './JiraModel'
 import { SYNC_FIELDS, type SyncField, fieldsEqual, threeWay } from './reconcile'
+import { markdownToAdf } from './adf'
 import { ensureMockBackend, mockBaseUrl } from './JiraMockServer'
-import type { JiraEpicConfig, JiraIssueProps, JiraProjectConfig, JiraShadow, JiraTaskExt, JiraValueMap } from './types'
+import type { JiraEpicConfig, JiraIssueProps, JiraProjectConfig, JiraShadow, JiraValueMap } from './types'
 import {
   CONFIG_PROP,
   ISSUE_PROP,
@@ -107,13 +108,14 @@ export function shadowOf(task: Task, keyOf?: Map<string, string>): JiraShadow {
     due: task.due || '',
     assignees: [...task.assignees],
     milestone: task.type === 'milestone',
+    description: task.description || '',
     blockedBy: keyOf ? desiredBlockerKeys(task, keyOf) : []
   }
 }
 
 /** True when two shadows agree on every synced field. */
 function shadowEqual(a: JiraShadow, b: JiraShadow): boolean {
-  return SYNC_FIELDS.every((f) => fieldsEqual(a[f], b[f]))
+  return SYNC_FIELDS.every((f) => fieldsEqual(a[f], b[f], f))
 }
 
 function withJiraKey(
@@ -297,6 +299,7 @@ function createFields(
     summary: task.title,
     parent: { key: parentKey }
   }
+  if (task.description.trim()) fields.description = markdownToAdf(task.description)
   if (task.due) fields.duedate = task.due
   if (startField && task.start) fields[startField] = task.start
   const priority = mapOutboundEntry(cfg.priorityMap, task.priority)
@@ -388,32 +391,6 @@ async function pushEpicConfig(client: JiraClient, cfg: JiraProjectConfig): Promi
   if (!cfg.mappingsDirty || !cfg.epicId) return
   await client.setProperty(cfg.epicId, CONFIG_PROP, epicConfigOf(cfg))
   cfg.mappingsDirty = false
-}
-
-/**
- * A one-time copy of Jira's description into a task that has none.
- *
- * The local body is loaded lazily, so an empty `description` may only mean "not read yet";
- * hydrating first is what stops this overwriting a note that already has content. The
- * `descFilled` flag then keeps every later sync from re-reading the body of every task
- * just to find it isn't empty.
- */
-async function descriptionFill(
-  plugin: PMPlugin,
-  task: Task,
-  issue: JiraIssue,
-  ext: JiraTaskExt
-): Promise<Partial<Task> | null> {
-  if (ext.descFilled || !issue.description.trim()) return null
-  await plugin.store.loadTaskBody(task)
-  // Set it on the task as well as in the patch. Later patches for the same task rebuild
-  // `ext` from taskExt(task) — withMergedShadow does — so a flag that only existed in the
-  // patch would be dropped by whichever patch is applied last, and the fill would repeat
-  // on every sync.
-  task.ext = { ...task.ext, [JIRA_ID]: { ...taskExt(task), descFilled: true } }
-  const patch: Partial<Task> = { ext: task.ext }
-  if (!task.description.trim()) patch.description = issue.description
-  return patch
 }
 
 /**
@@ -697,6 +674,7 @@ export async function linkStoriesToTasks(
       title: issue.summary || task.title,
       status: mapInbound(cfg.statusMap, issue.status, fallback),
       priority: mapPriority(issue, cfg),
+      description: issue.description,
       start: issue.start ?? '',
       due: issue.due ?? '',
       assignees: assigneeName ? [assigneeName] : [],
@@ -704,7 +682,7 @@ export async function linkStoriesToTasks(
       blockedBy: [] // deps reconcile on a later normal sync, not at match time
     }
     const mine: JiraShadow = { ...shadowOf(task), blockedBy: [] }
-    const differs = SYNC_FIELDS.some((f) => !fieldsEqual(mine[f], theirs[f]))
+    const differs = SYNC_FIELDS.some((f) => !fieldsEqual(mine[f], theirs[f], f))
     const jx: Record<string, unknown> = { ...taskExt(task), key: issue.key, sync: true }
     if (differs) {
       // Keep local values; capture the Jira snapshot but leave shadow unset so the merge
@@ -985,6 +963,14 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       keyOf.set(f.task.id, k)
     }
   }
+  // Descriptions live in the note body, which loads lazily — an unread body reads as ''.
+  // Now that the description is a synced field, that would look like "the user cleared it"
+  // and push an empty description over Jira's. Load them before anything compares.
+  for (const f of flat) {
+    const x = taskExt(f.task)
+    if (x.key && x.sync) await plugin.store.loadTaskBody(f.task)
+  }
+
   const createdKeys = new Set<string>()
   const createdIds = new Set<string>()
 
@@ -1086,13 +1072,6 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     const parentDiverged = parentUnsynced || (Boolean(desiredParent) && issue.parentKey !== desiredParent)
     const localDiverged = !ext.shadow || !shadowEqual(mine, ext.shadow) || parentDiverged
 
-    // Copy Jira's description into a task that hasn't got one. Descriptions aren't part of
-    // the merge yet, so this only ever fills a blank — it can't overwrite anything you
-    // wrote. Runs before the early exit below, because a task with nothing else to sync is
-    // exactly the one still missing its description.
-    const fill = await descriptionFill(plugin, t, issue, ext)
-    if (fill) patches.push({ taskId: t.id, patch: fill })
-
     // Nothing changed on either side and no open conflict → skip (no HTTP).
     if (!localDiverged && issue.updated <= prev && ext.reconciled !== false) continue
 
@@ -1102,6 +1081,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       title: issue.summary || t.title,
       status: mapInbound(cfg.statusMap, issue.status, fallback),
       priority: mapPriority(issue, cfg),
+      description: issue.description,
       start: issue.start ?? '',
       due: issue.due ?? '',
       assignees: assigneeName ? [assigneeName] : [],
@@ -1153,6 +1133,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
         }
       }
     }
+    if (tw.push.includes('description')) fields.description = markdownToAdf(t.description || '')
     if (tw.push.includes('assignees')) {
       const a = assigneeField(plugin, t, cfg)
       // `undefined` = a local assignee with no JIRA-user mapping. Don't silently drop
@@ -1206,6 +1187,8 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     if (tw.adopt.includes('due')) patch.due = theirs.due
     if (tw.adopt.includes('assignees')) patch.assignees = [...theirs.assignees]
     if (tw.adopt.includes('milestone')) patch.type = theirs.milestone ? 'milestone' : 'task'
+    // Writing this rewrites the note's body — applyExternalUpdates picks the full write.
+    if (tw.adopt.includes('description')) patch.description = theirs.description
     // Adopt JIRA's dependency set only when it's the side that changed (map keys → local ids).
     if (tw.adopt.includes('blockedBy')) {
       patch.dependencies = theirs.blockedBy.map((k) => byKey.get(k)?.id).filter((tid): tid is string => Boolean(tid))
@@ -1222,6 +1205,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       due: a('due') ? theirs.due : mine.due,
       assignees: a('assignees') ? [...theirs.assignees] : [...mine.assignees],
       milestone: a('milestone') ? theirs.milestone : mine.milestone,
+      description: a('description') ? theirs.description : mine.description,
       blockedBy: a('blockedBy') ? [...theirs.blockedBy] : [...mine.blockedBy]
     }
     patch.ext = withMergedShadow(t, merged)

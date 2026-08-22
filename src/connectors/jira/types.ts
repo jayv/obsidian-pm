@@ -67,6 +67,8 @@ export interface JiraShadow {
   due: string
   assignees: string[]
   milestone: boolean
+  /** The note's body, as Markdown. Jira stores it as an ADF tree; see adf.ts. */
+  description: string
   /** JIRA keys this task is "blocked by" (dependencies), for the link 3-way merge. */
   blockedBy: string[]
 }
@@ -87,12 +89,6 @@ export interface JiraTaskExt {
   conflict?: JiraConflict
   /** Last-synced field values; the baseline for field-level outbound diffing. */
   shadow?: JiraShadow
-  /**
-   * Jira's description has been copied into the note once. Descriptions aren't part of the
-   * merge yet, so this is a one-time fill for tasks linked before it existed — and it
-   * stops the sync re-reading every note body looking for empty ones.
-   */
-  descFilled?: boolean
 }
 
 /**

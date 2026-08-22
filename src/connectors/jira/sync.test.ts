@@ -18,6 +18,8 @@ import {
   statusObj
 } from './test-harness'
 import { stopMockServer } from './JiraMockServer'
+import { adfToMarkdown, markdownToAdf } from './adf'
+import { canonicalDescription } from './reconcile'
 import { CONFIG_PROP, ISSUE_PROP, taskExt, type JiraEpicConfig, type JiraIssueProps } from './types'
 import {
   exportTasks,
@@ -1149,52 +1151,90 @@ describe('jira sync — descriptions [J→O]', () => {
   })
 })
 
-describe('jira sync — filling an empty description [J→O]', () => {
-  /** Link a task to an issue that has a description, and hand back both. */
-  async function linkedWithJiraDescription(text: string) {
+/*
+ * Descriptions are a synced field like any other, with one wrinkle: they round-trip
+ * through Jira's ADF format, so equality has to be canonical or every sync after a push
+ * would read the conversion as a remote edit and rewrite the note.
+ */
+describe('jira sync — descriptions [both]', () => {
+  async function linked(description: string) {
     const { plugin } = harness()
     const { project, cfg } = connect(plugin)
     setDefaultMaps(cfg)
-    const task = localTask(project, { title: 'Linked' })
+    const task = localTask(project, { title: 'Linked', description })
     await exportTasks(plugin, project, [task.id])
-    const key = must(taskExt(task).key)
+    await runSync(plugin, project)
+    return { plugin, project, task, key: must(taskExt(task).key) }
+  }
+  const jiraDescription = async (plugin: ReturnType<typeof harness>['plugin'], key: string) =>
+    (await readMock(plugin)).getIssue(key)?.fields.description
+
+  it('pushes the description when the task is created', async () => {
+    const { plugin, key } = await linked('# Why\n\nBecause **it matters**.')
+    expect(adfToMarkdown(await jiraDescription(plugin, key))).toBe('# Why\n\nBecause **it matters**.')
+  })
+
+  it('pushes a later local edit', async () => {
+    const { plugin, project, task, key } = await linked('First.')
+    must(findTask(project.tasks, task.id)).description = 'Second.'
+
+    await runSync(plugin, project)
+
+    expect(adfToMarkdown(await jiraDescription(plugin, key))).toBe('Second.')
+  })
+
+  it('adopts an edit made in Jira', async () => {
+    const { plugin, project, task, key } = await linked('Mine.')
     await mutateMock(plugin, (s) => {
       const issue = mustIssue(s, key)
-      issue.fields.description = {
-        type: 'doc',
-        version: 1,
-        content: [{ type: 'paragraph', content: [{ type: 'text', text }] }]
-      }
+      issue.fields.description = markdownToAdf('Theirs.')
+      issue.fields.updated = FUTURE
     })
-    return { plugin, project, task }
-  }
-
-  it('copies the description onto a task that has none', async () => {
-    const { plugin, project, task } = await linkedWithJiraDescription('From Jira.')
 
     await runSync(plugin, project)
 
-    expect(must(findTask(project.tasks, task.id)).description).toBe('From Jira.')
+    expect(must(findTask(project.tasks, task.id)).description).toBe('Theirs.')
   })
 
-  it('never overwrites a description the user already wrote', async () => {
-    const { plugin, project, task } = await linkedWithJiraDescription('From Jira.')
-    must(findTask(project.tasks, task.id)).description = 'Mine, thanks.'
+  it('leaves an untouched description alone — the round trip is not an edit', async () => {
+    const { plugin, project, task } = await linked('- one\n- two\n\nSome **bold**.')
+    const before = must(findTask(project.tasks, task.id)).description
 
     await runSync(plugin, project)
+    await runSync(plugin, project)
 
-    expect(must(findTask(project.tasks, task.id)).description).toBe('Mine, thanks.')
+    expect(must(findTask(project.tasks, task.id)).description).toBe(before)
+    expect(taskExt(must(findTask(project.tasks, task.id))).reconciled).not.toBe(false)
   })
 
-  it('fills once — clearing the note afterwards does not bring it back', async () => {
-    const { plugin, project, task } = await linkedWithJiraDescription('From Jira.')
+  it('is not fooled when the round trip reformats — "* a" comes home as "- a"', async () => {
+    // Jira has no notion of which bullet character you typed, so this text cannot survive
+    // literally. Without a canonical comparison the next sync reads it as someone else's
+    // edit and rewrites the note — on every sync, forever.
+    const { plugin, project, task } = await linked('* one\n* two')
+    expect(canonicalDescription('* one\n* two')).not.toBe('* one\n* two') // the premise
+
     await runSync(plugin, project)
-    must(findTask(project.tasks, task.id)).description = ''
+    await runSync(plugin, project)
+
+    const after = must(findTask(project.tasks, task.id))
+    expect(after.description).toBe('* one\n* two') // left exactly as written
+    expect(taskExt(after).reconciled).not.toBe(false)
+  })
+
+  it('flags a conflict when both sides changed it', async () => {
+    const { plugin, project, task, key } = await linked('Original.')
+    must(findTask(project.tasks, task.id)).description = 'My version.'
+    await mutateMock(plugin, (s) => {
+      const issue = mustIssue(s, key)
+      issue.fields.description = markdownToAdf('Their version.')
+      issue.fields.updated = FUTURE
+    })
 
     await runSync(plugin, project)
 
-    // Deleting the text is an edit, not a gap to refill. Descriptions aren't merged yet,
-    // so the deletion simply stays local.
-    expect(must(findTask(project.tasks, task.id)).description).toBe('')
+    const after = must(findTask(project.tasks, task.id))
+    expect(taskExt(after).reconciled).toBe(false)
+    expect(after.description).toBe('My version.') // local kept until resolved
   })
 })

@@ -23,8 +23,8 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>207</strong> tests</span>
-    <span class="stat"><strong>52</strong> areas</span>
+    <span class="stat"><strong>215</strong> tests</span>
+    <span class="stat"><strong>54</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
 
@@ -129,6 +129,16 @@
 <tr><td>follows an unknown wrapper into its children rather than discarding them</td><td class="file">adf.test.ts</td></tr>
 <tr><td>accepts a plain string, for the v2 API and un-migrated issues</td><td class="file">adf.test.ts</td></tr>
 <tr><td>is empty for nothing at all</td><td class="file">adf.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">markdownToAdf <span class="dir dir-unit">unit</span> <span class="muted">5</span></td></tr>
+    <tr><td>makes a paragraph, with blank lines separating them</td><td class="file">adf.test.ts</td></tr>
+<tr><td>turns a single newline into a hard break, not a new paragraph</td><td class="file">adf.test.ts</td></tr>
+<tr><td>reads the inline marks back</td><td class="file">adf.test.ts</td></tr>
+<tr><td>reads a link back</td><td class="file">adf.test.ts</td></tr>
+<tr><td>stores "no description" the way Jira does, not as an empty doc</td><td class="file">adf.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">adf round trip <span class="dir dir-unit">unit</span> <span class="muted">0</span></td></tr>
+    
 
     <tr class="group"><td colspan="2">jira sync — assignee conflicts <span class="dir dir-both">both</span> <span class="muted">6</span></td></tr>
     <tr><td>two projects edit the assignee from a shared baseline → conflict (A→Bob, B→Carol)</td><td class="file">assignee.test.ts</td></tr>
@@ -318,10 +328,13 @@
     <tr><td>imports the issue description into the task, converted from ADF</td><td class="file">sync.test.ts</td></tr>
 <tr><td>leaves the description empty when the issue has none</td><td class="file">sync.test.ts</td></tr>
 
-    <tr class="group"><td colspan="2">jira sync — filling an empty description <span class="dir dir-JO">J→O</span> <span class="muted">3</span></td></tr>
-    <tr><td>copies the description onto a task that has none</td><td class="file">sync.test.ts</td></tr>
-<tr><td>never overwrites a description the user already wrote</td><td class="file">sync.test.ts</td></tr>
-<tr><td>fills once — clearing the note afterwards does not bring it back</td><td class="file">sync.test.ts</td></tr>
+    <tr class="group"><td colspan="2">jira sync — descriptions <span class="dir dir-both">both</span> <span class="muted">6</span></td></tr>
+    <tr><td>pushes the description when the task is created</td><td class="file">sync.test.ts</td></tr>
+<tr><td>pushes a later local edit</td><td class="file">sync.test.ts</td></tr>
+<tr><td>adopts an edit made in Jira</td><td class="file">sync.test.ts</td></tr>
+<tr><td>leaves an untouched description alone — the round trip is not an edit</td><td class="file">sync.test.ts</td></tr>
+<tr><td>is not fooled when the round trip reformats — "* a" comes home as "- a"</td><td class="file">sync.test.ts</td></tr>
+<tr><td>flags a conflict when both sides changed it</td><td class="file">sync.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">task link — new-task default + checkbox state <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">3</span></td></tr>
     <tr><td>defaults a brand-new task to synced</td><td class="file">taskLink.test.ts</td></tr>

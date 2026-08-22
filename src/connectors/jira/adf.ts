@@ -10,6 +10,8 @@
 
 export interface AdfNode {
   type: string
+  /** Only on the root doc node. */
+  version?: number
   text?: string
   content?: AdfNode[]
   marks?: { type: string; attrs?: Record<string, unknown> }[]
@@ -133,4 +135,154 @@ export function adfToMarkdown(doc: unknown): string {
     .join('\n\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+}
+
+// ── Markdown → ADF ──────────────────────────────────────────────────────────
+
+const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(~~[^~]+~~)|(\[[^\]]*\]\([^)]*\))|(_[^_]+_)|(\*[^*]+\*)/
+
+/** Split a line into ADF text nodes, applying the marks we can represent. */
+function inlineNodes(text: string): AdfNode[] {
+  if (!text) return []
+  const out: AdfNode[] = []
+  let rest = text
+  for (;;) {
+    const m = INLINE.exec(rest)
+    if (!m || m.index === undefined) break
+    if (m.index > 0) out.push(...plain(rest.slice(0, m.index)))
+    const tok = m[0]
+    if (tok.startsWith('`')) out.push(marked(tok.slice(1, -1), 'code'))
+    else if (tok.startsWith('**')) out.push(marked(tok.slice(2, -2), 'strong'))
+    else if (tok.startsWith('~~')) out.push(marked(tok.slice(2, -2), 'strike'))
+    else if (tok.startsWith('[')) {
+      const link = /^\[([^\]]*)\]\(([^)]*)\)$/.exec(tok)
+      if (link) {
+        out.push({
+          type: 'text',
+          text: link[1] || link[2],
+          marks: [{ type: 'link', attrs: { href: link[2] } }]
+        })
+      }
+    } else out.push(marked(tok.slice(1, -1), 'em'))
+    rest = rest.slice(m.index + tok.length)
+  }
+  if (rest) out.push(...plain(rest))
+  return out
+}
+
+/** Plain run, with newlines becoming hard breaks — ADF text nodes can't contain them. */
+function plain(text: string): AdfNode[] {
+  const parts = text.split('\n')
+  const out: AdfNode[] = []
+  parts.forEach((part, i) => {
+    if (i) out.push({ type: 'hardBreak' })
+    if (part) out.push({ type: 'text', text: part })
+  })
+  return out
+}
+
+function marked(text: string, mark: string): AdfNode {
+  return { type: 'text', text, marks: [{ type: mark }] }
+}
+
+function paragraph(text: string): AdfNode {
+  return { type: 'paragraph', content: inlineNodes(text) }
+}
+
+function listNode(items: string[], ordered: boolean): AdfNode {
+  return {
+    type: ordered ? 'orderedList' : 'bulletList',
+    content: items.map((item) => ({ type: 'listItem', content: [paragraph(item)] }))
+  }
+}
+
+/**
+ * Markdown → ADF, for writing a description back to Jira.
+ *
+ * A deliberately small subset: the block and inline forms {@link adfToMarkdown} produces,
+ * so text that came from Jira survives the trip home. Anything else — a table, an
+ * Obsidian embed — is carried across as literal text in a paragraph rather than dropped,
+ * which keeps the content and makes the gap visible instead of silent.
+ */
+export function markdownToAdf(md: string): AdfNode {
+  const lines = (md ?? '').replace(/\r\n/g, '\n').split('\n')
+  const content: AdfNode[] = []
+  let para: string[] = []
+  let list: { items: string[]; ordered: boolean } | null = null
+
+  const flushPara = () => {
+    if (para.length) content.push(paragraph(para.join('\n')))
+    para = []
+  }
+  const flushList = () => {
+    if (list) content.push(listNode(list.items, list.ordered))
+    list = null
+  }
+  const flush = () => {
+    flushPara()
+    flushList()
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+
+    const fence = /^```(\w*)\s*$/.exec(line)
+    if (fence) {
+      flush()
+      const code: string[] = []
+      for (i++; i < lines.length && !/^```\s*$/.test(lines[i]); i++) code.push(lines[i])
+      const node: AdfNode = { type: 'codeBlock', content: code.length ? [{ type: 'text', text: code.join('\n') }] : [] }
+      if (fence[1]) node.attrs = { language: fence[1] }
+      content.push(node)
+      continue
+    }
+
+    if (!line.trim()) {
+      flush()
+      continue
+    }
+
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line)
+    if (heading) {
+      flush()
+      content.push({ type: 'heading', attrs: { level: heading[1].length }, content: inlineNodes(heading[2]) })
+      continue
+    }
+
+    if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+      flush()
+      content.push({ type: 'rule' })
+      continue
+    }
+
+    const quote = /^>\s?(.*)$/.exec(line)
+    if (quote) {
+      flush()
+      const body: string[] = [quote[1]]
+      while (i + 1 < lines.length && /^>\s?/.test(lines[i + 1])) body.push(lines[++i].replace(/^>\s?/, ''))
+      content.push({ type: 'blockquote', content: [paragraph(body.join('\n'))] })
+      continue
+    }
+
+    const bullet = /^\s*[-*+]\s+(.*)$/.exec(line)
+    const ordered = /^\s*\d+[.)]\s+(.*)$/.exec(line)
+    if (bullet || ordered) {
+      const match = bullet ?? ordered
+      if (!match) continue
+      const isOrdered = Boolean(ordered)
+      const text = match[1]
+      flushPara()
+      if (list && list.ordered !== isOrdered) flushList()
+      list = list ?? { items: [], ordered: isOrdered }
+      list.items.push(text)
+      continue
+    }
+
+    flushList()
+    para.push(line)
+  }
+  flush()
+
+  // Jira rejects an empty doc; a single empty paragraph is how it stores "no description".
+  return { type: 'doc', version: 1, content: content.length ? content : [{ type: 'paragraph', content: [] }] }
 }

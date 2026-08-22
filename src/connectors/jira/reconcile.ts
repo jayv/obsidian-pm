@@ -10,6 +10,7 @@
  * so a one-sided change never clobbers the other side and a genuine clash surfaces.
  */
 import type { JiraShadow } from './types'
+import { adfToMarkdown, markdownToAdf } from './adf'
 
 export type SyncField = keyof JiraShadow // title | status | priority | start | due | assignees | milestone | blockedBy
 
@@ -21,6 +22,7 @@ export const SYNC_FIELDS: SyncField[] = [
   'due',
   'assignees',
   'milestone',
+  'description',
   'blockedBy'
 ]
 
@@ -37,9 +39,21 @@ export interface ThreeWay {
 }
 
 /** Value equality, treating assignee arrays as unordered sets. */
-export function fieldsEqual(a: JiraShadow[SyncField], b: JiraShadow[SyncField]): boolean {
+export function fieldsEqual(a: JiraShadow[SyncField], b: JiraShadow[SyncField], field?: SyncField): boolean {
   if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x) => b.includes(x))
+  // A description round-trips through ADF, and that isn't the identity function: "- a" may
+  // come home as "* a". Comparing the canonical form means a formatting difference the
+  // conversion introduced isn't mistaken for someone's edit — which would otherwise
+  // rewrite the note on every sync after every push.
+  if (field === 'description' && typeof a === 'string' && typeof b === 'string') {
+    return a === b || canonicalDescription(a) === canonicalDescription(b)
+  }
   return a === b
+}
+
+/** What a description becomes after a trip through Jira's format and back. */
+export function canonicalDescription(md: string): string {
+  return adfToMarkdown(markdownToAdf(md))
 }
 
 /** A differing field for the conflict resolver, with its default resolution pick. */
@@ -57,8 +71,8 @@ export interface FieldDiff {
 export function conflictFields(mine: JiraShadow, base: JiraShadow | undefined, theirs: JiraShadow): FieldDiff[] {
   const out: FieldDiff[] = []
   for (const f of SYNC_FIELDS) {
-    if (fieldsEqual(mine[f], theirs[f])) continue
-    out.push({ field: f, defaultTakeTheirs: base !== undefined && fieldsEqual(mine[f], base[f]) })
+    if (fieldsEqual(mine[f], theirs[f], f)) continue
+    out.push({ field: f, defaultTakeTheirs: base !== undefined && fieldsEqual(mine[f], base[f], f) })
   }
   return out
 }
@@ -71,9 +85,9 @@ export function threeWay(mine: JiraShadow, base: JiraShadow, theirs: JiraShadow)
     const m = mine[f]
     const b = base[f]
     const t = theirs[f]
-    if (fieldsEqual(m, t)) continue
-    if (fieldsEqual(m, b)) adopt.push(f)
-    else if (fieldsEqual(t, b)) push.push(f)
+    if (fieldsEqual(m, t, f)) continue
+    if (fieldsEqual(m, b, f)) adopt.push(f)
+    else if (fieldsEqual(t, b, f)) push.push(f)
     else conflicts.push({ field: f, mine: m, theirs: t })
   }
   return { push, adopt, conflicts }
