@@ -23,6 +23,12 @@ export class UberProjectView extends ItemView {
   private gantt: GanttView | null = null
   private filter: FilterState = makeDefaultFilter()
   private loading = false
+  /**
+   * Collapsed heading rows, by id. Kept here rather than in settings.collapsedTasks: that
+   * map is keyed by project file, and these rows belong to no file. Ids are derived from
+   * project ids, so they survive a rebuild.
+   */
+  private collapsedHeadings = new Set<string>()
 
   constructor(leaf: WorkspaceLeaf, plugin: PMPlugin) {
     super(leaf)
@@ -62,6 +68,11 @@ export class UberProjectView extends ItemView {
     try {
       const projects = await this.plugin.store.loadAllProjects(this.plugin.settings.projectsFolder)
       this.uber = buildUberProject(projects)
+      // Real tasks get their collapsed flag from loadProject (per project file); the
+      // heading rows are ours to restore.
+      for (const heading of this.uber.project.tasks) {
+        heading.collapsed = this.collapsedHeadings.has(heading.id)
+      }
       this.render()
     } catch (e) {
       new Notice('Could not load the projects. Check the console.')
@@ -69,6 +80,25 @@ export class UberProjectView extends ItemView {
     } finally {
       this.loading = false
     }
+  }
+
+  /**
+   * A heading collapses locally; a real task's collapse is persisted against the project
+   * that owns it, so it matches what that project's own view shows. Either way this
+   * re-renders rather than reloading — collapsing shouldn't re-read every project file.
+   */
+  private async toggleCollapsed(uber: UberProject, task: Task): Promise<void> {
+    const owner = uber.headings.has(task.id) ? null : uber.ownerOf.get(task.id)
+    if (owner) {
+      // Tasks are shared by reference, so this flips the very object being rendered —
+      // and persists against the right project file.
+      await this.plugin.toggleTaskCollapsed(owner, task.id)
+    } else {
+      task.collapsed = !task.collapsed
+      if (task.collapsed) this.collapsedHeadings.add(task.id)
+      else this.collapsedHeadings.delete(task.id)
+    }
+    this.render()
   }
 
   private render(): void {
@@ -88,7 +118,8 @@ export class UberProjectView extends ItemView {
     this.gantt = new GanttView(this.bodyEl, uber.project, this.plugin, () => this.reload(), this.filter, {
       readOnly: true,
       // A task's real home, so the editor writes to the right project file.
-      ownerOf: (task: Task) => uber.ownerOf.get(task.id) ?? uber.project
+      ownerOf: (task: Task) => uber.ownerOf.get(task.id) ?? uber.project,
+      onToggleCollapsed: (task: Task) => this.toggleCollapsed(uber, task)
     })
     this.gantt.render()
   }

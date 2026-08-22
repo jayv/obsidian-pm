@@ -22,6 +22,11 @@ export function renderProjectListToolbar(ctx: ProjectListContext): void {
     .setButtonText('+ new project')
     .setCta()
     .onClick(() => openCreateProjectModal(ctx))
+
+  new ButtonComponent(ctx.toolbarEl)
+    .setButtonText('All projects timeline')
+    .setTooltip('One gantt across every project')
+    .onClick(() => void ctx.plugin.router.openUberProject())
 }
 
 export async function renderProjectListContent(ctx: ProjectListContext): Promise<void> {

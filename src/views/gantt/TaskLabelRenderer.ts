@@ -23,6 +23,11 @@ export interface LabelContext {
    * edit would look saved and go nowhere.
    */
   ownerOf?: (task: Task) => Project
+  /**
+   * Take over collapsing entirely, including the refresh. The cross-project view needs it:
+   * collapse is persisted per project file, and its own heading rows belong to no file.
+   */
+  onToggleCollapsed?: (task: Task) => Promise<void>
 }
 
 export function renderTaskLabel(
@@ -80,6 +85,10 @@ export function renderTaskLabel(
     new CollapseToggle(el, {
       collapsed: task.collapsed,
       onToggle: safeAsync(async () => {
+        if (ctx.onToggleCollapsed) {
+          await ctx.onToggleCollapsed(task)
+          return
+        }
         await ctx.plugin.toggleTaskCollapsed(ctx.project, task.id)
         await ctx.onRefresh()
       })

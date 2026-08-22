@@ -42,6 +42,8 @@ export interface GanttViewOptions {
    * would look saved and go nowhere.
    */
   ownerOf?: (task: Task) => Project
+  /** Take over collapsing, including the refresh — see LabelContext.onToggleCollapsed. */
+  onToggleCollapsed?: (task: Task) => Promise<void>
 }
 
 export class GanttView implements SubView {
@@ -401,6 +403,7 @@ export class GanttView implements SubView {
       roster: this.roster(),
       readOnly: this.opts.readOnly,
       ownerOf: this.opts.ownerOf,
+      onToggleCollapsed: this.opts.onToggleCollapsed,
       badgesOf: (task: Task) => this.plugin.connectors.taskBadges(this.project, task)
     }
     this.flatTasks.forEach((f, rowIndex) => {

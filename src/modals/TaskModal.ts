@@ -131,9 +131,28 @@ export class TaskModal extends Modal {
     await this.onSave(this.task)
   }
 
+  /** Titles of the task's ancestors, outermost first. Empty for a top-level task. */
+  private ancestorTitles(): string[] {
+    const byId = new Map(flattenTasks(this.project.tasks).map((f) => [f.task.id, f]))
+    const out: string[] = []
+    for (let id = byId.get(this.task.id)?.parentId; id; ) {
+      const parent = byId.get(id)
+      if (!parent) break
+      out.unshift(parent.task.title)
+      id = parent.parentId
+    }
+    return out
+  }
+
   private render(): void {
     const { contentEl } = this
     contentEl.empty()
+
+    // Where this task lives: "Project ▸ Parent ▸ …". Opened from the cross-project
+    // timeline the project is the only thing telling two similarly named tasks apart, and
+    // a deep subtask is ambiguous without its ancestors even inside one project.
+    const trail = [this.project.title, ...this.ancestorTitles()]
+    contentEl.createDiv({ cls: 'pm-modal-breadcrumb', text: trail.join(' \u25b8 ') })
 
     // ── Header ──────────────────────────────────────────────────────────────
     const header = contentEl.createDiv('pm-modal-header')

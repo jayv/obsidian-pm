@@ -207,6 +207,17 @@
   border-color: var(--pm-accent);
 }
 
+/* Where the task lives: "Project > Parent > ..." above the title. */
+.pm-modal-breadcrumb {
+  padding: 10px 24px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pm-text-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* Modal sections */
 .pm-modal-section {
   padding: 14px 24px;
