@@ -1022,6 +1022,17 @@ export class ProjectStore {
     const nowComplete = isTerminalStatus(patch.status, statuses)
     if (nowComplete && !wasComplete) patch.completed = today().toString()
     else if (!nowComplete && wasComplete) patch.completed = ''
+
+    // Finishing a task fills its progress in. Leaving it at 37% while the status says
+    // done contradicts itself, and the gantt's progress dial shows that contradiction on
+    // every row. Same override rule as the date: a patch that sets progress itself wins.
+    //
+    // Reopening deliberately leaves progress alone. There's nothing true to reset it to —
+    // the work done before it was closed didn't un-happen — and guessing a number would
+    // be worse than leaving the one the user last chose.
+    if (nowComplete && !wasComplete && (patch.progress === undefined || patch.progress === task.progress)) {
+      patch.progress = 100
+    }
   }
 
   async updateTask(project: Project, taskId: string, patch: Partial<Task>): Promise<void> {

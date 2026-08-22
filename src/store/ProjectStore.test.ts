@@ -960,3 +960,50 @@ describe('ProjectStore renameAssignee', () => {
     expect(seen).toHaveBeenCalledWith(project, 'Ada', 'Ada Lovelace')
   })
 })
+
+describe('ProjectStore completion progress', () => {
+  it('fills progress in when a task is marked complete', async () => {
+    const { store } = newStore()
+    const project = await store.createProject('One', 'Projects')
+    const task = await addNamed(store, project, 'Alpha')
+    await store.updateTask(project, task.id, { progress: 40 })
+
+    await store.updateTask(project, task.id, { status: 'done' })
+
+    expect(expectDefined(project.taskIndex.get(task.id)).task.progress).toBe(100)
+  })
+
+  it('leaves progress alone when the task is reopened', async () => {
+    const { store } = newStore()
+    const project = await store.createProject('One', 'Projects')
+    const task = await addNamed(store, project, 'Alpha')
+    await store.updateTask(project, task.id, { status: 'done' })
+
+    await store.updateTask(project, task.id, { status: 'todo' })
+
+    // Nothing true to reset it to — the work done before it closed didn't un-happen.
+    expect(expectDefined(project.taskIndex.get(task.id)).task.progress).toBe(100)
+  })
+
+  it('respects a progress set in the same patch as the status', async () => {
+    const { store } = newStore()
+    const project = await store.createProject('One', 'Projects')
+    const task = await addNamed(store, project, 'Alpha')
+
+    await store.updateTask(project, task.id, { status: 'done', progress: 80 })
+
+    expect(expectDefined(project.taskIndex.get(task.id)).task.progress).toBe(80)
+  })
+
+  it('does not re-fill progress when the status changes between two complete statuses', async () => {
+    const { store } = newStore()
+    const project = await store.createProject('One', 'Projects')
+    const task = await addNamed(store, project, 'Alpha')
+    await store.updateTask(project, task.id, { status: 'done' })
+    await store.updateTask(project, task.id, { progress: 60 })
+
+    await store.updateTask(project, task.id, { status: 'cancelled' })
+
+    expect(expectDefined(project.taskIndex.get(task.id)).task.progress).toBe(60)
+  })
+})
