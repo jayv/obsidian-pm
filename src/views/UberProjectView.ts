@@ -3,6 +3,7 @@ import type PMPlugin from '../main'
 import { makeDefaultFilter, type FilterState, type Project, type Task } from '../types'
 import { buildUberProject, type UberProject } from '../store/UberProject'
 import { applyTaskFilterPromote } from '../store/TaskFilter'
+import { findTask, flattenTasks } from '../store/TaskTreeOps'
 import { projectRoster } from '../ui/roster'
 import { FilterRow } from '../ui/composites/ProjectHeader/FilterRow'
 import type { HeaderUiState } from '../ui/composites/ProjectHeader/ProjectHeader'
@@ -111,6 +112,29 @@ export class UberProjectView extends ItemView {
    * that owns it, so it matches what that project's own view shows. Either way this
    * re-renders rather than reloading — collapsing shouldn't re-read every project file.
    */
+  /**
+   * Expand/collapse all: heading rows are ours, and every other row's flag belongs to the
+   * project that owns it — the rendered tree holds filtered copies, so writing to those
+   * would be discarded on the next render.
+   */
+  private async setAllCollapsed(uber: UberProject, collapsed: boolean): Promise<void> {
+    const owners = new Set<Project>()
+    for (const heading of uber.project.tasks) {
+      if (collapsed) this.collapsedHeadings.add(heading.id)
+      else this.collapsedHeadings.delete(heading.id)
+      for (const { task } of flattenTasks(heading.subtasks)) {
+        if (!task.subtasks.length) continue
+        const owner = uber.ownerOf.get(task.id)
+        const original = owner ? findTask(owner.tasks, task.id) : null
+        if (!owner || !original) continue
+        original.collapsed = collapsed
+        owners.add(owner)
+      }
+    }
+    for (const owner of owners) await this.plugin.persistCollapsedState(owner)
+    this.render()
+  }
+
   private renderFilter(full: Project, roster: Map<string, string>): void {
     this.filterEl.empty()
     new FilterRow(this.filterEl, {
@@ -193,7 +217,8 @@ export class UberProjectView extends ItemView {
       showControls: true,
       // A task's real home, so the editor writes to the right project file.
       ownerOf: (task: Task) => uber.ownerOf.get(task.id) ?? uber.project,
-      onToggleCollapsed: (task: Task) => this.toggleCollapsed(uber, task)
+      onToggleCollapsed: (task: Task) => this.toggleCollapsed(uber, task),
+      onSetAllCollapsed: (collapsed: boolean) => this.setAllCollapsed(uber, collapsed)
     })
     this.gantt.render()
   }

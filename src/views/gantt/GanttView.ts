@@ -44,6 +44,8 @@ export interface GanttViewOptions {
   ownerOf?: (task: Task) => Project
   /** Take over collapsing, including the refresh — see LabelContext.onToggleCollapsed. */
   onToggleCollapsed?: (task: Task) => Promise<void>
+  /** Take over Expand/Collapse all, for the same reason as onToggleCollapsed. */
+  onSetAllCollapsed?: (collapsed: boolean) => Promise<void>
   /**
    * Avatar initials to use instead of deriving them from the rendered project. The
    * cross-project view renders a filtered tree, and initials must not change with the
@@ -198,7 +200,7 @@ export class GanttView implements SubView {
         new Date().toLocaleString(),
         {
           roster: this.roster(),
-          badgesOf: (task: Task) => this.plugin.connectors.taskBadges(this.project, task)
+          badgesOf: (task: Task) => this.plugin.connectors.taskBadges(this.ownerFor(task), task)
         }
       )
       // Trigger a save dialog so the user picks where to write the file.
@@ -391,13 +393,17 @@ export class GanttView implements SubView {
     leftPanel.addEventListener('wheel', onLeftWheel, { passive: false })
     this.cleanupFns.push(() => leftPanel.removeEventListener('wheel', onLeftWheel))
 
-    // Add task button
-    const addRow = leftBody.createDiv('pm-gantt-label-row pm-gantt-add-row')
-    addRow.style.height = `${ROW_HEIGHT}px`
-    const addBtn = addRow.createEl('button', { text: '+ add task', cls: 'pm-gantt-add-task-btn' })
-    addBtn.addEventListener('click', () => {
-      openTaskModal(this.plugin, this.project, { onSave: () => this.onRefresh() })
-    })
+    // Add task button. Not in a read-only chart: it would create against the rendered
+    // project, which in the cross-project view is the virtual one — the task would go
+    // nowhere. (Everything below still runs; the spacer keeps the two panels aligned.)
+    if (!this.opts.readOnly) {
+      const addRow = leftBody.createDiv('pm-gantt-label-row pm-gantt-add-row')
+      addRow.style.height = `${ROW_HEIGHT}px`
+      const addBtn = addRow.createEl('button', { text: '+ add task', cls: 'pm-gantt-add-task-btn' })
+      addBtn.addEventListener('click', () => {
+        openTaskModal(this.plugin, this.project, { onSave: () => this.onRefresh() })
+      })
+    }
 
     // Spacer compensates for horizontal scrollbar in the right panel.
     // The scrollbar reduces the right panel's viewport height, letting it
@@ -442,7 +448,7 @@ export class GanttView implements SubView {
       readOnly: this.opts.readOnly,
       ownerOf: this.opts.ownerOf,
       onToggleCollapsed: this.opts.onToggleCollapsed,
-      badgesOf: (task: Task) => this.plugin.connectors.taskBadges(this.project, task)
+      badgesOf: (task: Task) => this.plugin.connectors.taskBadges(this.ownerFor(task), task)
     }
     this.flatTasks.forEach((f, rowIndex) => {
       renderTaskLabel(leftBody, f.task, f.depth, rowIndex, labelCtx)
@@ -455,6 +461,16 @@ export class GanttView implements SubView {
    * bars, tree column, exported SVG — reads the same set, so a person's initials don't
    * change between them.
    */
+  /**
+   * The project a task really belongs to. Same as the rendered one everywhere except the
+   * cross-project view, where anything project-scoped — connector badges, collapse state,
+   * the task editor — has to resolve through here or it reads the virtual project and
+   * finds nothing.
+   */
+  private ownerFor(task: Task): Project {
+    return this.opts.ownerOf?.(task) ?? this.project
+  }
+
   private roster(): Map<string, string> {
     return this.opts.roster ?? projectRoster(this.project, this.plugin.settings)
   }
@@ -494,6 +510,10 @@ export class GanttView implements SubView {
   }
 
   private setAllCollapsed(collapsed: boolean): void {
+    if (this.opts.onSetAllCollapsed) {
+      void this.opts.onSetAllCollapsed(collapsed)
+      return
+    }
     for (const { task } of flattenTasks(this.project.tasks)) {
       if (task.subtasks.length > 0) task.collapsed = collapsed
     }
