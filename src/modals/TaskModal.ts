@@ -1,4 +1,4 @@
-import { App, ButtonComponent, Component, ExtraButtonComponent, Modal, MarkdownRenderer, Notice } from 'obsidian'
+import { App, ButtonComponent, Component, ExtraButtonComponent, Modal, MarkdownRenderer, Notice, TFile } from 'obsidian'
 import type PMPlugin from '../main'
 import { Project, Task, makeTask } from '../types'
 import { flattenTasks } from '../store/TaskTreeOps'
@@ -17,6 +17,10 @@ export class TaskModal extends Modal {
   private originalParentId: string | null
   private cancelled = false
   private saved = false
+  /** When this modal opened, to spot a note edited elsewhere while it was up. */
+  private openedAt = 0
+  /** Whether the description box was typed in here — a local edit wins over the file. */
+  private descEdited = false
   private persistPromise: Promise<void> | null = null
   private noteSuggest: NoteLinkSuggest | null = null
 
@@ -52,6 +56,7 @@ export class TaskModal extends Modal {
   }
 
   onOpen(): void {
+    this.openedAt = Date.now()
     const { contentEl } = this
     contentEl.empty()
     contentEl.addClass('pm-task-modal')
@@ -127,7 +132,26 @@ export class TaskModal extends Modal {
     }
   }
 
+  /**
+   * The description lives in the note's body, and the note can be edited while this modal
+   * is open — in another tab, or by a sync. Writing our copy back would silently undo
+   * that. So if the file changed since we opened and the box wasn't touched here, take
+   * what's on disk instead. A description edited in both places is a genuine conflict; the
+   * one in front of the user wins, which is the least surprising of the two.
+   */
+  private async refreshBodyIfStaleOnDisk(): Promise<void> {
+    if (this.isNew || this.descEdited || !this.task.filePath) return
+    const file = this.app.vault.getAbstractFileByPath(this.task.filePath)
+    if (!(file instanceof TFile) || file.stat.mtime <= this.openedAt) return
+    const onDisk = await this.plugin.store.readTaskBody(file)
+    if (onDisk !== null && onDisk !== this.task.description) {
+      this.task.description = onDisk
+      console.debug(`[PM] Task editor: kept the note's description, edited outside while open`)
+    }
+  }
+
   private async runPersist(): Promise<void> {
+    await this.refreshBodyIfStaleOnDisk()
     if (this.isNew) {
       // A new task with a start but no due defaults to a same-day due date, so it has a
       // span (shows on the gantt / counts as dated) instead of an open-ended start.
@@ -341,6 +365,7 @@ export class TaskModal extends Modal {
 
     descArea.addEventListener('input', () => {
       this.task.description = descArea.value
+      this.descEdited = true
       autoResize()
     })
     descArea.addEventListener('blur', () => showPreview())

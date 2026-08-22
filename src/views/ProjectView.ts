@@ -132,15 +132,22 @@ export class ProjectView extends ItemView {
       )
     })
     this.registerEvent(this.fileModifyRef)
+    const reloadOn = (path: string) =>
+      safeAsync(async () => {
+        if (!reloadIfRelevant(path)) return
+        if (this.plugin.store.consumeSelfWrite(path)) return
+        await this.loadProject()
+      })()
+    this.registerEvent(this.app.vault.on('delete', (file) => void reloadOn(file.path)))
+    // Create and rename were missing: a task note added or renamed outside the plugin left
+    // the view showing a stale tree, and a renamed task kept a filePath that no longer
+    // resolves — so "open as note" on it would fail.
+    this.registerEvent(this.app.vault.on('create', (file) => void reloadOn(file.path)))
     this.registerEvent(
-      this.app.vault.on(
-        'delete',
-        safeAsync(async (file) => {
-          if (!reloadIfRelevant(file.path)) return
-          if (this.plugin.store.consumeSelfWrite(file.path)) return
-          await this.loadProject()
-        })
-      )
+      this.app.vault.on('rename', (file, oldPath) => {
+        void reloadOn(file.path)
+        void reloadOn(oldPath)
+      })
     )
   }
 
