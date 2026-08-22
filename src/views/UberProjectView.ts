@@ -1,11 +1,13 @@
-import { ItemView, WorkspaceLeaf, ButtonComponent, Notice } from 'obsidian'
+import { ItemView, WorkspaceLeaf, Notice } from 'obsidian'
 import type PMPlugin from '../main'
-import { makeDefaultFilter, type FilterState, type Project, type Task } from '../types'
+import { makeDefaultFilter, makeId, type FilterState, type Project, type SavedView, type Task } from '../types'
 import { buildUberProject, type UberProject } from '../store/UberProject'
 import { applyTaskFilterPromote } from '../store/TaskFilter'
 import { findTask, flattenTasks } from '../store/TaskTreeOps'
 import { projectRoster } from '../ui/roster'
 import { FilterRow } from '../ui/composites/ProjectHeader/FilterRow'
+import { PrimaryRow } from '../ui/composites/ProjectHeader/PrimaryRow'
+import { computeResourceConflicts } from './gantt/ResourceConflicts'
 import type { HeaderUiState } from '../ui/composites/ProjectHeader/ProjectHeader'
 import { GanttView } from './gantt/GanttView'
 
@@ -28,16 +30,20 @@ export const PM_UBER_VIEW_TYPE = 'pm-uber-project'
  */
 export class UberProjectView extends ItemView {
   private plugin: PMPlugin
-  private toolbarEl!: HTMLElement
   private bodyEl!: HTMLElement
   private sources: Project[] = []
   private uber: UberProject | null = null
   private gantt: GanttView | null = null
   private filter: FilterState = makeDefaultFilter()
   private headerUi: HeaderUiState = { filterOpen: true, assigneeZoneOpen: true }
+  private headerEl!: HTMLElement
   private filterEl!: HTMLElement
+  private savedViews: SavedView[] = []
+  private activeSavedViewId: string | null = null
+  private primary: PrimaryRow | null = null
   private loading = false
   private maximized = false
+  private reloadTimer: number | null = null
   /**
    * Collapsed heading rows, by id. Kept here rather than in settings.collapsedTasks: that
    * map is keyed by project file, and these rows belong to no file. Ids are derived from
@@ -66,14 +72,42 @@ export class UberProjectView extends ItemView {
     const root = this.contentEl
     root.empty()
     root.addClass('pm-root')
-    this.toolbarEl = root.createDiv('pm-toolbar')
+    this.headerEl = root.createDiv('pm-project-header')
     this.filterEl = root.createDiv('pm-uber-filter')
     this.bodyEl = root.createDiv('pm-content')
     this.filter = this.loadFilter()
+    this.savedViews = this.plugin.settings.projectFilters?.[UBER_FILTER_KEY]?.savedViews ?? []
     await this.reload()
+    this.registerVaultListeners()
+  }
+
+  /** Edits land in project files, so watch them rather than making the user press Reload. */
+  private registerVaultListeners(): void {
+    const isRelevant = (path: string) => {
+      const folder = this.plugin.settings.projectsFolder
+      return path === folder || path.startsWith(`${folder}/`)
+    }
+    const scheduleReload = (path: string) => {
+      if (!isRelevant(path)) return
+      if (this.reloadTimer !== null) window.clearTimeout(this.reloadTimer)
+      this.reloadTimer = window.setTimeout(() => {
+        this.reloadTimer = null
+        void this.reload()
+      }, 300)
+    }
+    this.registerEvent(this.app.vault.on('create', (file) => scheduleReload(file.path)))
+    this.registerEvent(this.app.vault.on('modify', (file) => scheduleReload(file.path)))
+    this.registerEvent(this.app.vault.on('delete', (file) => scheduleReload(file.path)))
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        scheduleReload(file.path)
+        scheduleReload(oldPath)
+      })
+    )
   }
 
   onClose(): Promise<void> {
+    if (this.reloadTimer !== null) window.clearTimeout(this.reloadTimer)
     this.gantt?.destroy?.()
     // The body class outlives the view, so a maximized view closing would leave Obsidian
     // without its tab bar.
@@ -107,7 +141,11 @@ export class UberProjectView extends ItemView {
 
   private saveFilter(): void {
     this.plugin.settings.projectFilters = this.plugin.settings.projectFilters ?? {}
-    this.plugin.settings.projectFilters[UBER_FILTER_KEY] = { filter: this.filter, activeSavedViewId: null }
+    this.plugin.settings.projectFilters[UBER_FILTER_KEY] = {
+      filter: this.filter,
+      activeSavedViewId: this.activeSavedViewId,
+      savedViews: this.savedViews
+    }
     void this.plugin.saveSettings()
   }
 
@@ -154,8 +192,78 @@ export class UberProjectView extends ItemView {
     this.render()
   }
 
-  private renderFilter(full: Project, roster: Map<string, string>): void {
+  /**
+   * The same header a project gets: search, saved views, the filter and timeline toggles,
+   * and the conflict indicator. Built from PrimaryRow + FilterRow rather than
+   * ProjectHeader, which also edits a project's title and description — there's no single
+   * project here to edit.
+   */
+  private renderHeader(full: Project, roster: Map<string, string>): void {
+    this.headerEl.empty()
+    // Saved views are kept beside the filter in settings: this view has no project file to
+    // put them in, but a saved "my week" is exactly what it's for.
+    full.savedViews = this.savedViews
+    this.primary = new PrimaryRow(this.headerEl, {
+      project: full,
+      filter: this.filter,
+      activeSavedViewId: this.activeSavedViewId,
+      filterRowExpanded: this.headerUi.filterOpen,
+      viewMode: 'gantt',
+      ganttControlsVisible: this.plugin.settings.ganttControlsVisible,
+      onSearchChange: () => {
+        this.saveFilter()
+        this.render()
+      },
+      onSavedViewSelect: (id) => {
+        const view = this.savedViews.find((v) => v.id === id)
+        this.activeSavedViewId = id
+        this.filter = view ? { ...makeDefaultFilter(), ...view.filter } : makeDefaultFilter()
+        this.saveFilter()
+        this.render()
+      },
+      onSavedViewSave: (name) => {
+        const view: SavedView = { id: makeId(), name, filter: { ...this.filter }, sortKey: '', sortDir: 'asc' }
+        this.savedViews = [...this.savedViews, view]
+        this.activeSavedViewId = view.id
+        this.saveFilter()
+        this.render()
+        return Promise.resolve()
+      },
+      onSavedViewUpdate: (id) => {
+        this.savedViews = this.savedViews.map((v) => (v.id === id ? { ...v, filter: { ...this.filter } } : v))
+        this.saveFilter()
+        this.render()
+        return Promise.resolve()
+      },
+      onSavedViewDelete: (id) => {
+        this.savedViews = this.savedViews.filter((v) => v.id !== id)
+        if (this.activeSavedViewId === id) this.activeSavedViewId = null
+        this.saveFilter()
+        this.render()
+        return Promise.resolve()
+      },
+      onToggleConflicts: () => {
+        this.plugin.settings.ganttConflictsOnly = !this.plugin.settings.ganttConflictsOnly
+        void this.plugin.saveSettings()
+        this.render()
+      },
+      onToggleGanttControls: () => {
+        this.plugin.settings.ganttControlsVisible = !this.plugin.settings.ganttControlsVisible
+        void this.plugin.saveSettings()
+        this.render()
+      },
+      onToggleFilterRow: () => {
+        this.headerUi.filterOpen = !this.headerUi.filterOpen
+        this.render()
+      }
+    })
+    this.primary.setConflicts(
+      computeResourceConflicts(flattenTasks(full.tasks), this.plugin.settings.statuses).count,
+      this.plugin.settings.ganttConflictsOnly
+    )
+
     this.filterEl.empty()
+    this.filterEl.toggleClass('pm-hidden', !this.headerUi.filterOpen)
     new FilterRow(this.filterEl, {
       project: full,
       statuses: this.plugin.settings.statuses,
@@ -214,26 +322,12 @@ export class UberProjectView extends ItemView {
     // rows are rebuilt on every render.
     for (const heading of uber.project.tasks) heading.collapsed = this.collapsedHeadings.has(heading.id)
 
-    this.renderFilter(full.project, roster)
-    this.toolbarEl.empty()
-    this.toolbarEl.createSpan({
-      cls: 'pm-uber-title',
-      text: `All projects · ${uber.sources.length} of ${this.sources.length} shown`
-    })
-    this.toolbarEl.createSpan({
-      cls: 'pm-uber-hint',
-      text: 'Read-only — open a task to edit it · shift+wheel or +/-/0 to zoom'
-    })
-    new ButtonComponent(this.toolbarEl).setButtonText('Reload').onClick(() => void this.reload())
-
+    this.renderHeader(full.project, roster)
     this.bodyEl.empty()
     this.gantt?.destroy?.()
     this.gantt = new GanttView(this.bodyEl, uber.project, this.plugin, () => this.reload(), makeDefaultFilter(), {
       readOnly: true,
       roster,
-      // No project header here, so the Timeline toggle that normally reveals the
-      // granularity bar doesn't exist — and granularity is the main control when planning.
-      showControls: true,
       // A task's real home, so the editor writes to the right project file.
       ownerOf: (task: Task) => uber.ownerOf.get(task.id) ?? uber.project,
       // A heading row is a project, not a task: open the project rather than a task

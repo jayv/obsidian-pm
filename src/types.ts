@@ -118,6 +118,11 @@ export interface SavedView {
 export interface PerProjectFilter {
   filter: FilterState
   activeSavedViewId: string | null
+  /**
+   * Only for views with no project file of their own (the cross-project timeline) — a
+   * real project keeps its saved views in its own frontmatter.
+   */
+  savedViews?: SavedView[]
 }
 
 export interface StatusConfig {
