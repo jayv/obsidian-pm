@@ -148,10 +148,16 @@ export class TaskModal extends Modal {
     const { contentEl } = this
     contentEl.empty()
 
-    // Where this task lives: "Project ▸ Parent ▸ …". Opened from the cross-project
-    // timeline the project is the only thing telling two similarly named tasks apart, and
-    // a deep subtask is ambiguous without its ancestors even inside one project.
-    const crumbs = contentEl.createDiv('pm-modal-breadcrumb')
+    // ── Header ──────────────────────────────────────────────────────────────
+    const header = contentEl.createDiv('pm-modal-header')
+    renderStatusDot(header, this.task.status, this.plugin.settings.statuses, 'pm-modal-status-dot')
+
+    const titleWrap = header.createDiv('pm-modal-title-wrap')
+
+    // Where this task lives: "Project ▸ Parent ▸ …". Inside the header, above the title —
+    // the header is sticky with an opaque background, so a breadcrumb placed before it in
+    // the document gets painted over as soon as the body scrolls.
+    const crumbs = titleWrap.createDiv('pm-modal-breadcrumb')
     for (const ancestor of [this.project.title, ...this.ancestorTitles()]) {
       crumbs.createSpan({ text: ancestor })
       crumbs.createSpan({ cls: 'pm-modal-breadcrumb-sep', text: '\u25b8' })
@@ -160,11 +166,6 @@ export class TaskModal extends Modal {
     // what you type into the field below, which is deliberate: it's a location, not a copy.
     crumbs.createSpan({ cls: 'pm-modal-breadcrumb-current', text: this.task.title || 'New task' })
 
-    // ── Header ──────────────────────────────────────────────────────────────
-    const header = contentEl.createDiv('pm-modal-header')
-    renderStatusDot(header, this.task.status, this.plugin.settings.statuses, 'pm-modal-status-dot')
-
-    const titleWrap = header.createDiv('pm-modal-title-wrap')
     const titleInput = titleWrap.createEl('input', {
       type: 'text',
       cls: 'pm-modal-title-input',

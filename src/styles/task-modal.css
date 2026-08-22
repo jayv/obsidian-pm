@@ -212,8 +212,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 12px 24px 0;
   font-size: 12px;
+  line-height: 1.4;
   color: var(--pm-text-muted);
   overflow: hidden;
   white-space: nowrap;
