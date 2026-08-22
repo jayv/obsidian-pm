@@ -130,6 +130,14 @@
   flex-wrap: wrap;
 }
 
+/* The project's own colour as a bar across the top of the toolbar — the same read as a
+   dashboard card's top border, and it spans the whole zone (icon, title, buttons) rather
+   than decorating the title. Inset shadow: no layout cost, and it can't shift the row. */
+.pm-toolbar--accent {
+  box-shadow: inset 0 4px 0 var(--pm-project-color);
+  padding-top: 14px;
+}
+
 .pm-toolbar-left {
   display: flex;
   align-items: center;
@@ -199,12 +207,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 340px;
-}
-/* The project's own colour, as an underline rather than as the text colour — an arbitrary
-   colour on large text is a coin flip on readability. Inset shadow, so it respects the
-   corner radius and costs no layout. */
-.pm-toolbar-title--accent {
-  box-shadow: inset 0 -3px 0 var(--pm-project-color);
 }
 .pm-toolbar-title:focus {
   background: var(--pm-bg3);

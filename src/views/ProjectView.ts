@@ -396,6 +396,12 @@ export class ProjectView extends ItemView {
   private renderProjectToolbar(): void {
     if (!this.project) return
     this.toolbarEl.empty()
+    // Every project has a colour and nothing showed it. A bar across the whole top zone —
+    // icon, title and the buttons on the right — reading the way the dashboard cards read
+    // theirs, rather than decorating the title alone. The toolbar sits above all three
+    // views, so doing it once covers table, gantt and board.
+    this.toolbarEl.addClass('pm-toolbar--accent')
+    this.toolbarEl.style.setProperty('--pm-project-color', this.project.color)
 
     const left = this.toolbarEl.createDiv('pm-toolbar-left')
     const iconEl = left.createSpan({
@@ -414,12 +420,7 @@ export class ProjectView extends ItemView {
     })
 
     this.titleEl2 = left.createEl('h2', { text: this.project.title, cls: 'pm-toolbar-title' })
-    // Every project has a colour and nothing showed it. As an underline rather than as the
-    // text colour: an arbitrary colour on 20px text is a coin flip on readability, and the
-    // dashboard cards already read their colour as a bar. The toolbar sits above all three
-    // views, so doing it once covers table, gantt and board.
-    this.titleEl2.addClass('pm-toolbar-title--accent')
-    this.titleEl2.style.setProperty('--pm-project-color', this.project.color)
+
     this.titleEl2.contentEditable = 'true'
     this.titleEl2.addEventListener(
       'blur',
