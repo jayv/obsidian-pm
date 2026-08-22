@@ -231,6 +231,10 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   ttEl.textContent = `${task.title}\n${statusConfig?.label ?? task.status} \u00b7 ${task.priority}\nStart: ${startStr || '\u2014'}  Due: ${dueStr || '\u2014'}${summaryStr}\nProgress: ${task.progress}%${assigneesStr}${conflictStr}`
   rect.appendChild(ttEl)
 
+  // Everything below this point is a way to change the task. A read-only chart (the
+  // cross-project view) renders the bars and stops here.
+  if (ctx.readOnly) return
+
   // Drag handles \u2014 resize only applies to leaf bars; a summary span is derived.
   if (!isSummary) {
     const HANDLE_W = 8

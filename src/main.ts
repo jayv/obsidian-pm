@@ -5,6 +5,7 @@ import { ProjectStore } from './store'
 import { PMSettingTab } from './settings'
 import { ProjectView, PM_PROJECT_VIEW_TYPE } from './views/ProjectView'
 import { DashboardView, PM_DASHBOARD_VIEW_TYPE } from './views/DashboardView'
+import { UberProjectView, PM_UBER_VIEW_TYPE } from './views/UberProjectView'
 import { PMViewRouter } from './views/PMViewRouter'
 import { openProjectModal, openTaskModal, openProjectPicker, openTaskPicker, openImportModal } from './ui/ModalFactory'
 import { Notifier } from './components/Notifier'
@@ -64,6 +65,7 @@ export default class PMPlugin extends Plugin {
 
     this.registerView(PM_PROJECT_VIEW_TYPE, (leaf) => new ProjectView(leaf, this))
     this.registerView(PM_DASHBOARD_VIEW_TYPE, (leaf) => new DashboardView(leaf, this))
+    this.registerView(PM_UBER_VIEW_TYPE, (leaf) => new UberProjectView(leaf, this))
 
     this.app.workspace.onLayoutReady(
       safeAsync(async () => {
@@ -85,6 +87,14 @@ export default class PMPlugin extends Plugin {
       name: 'Open projects pane',
       callback: () => {
         void this.router.openDashboard()
+      }
+    })
+
+    this.addCommand({
+      id: 'open-all-projects',
+      name: 'Open the all-projects timeline',
+      callback: () => {
+        void this.router.openUberProject()
       }
     })
 

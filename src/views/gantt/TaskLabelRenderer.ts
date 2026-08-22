@@ -15,6 +15,14 @@ export interface LabelContext {
   badgesOf?: (task: Task) => TaskBadge[]
   /** View-wide initials for avatars — see projectRoster. */
   roster?: Map<string, string>
+  /** Render without any way to change a task: no reordering, no add-subtask button. */
+  readOnly?: boolean
+  /**
+   * Which project actually owns a task. The cross-project view renders a virtual project
+   * that isn't file-backed, so the task editor has to be bound to the real one or the
+   * edit would look saved and go nowhere.
+   */
+  ownerOf?: (task: Task) => Project
 }
 
 export function renderTaskLabel(
@@ -29,8 +37,10 @@ export function renderTaskLabel(
   el.style.paddingLeft = `${depth * 18 + 8}px`
   el.dataset.taskId = task.id
 
+  const owner = ctx.ownerOf?.(task) ?? ctx.project
+
   // Make draggable for reordering
-  el.draggable = true
+  el.draggable = !ctx.readOnly
   el.addEventListener('dragstart', (e: DragEvent) => {
     e.dataTransfer?.setData('text/plain', task.id)
     el.addClass('pm-gantt-label-row--dragging')
@@ -39,28 +49,31 @@ export function renderTaskLabel(
     el.removeClass('pm-gantt-label-row--dragging')
   })
   let dropPosition: 'before' | 'after' = 'before'
-  el.addEventListener('dragover', (e: DragEvent) => {
-    e.preventDefault()
-    const rect = el.getBoundingClientRect()
-    const midY = rect.top + rect.height / 2
-    dropPosition = e.clientY < midY ? 'before' : 'after'
-    el.removeClass('pm-gantt-label-row--drop-before', 'pm-gantt-label-row--drop-after')
-    el.addClass(dropPosition === 'before' ? 'pm-gantt-label-row--drop-before' : 'pm-gantt-label-row--drop-after')
-  })
-  el.addEventListener('dragleave', () => {
-    el.removeClass('pm-gantt-label-row--drop-before', 'pm-gantt-label-row--drop-after')
-  })
-  el.addEventListener(
-    'drop',
-    safeAsync(async (e: DragEvent) => {
+  // Reordering is a write, and across projects it has no meaning anyway.
+  if (!ctx.readOnly) {
+    el.addEventListener('dragover', (e: DragEvent) => {
       e.preventDefault()
+      const rect = el.getBoundingClientRect()
+      const midY = rect.top + rect.height / 2
+      dropPosition = e.clientY < midY ? 'before' : 'after'
       el.removeClass('pm-gantt-label-row--drop-before', 'pm-gantt-label-row--drop-after')
-      const draggedId = e.dataTransfer?.getData('text/plain')
-      if (!draggedId || draggedId === task.id) return
-      await ctx.plugin.store.reorderTask(ctx.project, draggedId, task.id, dropPosition)
-      await ctx.onRefresh()
+      el.addClass(dropPosition === 'before' ? 'pm-gantt-label-row--drop-before' : 'pm-gantt-label-row--drop-after')
     })
-  )
+    el.addEventListener('dragleave', () => {
+      el.removeClass('pm-gantt-label-row--drop-before', 'pm-gantt-label-row--drop-after')
+    })
+    el.addEventListener(
+      'drop',
+      safeAsync(async (e: DragEvent) => {
+        e.preventDefault()
+        el.removeClass('pm-gantt-label-row--drop-before', 'pm-gantt-label-row--drop-after')
+        const draggedId = e.dataTransfer?.getData('text/plain')
+        if (!draggedId || draggedId === task.id) return
+        await ctx.plugin.store.reorderTask(ctx.project, draggedId, task.id, dropPosition)
+        await ctx.onRefresh()
+      })
+    )
+  }
 
   // Expand toggle
   if (task.subtasks.length > 0) {
@@ -83,7 +96,7 @@ export function renderTaskLabel(
   // Title
   const titleEl = el.createSpan({ text: task.title, cls: 'pm-gantt-label-title' })
   titleEl.addEventListener('click', () => {
-    openTaskModal(ctx.plugin, ctx.project, { task, onSave: () => ctx.onRefresh() })
+    openTaskModal(ctx.plugin, owner, { task, onSave: () => ctx.onRefresh() })
   })
 
   renderTaskBadges(el, ctx.badgesOf?.(task))
@@ -99,11 +112,13 @@ export function renderTaskLabel(
     el.createSpan({ text: `${task.progress}%`, cls: 'pm-gantt-label-progress' })
   }
 
+  if (ctx.readOnly) return
+
   // "+" button to add subtask (hover-visible)
   const addSubBtn = el.createEl('button', { text: '+', cls: 'pm-gantt-label-add-btn' })
   addSubBtn.title = 'Add subtask'
   addSubBtn.addEventListener('click', (e) => {
     e.stopPropagation()
-    openTaskModal(ctx.plugin, ctx.project, { parentId: task.id, onSave: () => ctx.onRefresh() })
+    openTaskModal(ctx.plugin, owner, { parentId: task.id, onSave: () => ctx.onRefresh() })
   })
 }

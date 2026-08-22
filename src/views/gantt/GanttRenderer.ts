@@ -26,6 +26,8 @@ export interface RendererContext {
   conflicts: Map<string, TaskConflicts> | null
   /** View-wide avatar initials — see projectRoster. */
   roster: Map<string, string>
+  /** Render without any way to change a task: no drags, no link dots, no add buttons. */
+  readOnly?: boolean
   onRefresh: () => Promise<void>
   cleanupFns: (() => void)[]
 }

@@ -1,6 +1,7 @@
 import { TFile } from 'obsidian'
 import type PMPlugin from '../main'
 import { PM_DASHBOARD_VIEW_TYPE } from './DashboardView'
+import { PM_UBER_VIEW_TYPE } from './UberProjectView'
 import { PM_PROJECT_VIEW_TYPE } from './ProjectView'
 
 export class PMViewRouter {
@@ -15,6 +16,19 @@ export class PMViewRouter {
     }
     const leaf = ws.getLeaf('tab')
     await leaf.setViewState({ type: PM_DASHBOARD_VIEW_TYPE, state: {} })
+    await ws.revealLeaf(leaf)
+  }
+
+  /** Open the cross-project timeline, or focus the tab already showing it. */
+  async openUberProject(): Promise<void> {
+    const ws = this.plugin.app.workspace
+    const existing = ws.getLeavesOfType(PM_UBER_VIEW_TYPE)[0]
+    if (existing) {
+      await ws.revealLeaf(existing)
+      return
+    }
+    const leaf = ws.getLeaf('tab')
+    await leaf.setViewState({ type: PM_UBER_VIEW_TYPE, state: {} })
     await ws.revealLeaf(leaf)
   }
 

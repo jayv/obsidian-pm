@@ -33,6 +33,17 @@ const ZOOM_MIN = 0.3
 const ZOOM_MAX = 5
 const ZOOM_STEP = 1.15
 
+export interface GanttViewOptions {
+  /** Render the chart without any way to change a task. */
+  readOnly?: boolean
+  /**
+   * Which project owns a task. Only needed when the rendered project is virtual (the
+   * cross-project view): the task editor must be bound to the real owner, or an edit
+   * would look saved and go nowhere.
+   */
+  ownerOf?: (task: Task) => Project
+}
+
 export class GanttView implements SubView {
   private granularity: GanttGranularity
   private scrollEl!: HTMLElement
@@ -62,7 +73,8 @@ export class GanttView implements SubView {
     private project: Project,
     private plugin: PMPlugin,
     private onRefresh: () => Promise<void>,
-    private filter: FilterState
+    private filter: FilterState,
+    private opts: GanttViewOptions = {}
   ) {
     this.granularity = plugin.settings.ganttGranularity
     this.conflictsOnly = plugin.settings.ganttConflictsOnly
@@ -387,6 +399,8 @@ export class GanttView implements SubView {
       project: this.project,
       onRefresh: this.onRefresh,
       roster: this.roster(),
+      readOnly: this.opts.readOnly,
+      ownerOf: this.opts.ownerOf,
       badgesOf: (task: Task) => this.plugin.connectors.taskBadges(this.project, task)
     }
     this.flatTasks.forEach((f, rowIndex) => {
@@ -412,6 +426,7 @@ export class GanttView implements SubView {
       plugin: this.plugin,
       project: this.project,
       roster: this.roster(),
+      readOnly: this.opts.readOnly,
       flatTasks: this.flatTasks,
       drag: this.drag,
       link: this.link,
