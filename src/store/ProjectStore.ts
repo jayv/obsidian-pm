@@ -364,13 +364,26 @@ export class ProjectStore {
       }
     }
 
+    // A parent's subtaskIds can name a task that has since moved out — a move that wrote
+    // the child and the project but not the old parent, or one interrupted partway.
+    // Believe the child over the stale claim, but only when the project agrees it's
+    // top-level: two sources against one, and it can't un-nest a task whose own file still
+    // points here.
+    const topLevel = new Set(topLevelIds)
     for (const [taskId, sids] of subtaskIdsMap) {
       const task = taskMap.get(taskId)
       if (!task) continue
       task.subtasks = []
       for (const sid of sids) {
         const sub = taskMap.get(sid)
-        if (sub) task.subtasks.push(sub)
+        if (!sub) continue
+        if (!parentIdMap.has(sid) && topLevel.has(sid)) {
+          console.warn(
+            `[PM] "${sub.title}" is listed under "${task.title}" but has no parent of its own, and the project lists it at the top level — leaving it there.`
+          )
+          continue
+        }
+        task.subtasks.push(sub)
       }
     }
 
@@ -400,6 +413,10 @@ export class ProjectStore {
     const pushed = new Set<string>()
     for (const id of topLevelIds) {
       if (pushed.has(id)) continue
+      // Backstop: whatever the files say, one task is one row. Without this a task both
+      // parented and listed at the top level renders twice — same note, same issue key,
+      // two cards on the board.
+      if (childIds.has(id)) continue
       const task = taskMap.get(id)
       if (task) {
         result.push(task)

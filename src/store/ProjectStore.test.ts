@@ -1007,3 +1007,59 @@ describe('ProjectStore completion progress', () => {
     expect(expectDefined(project.taskIndex.get(task.id)).task.progress).toBe(60)
   })
 })
+
+/*
+ * Seen in a real vault: one task named both in the project's taskIds and in a parent's
+ * subtaskIds, while its own file said it had no parent. It rendered twice on the board —
+ * same note, same issue key, two cards.
+ */
+describe('ProjectStore duplicate rows from disagreeing files', () => {
+  /** Rewrite a frontmatter list, failing loudly if the shape isn't what we expect. */
+  async function setList(app: App, file: TFile, key: string, ids: string[]): Promise<void> {
+    const before = await app.vault.cachedRead(file)
+    const line = new RegExp(`^${key}: \\[.*\\]$`, 'm')
+    if (!line.test(before)) throw new Error(`no ${key} list in ${file.path}`)
+    await app.vault.modify(
+      before.length ? file : file,
+      before.replace(line, `${key}: [${ids.map((i) => `"${i}"`).join(', ')}]`)
+    )
+  }
+
+  it('shows a task once when a stale parent still lists it and the project says top-level', async () => {
+    const { store, app } = newStore()
+    const project = await store.createProject('Athlon', 'Projects')
+    const parent = await addNamed(store, project, 'After-care')
+    const moved = await addNamed(store, project, 'Compaction', parent.id)
+    await store.moveTask(project, moved.id, null)
+
+    // The half-written move: the child and the project agree it's top-level, the old
+    // parent was never updated.
+    await setList(app, fileAt(app, parent.filePath), 'subtaskIds', [moved.id])
+    expect(await app.vault.cachedRead(fileAt(app, parent.filePath))).toContain(moved.id)
+
+    const fresh = new ProjectStore(app, () => STATUSES)
+    const reloaded = expectDefined(await fresh.loadProject(fileAt(app, project.filePath)))
+    const rows = flattenTasks(reloaded.tasks).filter((f) => f.task.title === 'Compaction')
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].parentId).toBeNull() // the child's own file wins: it moved out
+  })
+
+  it('never renders one task twice, even when the child still claims the parent', async () => {
+    const { store, app } = newStore()
+    const project = await store.createProject('Athlon', 'Projects')
+    const parent = await addNamed(store, project, 'After-care')
+    const child = await addNamed(store, project, 'Compaction', parent.id)
+
+    // Contradiction the other way: the child points at the parent, the project also lists
+    // it at the top level. Still one row.
+    await setList(app, fileAt(app, project.filePath), 'taskIds', [parent.id, child.id])
+
+    const fresh = new ProjectStore(app, () => STATUSES)
+    const reloaded = expectDefined(await fresh.loadProject(fileAt(app, project.filePath)))
+    const rows = flattenTasks(reloaded.tasks).filter((f) => f.task.title === 'Compaction')
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].parentId).toBe(parent.id) // its own file still points here
+  })
+})
