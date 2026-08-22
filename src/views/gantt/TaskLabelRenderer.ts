@@ -31,9 +31,9 @@ export interface LabelContext {
    */
   onOpenTask?: (task: Task) => boolean
   /**
-   * Colour for a row — its title and its dial. The cross-project view gives each project
-   * row its own project colour, which is otherwise only visible in settings, and whose
-   * status is meaningless anyway: a project isn't "to do".
+   * Colour for a row's dial. The cross-project view gives each project row its own project
+   * colour — a project has no status worth colouring by, and the title is left alone so
+   * the rows stay as readable as the tasks under them.
    */
   rowColorOf?: (task: Task) => string | undefined
   /**
@@ -125,11 +125,6 @@ export function renderTaskLabel(
 
   // Title
   const titleEl = el.createSpan({ text: task.title, cls: 'pm-gantt-label-title' })
-  const rowColor = ctx.rowColorOf?.(task)
-  if (rowColor) {
-    titleEl.addClass('pm-gantt-label-title--accent')
-    titleEl.style.setProperty('--pm-row-color', rowColor)
-  }
   titleEl.addEventListener('click', () => {
     if (ctx.onOpenTask?.(task)) return
     openTaskModal(ctx.plugin, owner, { task, onSave: () => ctx.onRefresh() })
