@@ -15,7 +15,7 @@ import {
 } from './JiraModel'
 import { SYNC_FIELDS, type SyncField, fieldsEqual, threeWay } from './reconcile'
 import { ensureMockBackend, mockBaseUrl } from './JiraMockServer'
-import type { JiraEpicConfig, JiraIssueProps, JiraProjectConfig, JiraShadow, JiraValueMap } from './types'
+import type { JiraEpicConfig, JiraIssueProps, JiraProjectConfig, JiraShadow, JiraTaskExt, JiraValueMap } from './types'
 import {
   CONFIG_PROP,
   ISSUE_PROP,
@@ -388,6 +388,32 @@ async function pushEpicConfig(client: JiraClient, cfg: JiraProjectConfig): Promi
   if (!cfg.mappingsDirty || !cfg.epicId) return
   await client.setProperty(cfg.epicId, CONFIG_PROP, epicConfigOf(cfg))
   cfg.mappingsDirty = false
+}
+
+/**
+ * A one-time copy of Jira's description into a task that has none.
+ *
+ * The local body is loaded lazily, so an empty `description` may only mean "not read yet";
+ * hydrating first is what stops this overwriting a note that already has content. The
+ * `descFilled` flag then keeps every later sync from re-reading the body of every task
+ * just to find it isn't empty.
+ */
+async function descriptionFill(
+  plugin: PMPlugin,
+  task: Task,
+  issue: JiraIssue,
+  ext: JiraTaskExt
+): Promise<Partial<Task> | null> {
+  if (ext.descFilled || !issue.description.trim()) return null
+  await plugin.store.loadTaskBody(task)
+  // Set it on the task as well as in the patch. Later patches for the same task rebuild
+  // `ext` from taskExt(task) — withMergedShadow does — so a flag that only existed in the
+  // patch would be dropped by whichever patch is applied last, and the fill would repeat
+  // on every sync.
+  task.ext = { ...task.ext, [JIRA_ID]: { ...taskExt(task), descFilled: true } }
+  const patch: Partial<Task> = { ext: task.ext }
+  if (!task.description.trim()) patch.description = issue.description
+  return patch
 }
 
 /**
@@ -1059,6 +1085,14 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     const parentUnsynced = Boolean(localParentId) && !desiredParent
     const parentDiverged = parentUnsynced || (Boolean(desiredParent) && issue.parentKey !== desiredParent)
     const localDiverged = !ext.shadow || !shadowEqual(mine, ext.shadow) || parentDiverged
+
+    // Copy Jira's description into a task that hasn't got one. Descriptions aren't part of
+    // the merge yet, so this only ever fills a blank — it can't overwrite anything you
+    // wrote. Runs before the early exit below, because a task with nothing else to sync is
+    // exactly the one still missing its description.
+    const fill = await descriptionFill(plugin, t, issue, ext)
+    if (fill) patches.push({ taskId: t.id, patch: fill })
+
     // Nothing changed on either side and no open conflict → skip (no HTTP).
     if (!localDiverged && issue.updated <= prev && ext.reconciled !== false) continue
 

@@ -1148,3 +1148,53 @@ describe('jira sync — descriptions [J→O]', () => {
     expect(project.tasks.find((t) => t.title === 'Bare')?.description).toBe('')
   })
 })
+
+describe('jira sync — filling an empty description [J→O]', () => {
+  /** Link a task to an issue that has a description, and hand back both. */
+  async function linkedWithJiraDescription(text: string) {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    const task = localTask(project, { title: 'Linked' })
+    await exportTasks(plugin, project, [task.id])
+    const key = must(taskExt(task).key)
+    await mutateMock(plugin, (s) => {
+      const issue = mustIssue(s, key)
+      issue.fields.description = {
+        type: 'doc',
+        version: 1,
+        content: [{ type: 'paragraph', content: [{ type: 'text', text }] }]
+      }
+    })
+    return { plugin, project, task }
+  }
+
+  it('copies the description onto a task that has none', async () => {
+    const { plugin, project, task } = await linkedWithJiraDescription('From Jira.')
+
+    await runSync(plugin, project)
+
+    expect(must(findTask(project.tasks, task.id)).description).toBe('From Jira.')
+  })
+
+  it('never overwrites a description the user already wrote', async () => {
+    const { plugin, project, task } = await linkedWithJiraDescription('From Jira.')
+    must(findTask(project.tasks, task.id)).description = 'Mine, thanks.'
+
+    await runSync(plugin, project)
+
+    expect(must(findTask(project.tasks, task.id)).description).toBe('Mine, thanks.')
+  })
+
+  it('fills once — clearing the note afterwards does not bring it back', async () => {
+    const { plugin, project, task } = await linkedWithJiraDescription('From Jira.')
+    await runSync(plugin, project)
+    must(findTask(project.tasks, task.id)).description = ''
+
+    await runSync(plugin, project)
+
+    // Deleting the text is an edit, not a gap to refill. Descriptions aren't merged yet,
+    // so the deletion simply stays local.
+    expect(must(findTask(project.tasks, task.id)).description).toBe('')
+  })
+})

@@ -1231,7 +1231,10 @@ export class ProjectStore {
   async applyExternalUpdates(project: Project, entries: { taskId: string; patch: Partial<Task> }[]): Promise<void> {
     for (const { taskId, patch } of entries) {
       updateTaskInTree(project.tasks, taskId, patch)
-      this.markDirty(project, [taskId], 'fm')
+      // A description lives in the note's body, so it needs the full rewrite that
+      // updateTask already picks — marking every external update "frontmatter only"
+      // silently dropped it.
+      this.markDirty(project, [taskId], patchNeedsBodyRewrite(patch) ? 'full' : 'fm')
     }
     await this.saveProject(project)
   }

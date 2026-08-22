@@ -14,7 +14,13 @@ import { assigneeMapFor, ensureProjectCfg, ensureTaskExt, type JiraAssignee, typ
  *  drift at compile time. Keep in sync with the methods sync.ts/the panel call. */
 type ConnectorStore = Pick<
   ProjectStore,
-  'applyExternalUpdates' | 'importTasks' | 'saveProject' | 'ensureCreated' | 'loadAllProjects' | 'renameAssignee'
+  | 'applyExternalUpdates'
+  | 'importTasks'
+  | 'saveProject'
+  | 'ensureCreated'
+  | 'loadAllProjects'
+  | 'renameAssignee'
+  | 'loadTaskBody'
 >
 
 /** A clearly-future JIRA timestamp, for simulating teammate edits past any watermark. */
@@ -43,6 +49,11 @@ class FakeStore implements ConnectorStore {
   loadAllProjects(folder: string): Promise<Project[]> {
     void folder
     return Promise.resolve(this.projects)
+  }
+  /** Harness tasks live in memory, so their description is already whatever it is. */
+  loadTaskBody(task: Task): Promise<void> {
+    void task
+    return Promise.resolve()
   }
   /** Mirrors ProjectStore.renameAssignee: the member slot plus every task naming them. */
   renameAssignee(project: Project, from: string, to: string): number {

@@ -87,6 +87,12 @@ export interface JiraTaskExt {
   conflict?: JiraConflict
   /** Last-synced field values; the baseline for field-level outbound diffing. */
   shadow?: JiraShadow
+  /**
+   * Jira's description has been copied into the note once. Descriptions aren't part of the
+   * merge yet, so this is a one-time fill for tasks linked before it existed — and it
+   * stops the sync re-reading every note body looking for empty ones.
+   */
+  descFilled?: boolean
 }
 
 /**

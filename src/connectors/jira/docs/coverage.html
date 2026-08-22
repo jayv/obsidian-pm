@@ -23,8 +23,8 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>189</strong> tests</span>
-    <span class="stat"><strong>49</strong> areas</span>
+    <span class="stat"><strong>207</strong> tests</span>
+    <span class="stat"><strong>52</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
 
@@ -114,6 +114,21 @@
     <tr><td>is in sync when local and JIRA already agree</td><td class="file">JiraModel.test.ts</td></tr>
 <tr><td>JIRA wins when we did not change locally (teammate update)</td><td class="file">JiraModel.test.ts</td></tr>
 <tr><td>flags limbo when we changed locally but JIRA does not reflect it</td><td class="file">JiraModel.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">adfToMarkdown <span class="dir dir-unit">unit</span> <span class="muted">13</span></td></tr>
+    <tr><td>converts paragraphs, separated by a blank line</td><td class="file">adf.test.ts</td></tr>
+<tr><td>converts the inline marks</td><td class="file">adf.test.ts</td></tr>
+<tr><td>converts a link, and a link that is also bold</td><td class="file">adf.test.ts</td></tr>
+<tr><td>converts headings, rules and hard breaks</td><td class="file">adf.test.ts</td></tr>
+<tr><td>converts bullet and ordered lists</td><td class="file">adf.test.ts</td></tr>
+<tr><td>converts code blocks with their language</td><td class="file">adf.test.ts</td></tr>
+<tr><td>converts a blockquote and a panel to quoted lines</td><td class="file">adf.test.ts</td></tr>
+<tr><td>renders a mention and an emoji as their text</td><td class="file">adf.test.ts</td></tr>
+<tr><td>links an attachment rather than embedding it — the URL needs auth Obsidian cannot send</td><td class="file">adf.test.ts</td></tr>
+<tr><td>keeps an unknown node visible instead of dropping it</td><td class="file">adf.test.ts</td></tr>
+<tr><td>follows an unknown wrapper into its children rather than discarding them</td><td class="file">adf.test.ts</td></tr>
+<tr><td>accepts a plain string, for the v2 API and un-migrated issues</td><td class="file">adf.test.ts</td></tr>
+<tr><td>is empty for nothing at all</td><td class="file">adf.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">jira sync — assignee conflicts <span class="dir dir-both">both</span> <span class="muted">6</span></td></tr>
     <tr><td>two projects edit the assignee from a shared baseline → conflict (A→Bob, B→Carol)</td><td class="file">assignee.test.ts</td></tr>
@@ -298,6 +313,15 @@
     <tr><td>flags a both-sided field clash and captures the JIRA snapshot</td><td class="file">sync.test.ts</td></tr>
 <tr><td>resolve "take Jira" adopts JIRA's value, advances the shadow, clears the flag</td><td class="file">sync.test.ts</td></tr>
 <tr><td>resolve "keep mine" holds local, then the next sync pushes it to JIRA</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — descriptions <span class="dir dir-JO">J→O</span> <span class="muted">2</span></td></tr>
+    <tr><td>imports the issue description into the task, converted from ADF</td><td class="file">sync.test.ts</td></tr>
+<tr><td>leaves the description empty when the issue has none</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — filling an empty description <span class="dir dir-JO">J→O</span> <span class="muted">3</span></td></tr>
+    <tr><td>copies the description onto a task that has none</td><td class="file">sync.test.ts</td></tr>
+<tr><td>never overwrites a description the user already wrote</td><td class="file">sync.test.ts</td></tr>
+<tr><td>fills once — clearing the note afterwards does not bring it back</td><td class="file">sync.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">task link — new-task default + checkbox state <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">3</span></td></tr>
     <tr><td>defaults a brand-new task to synced</td><td class="file">taskLink.test.ts</td></tr>
