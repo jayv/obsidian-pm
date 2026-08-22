@@ -280,6 +280,12 @@
 .pm-root--maximized .pm-project-header-filter {
   padding: 2px 16px 6px;
 }
+/* The gantt's granularity bar goes too. It's a nice-to-have that's off by default in a
+   project view, and maximizing is a request for chart, not controls. The assignee avatars
+   are the exception above — choosing who you're looking at isn't chrome. */
+.pm-root--maximized .pm-gantt-controls {
+  display: none;
+}
 
 /* Reclaim Obsidian's own chrome too: this pane's title bar and the tab bar above it.
    Both live outside the view, hence the body class (set only while maximized, and
