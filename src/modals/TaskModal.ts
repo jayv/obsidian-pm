@@ -1,4 +1,13 @@
-import { App, ButtonComponent, Component, ExtraButtonComponent, Modal, MarkdownRenderer, Notice } from 'obsidian'
+import {
+  App,
+  ButtonComponent,
+  Component,
+  ExtraButtonComponent,
+  Modal,
+  MarkdownRenderer,
+  Notice,
+  setTooltip
+} from 'obsidian'
 import type PMPlugin from '../main'
 import { Project, Task, makeTask } from '../types'
 import { flattenTasks } from '../store/TaskTreeOps'
@@ -208,7 +217,9 @@ export class TaskModal extends Modal {
 
     // ── Description (preview / edit) ─────────────────────────────────────────
     const descSection = contentEl.createDiv('pm-modal-section pm-modal-desc-section')
-    descSection.createEl('h4', { text: 'Description', cls: 'pm-modal-section-title' })
+    const descHeader = descSection.createDiv('pm-modal-section-header')
+    descHeader.createEl('h4', { text: 'Description', cls: 'pm-modal-section-title' })
+    const wideBtn = descHeader.createEl('button', { cls: 'pm-desc-expand' })
 
     const descPreview = descSection.createDiv('pm-modal-desc-preview')
     const descArea = descSection.createEl('textarea', { cls: 'pm-modal-description' })
@@ -228,6 +239,21 @@ export class TaskModal extends Modal {
     }
 
     const hasContent = () => this.task.description.trim().length > 0
+    // Writing wants room; a two-field quick task doesn't. The toggle decides, starting
+    // wide only when there's already something to read — so creating a task still opens
+    // as a small dialog rather than a wall.
+    let wide = false
+    const setWide = (on: boolean) => {
+      wide = on
+      this.modalEl.toggleClass('pm-modal--wide', wide)
+      wideBtn.setText(wide ? '\u2921' : '\u2922')
+      setTooltip(wideBtn, wide ? 'Shrink the editor' : 'Expand the editor')
+    }
+    wideBtn.addEventListener('click', () => {
+      setWide(!wide)
+      autoResize()
+    })
+    setWide(hasContent())
     const sourcePath = this.task.filePath || this.project.filePath || ''
 
     let descComp = new Component()

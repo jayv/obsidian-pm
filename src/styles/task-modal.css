@@ -27,6 +27,14 @@
   max-width: 680px;
   width: 90vw;
   max-height: 88vh;
+  transition: max-width 140ms ease;
+}
+
+/* Writing needs room. The modal widens once a description exists or the editor is
+   focused, and narrows again when it's left empty — so creating a quick task stays a
+   small dialog and doesn't open as a wall. */
+.pm-modal--wide {
+  max-width: 1200px;
 }
 
 .pm-task-modal {
@@ -190,6 +198,27 @@
 
 /* Type-ahead beside the "+ add" button. Narrow by default so it reads as one more
    control on the row rather than a form field, widening once it has focus. */
+.pm-modal--wide .pm-modal-description,
+.pm-modal--wide .pm-modal-desc-preview {
+  min-height: 240px;
+}
+
+/* Expand/shrink toggle beside the Description heading. */
+.pm-desc-expand {
+  margin-left: auto;
+  padding: 0 6px;
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--pm-text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.pm-desc-expand:hover {
+  color: var(--pm-text);
+}
+
 /* Parent picker: a full-width type-ahead in place of the old dropdown. Wider than the
    assignee box because it shows an ancestor path, not a name. */
 .pm-parent-input {
