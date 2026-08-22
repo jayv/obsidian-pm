@@ -108,7 +108,7 @@ export function renderTaskLabel(
   const pct = Math.round(Math.min(100, Math.max(0, task.progress)) / 10) * 10
   dot.style.setProperty('--pm-dot-color', statusConfig?.color ?? 'var(--text-muted)')
   dot.style.setProperty('--pm-dot-progress', `${pct}%`)
-  dot.style.setProperty('--pm-dot-size', `${Math.round(ROW_HEIGHT * 0.6)}px`)
+  dot.style.setProperty('--pm-dot-size', `${Math.round(ROW_HEIGHT * 0.4)}px`)
   setTooltip(dot, `${statusConfig?.label ?? task.status} \u00b7 ${task.progress}%`)
 
   // Title
