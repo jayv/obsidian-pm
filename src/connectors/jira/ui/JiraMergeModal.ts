@@ -9,6 +9,7 @@ import { resolveConflict, shadowOf } from '../sync'
 import type { JiraShadow } from '../types'
 import { taskExt } from '../types'
 import { FIELD_LABEL, formatField } from './conflictFormat'
+import { JiraTextCompareModal } from './JiraTextCompareModal'
 
 /** A conflicted task plus the three sides of its merge. */
 interface MergeItem {
@@ -147,7 +148,25 @@ export class JiraMergeModal extends Modal {
     for (const field of it.decisions) {
       const takeTheirs = choice.get(field) ?? false
       const row = table.createDiv('pm-jira-merge-row')
-      row.createSpan({ text: FIELD_LABEL[field], cls: 'pm-jira-merge-field' })
+      const label = row.createSpan({ text: FIELD_LABEL[field], cls: 'pm-jira-merge-field' })
+      // A row can only show a description's first line, which is rarely enough to choose
+      // by — so long text gets a way to see both versions in full.
+      if (field === 'description') {
+        const open = label.createEl('button', { text: 'compare', cls: 'pm-jira-merge-compare' })
+        open.addEventListener('click', (e) => {
+          e.stopPropagation()
+          new JiraTextCompareModal(this.app, {
+            title: `${FIELD_LABEL[field]} — ${it.task.title || '(untitled)'}`,
+            mine: it.mine.description,
+            theirs: it.theirs.description,
+            takeTheirs: choice.get(field) ?? false,
+            onPick: (take) => {
+              choice.set(field, take)
+              this.render()
+            }
+          }).open()
+        })
+      }
 
       this.sideCell(row, formatField(this.settings(), field, it.mine), !takeTheirs, 'mine', () => {
         choice.set(field, false)
