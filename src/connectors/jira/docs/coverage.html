@@ -23,8 +23,8 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>222</strong> tests</span>
-    <span class="stat"><strong>56</strong> areas</span>
+    <span class="stat"><strong>227</strong> tests</span>
+    <span class="stat"><strong>57</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
 
@@ -115,7 +115,7 @@
 <tr><td>JIRA wins when we did not change locally (teammate update)</td><td class="file">JiraModel.test.ts</td></tr>
 <tr><td>flags limbo when we changed locally but JIRA does not reflect it</td><td class="file">JiraModel.test.ts</td></tr>
 
-    <tr class="group"><td colspan="2">adfToMarkdown <span class="dir dir-unit">unit</span> <span class="muted">13</span></td></tr>
+    <tr class="group"><td colspan="2">adfToMarkdown <span class="dir dir-unit">unit</span> <span class="muted">14</span></td></tr>
     <tr><td>converts paragraphs, separated by a blank line</td><td class="file">adf.test.ts</td></tr>
 <tr><td>converts the inline marks</td><td class="file">adf.test.ts</td></tr>
 <tr><td>converts a link, and a link that is also bold</td><td class="file">adf.test.ts</td></tr>
@@ -125,7 +125,8 @@
 <tr><td>converts a blockquote and a panel to quoted lines</td><td class="file">adf.test.ts</td></tr>
 <tr><td>renders a mention and an emoji as their text</td><td class="file">adf.test.ts</td></tr>
 <tr><td>links an attachment rather than embedding it — the URL needs auth Obsidian cannot send</td><td class="file">adf.test.ts</td></tr>
-<tr><td>keeps an unknown node visible instead of dropping it</td><td class="file">adf.test.ts</td></tr>
+<tr><td>keeps an unknown node visible, and in the stash so it can go back</td><td class="file">adf.test.ts</td></tr>
+<tr><td>names an unknown node when there is nowhere to keep it</td><td class="file">adf.test.ts</td></tr>
 <tr><td>follows an unknown wrapper into its children rather than discarding them</td><td class="file">adf.test.ts</td></tr>
 <tr><td>accepts a plain string, for the v2 API and un-migrated issues</td><td class="file">adf.test.ts</td></tr>
 <tr><td>is empty for nothing at all</td><td class="file">adf.test.ts</td></tr>
@@ -141,6 +142,12 @@
     <tr><td>reads a Jira table as a Markdown table</td><td class="file">adf.test.ts</td></tr>
 <tr><td>escapes a bar inside a cell so it does not split the row</td><td class="file">adf.test.ts</td></tr>
 <tr><td>writes the first row back as header cells</td><td class="file">adf.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">placeholders go back as the nodes they came from <span class="dir dir-unit">unit</span> <span class="muted">4</span></td></tr>
+    <tr><td>rebuilds an attachment, with its layout attributes</td><td class="file">adf.test.ts</td></tr>
+<tr><td>rebuilds a stashed node verbatim</td><td class="file">adf.test.ts</td></tr>
+<tr><td>reports a placeholder it can no longer rebuild, rather than writing the words</td><td class="file">adf.test.ts</td></tr>
+<tr><td>carries an attachment through an edit around it</td><td class="file">adf.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">adf round trip <span class="dir dir-unit">unit</span> <span class="muted">0</span></td></tr>
     
@@ -344,7 +351,7 @@
     <tr class="group"><td colspan="2">jira sync — descriptions must not damage Jira <span class="dir dir-both">both</span> <span class="muted">4</span></td></tr>
     <tr><td>writes Jira’s description into the note when the conflict is resolved that way</td><td class="file">sync.test.ts</td></tr>
 <tr><td>does not push the local text back after adopting Jira’s</td><td class="file">sync.test.ts</td></tr>
-<tr><td>refuses to push text holding a placeholder, rather than destroying the attachment</td><td class="file">sync.test.ts</td></tr>
+<tr><td>puts the attachment back when the note around it is edited</td><td class="file">sync.test.ts</td></tr>
 <tr><td>refuses to clear a description Jira has</td><td class="file">sync.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">task link — new-task default + checkbox state <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">3</span></td></tr>

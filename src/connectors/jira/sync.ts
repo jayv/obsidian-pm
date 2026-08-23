@@ -14,7 +14,7 @@ import {
   typeForLevel
 } from './JiraModel'
 import { SYNC_FIELDS, type SyncField, fieldsEqual, threeWay } from './reconcile'
-import { hasPlaceholder, markdownToAdf } from './adf'
+import { markdownToAdf, unrestorablePlaceholders, type AdfStash } from './adf'
 import { ensureMockBackend, mockBaseUrl } from './JiraMockServer'
 import type { JiraEpicConfig, JiraIssueProps, JiraProjectConfig, JiraShadow, JiraValueMap } from './types'
 import {
@@ -149,8 +149,11 @@ function flagConflict(task: Task, theirs: JiraShadow): Record<string, unknown> {
 }
 
 /** Ext with the shadow advanced to the merged baseline and the conflict flag cleared. */
-function withMergedShadow(task: Task, shadow: JiraShadow): Record<string, unknown> {
+function withMergedShadow(task: Task, shadow: JiraShadow, stash?: AdfStash): Record<string, unknown> {
   const jx: Record<string, unknown> = { ...taskExt(task), shadow }
+  // Only when the merged text is Jira's: keeping a stale stash beside our own text would
+  // restore nodes that text no longer references.
+  if (stash) jx.adfStash = stash
   Reflect.deleteProperty(jx, 'reconciled')
   Reflect.deleteProperty(jx, 'conflict')
   return { ...task.ext, [JIRA_ID]: jx }
@@ -211,10 +214,9 @@ export async function resolveConflict(
  * task whose body we failed to read than a deliberate deletion, and the cost of being
  * wrong is someone else's writing.
  */
-function unpushableDescription(mine: string, theirs: string): string | null {
-  if (hasPlaceholder(mine)) {
-    return "it holds a placeholder for something Jira has that Markdown can't — edit it in Jira instead"
-  }
+function unpushableDescription(mine: string, theirs: string, stash: unknown): string | null {
+  const lost = unrestorablePlaceholders(mine, stash as AdfStash | undefined)
+  if (lost.length) return `${lost.join(', ')} can no longer be restored — edit that part in Jira`
   if (!mine.trim() && theirs.trim()) return 'it is empty here and not in Jira — refusing to clear it'
   return null
 }
@@ -1158,9 +1160,9 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       }
     }
     if (tw.push.includes('description')) {
-      const why = unpushableDescription(t.description || '', issue.description)
+      const why = unpushableDescription(t.description || '', issue.description, ext.adfStash)
       if (why) held.push(`description (${why})`)
-      else fields.description = markdownToAdf(t.description || '')
+      else fields.description = markdownToAdf(t.description || '', ext.adfStash as AdfStash | undefined)
     }
     if (tw.push.includes('assignees')) {
       const a = assigneeField(plugin, t, cfg)
@@ -1236,7 +1238,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       description: a('description') ? theirs.description : mine.description,
       blockedBy: a('blockedBy') ? [...theirs.blockedBy] : [...mine.blockedBy]
     }
-    patch.ext = withMergedShadow(t, merged)
+    patch.ext = withMergedShadow(t, merged, tw.adopt.includes('description') ? issue.descriptionStash : undefined)
     patches.push({ taskId: t.id, patch })
   }
   cfg.dirtyQueue = []

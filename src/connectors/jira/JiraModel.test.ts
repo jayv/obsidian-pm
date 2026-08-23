@@ -98,6 +98,7 @@ describe('normalizeIssue', () => {
       key: 'DEMO-42',
       summary: 'Build widget',
       description: 'Ship it.', // the ADF tree, converted where every other field is normalised
+      descriptionStash: {},
       status: 'In Review',
       statusCategory: 'In Progress',
       priority: 'High',

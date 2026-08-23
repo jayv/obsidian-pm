@@ -1,6 +1,6 @@
 import type { PriorityConfig, StatusConfig, TaskPriority, TaskStatus } from '../../types'
 import type { JiraValueMap } from './types'
-import { adfToMarkdown } from './adf'
+import { adfToMarkdown, type AdfStash } from './adf'
 import { ISSUE_PROP } from './types'
 
 /** Normalized JIRA issue — the subset of fields we map onto tasks. */
@@ -26,6 +26,11 @@ export interface JiraIssue {
    * so the rest of the connector never has to know Jira stores it as an ADF tree.
    */
   description: string
+  /**
+   * Description nodes Markdown can't hold, by the token the text references. Carried so a
+   * push can restore the originals instead of writing the words describing them.
+   */
+  descriptionStash: AdfStash
   /** Keys of issues this one "is blocked by" (its predecessors). */
   blockedBy: string[]
   /** The "is blocked by" links with their JIRA link ids, for reconciliation (add/remove). */
@@ -67,10 +72,12 @@ export function normalizeIssue(raw: unknown, startFieldId?: string): JiraIssue {
   }
   const start = startFieldId ? (f[startFieldId] as string | null | undefined) : undefined
   const milestone = (r.properties?.[ISSUE_PROP] as { milestone?: boolean } | undefined)?.milestone === true
+  const descriptionStash: AdfStash = {}
   return {
     key: r.key ?? '',
     summary: f.summary ?? '',
-    description: adfToMarkdown(f.description),
+    description: adfToMarkdown(f.description, descriptionStash),
+    descriptionStash,
     status: f.status?.name ?? '',
     statusCategory: f.status?.statusCategory?.name ?? '',
     priority: f.priority?.name ?? '',

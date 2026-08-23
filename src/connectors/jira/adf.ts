@@ -45,41 +45,93 @@ function applyMarks(text: string, marks: AdfNode['marks']): string {
  * Obsidian's renderer can't supply, so `![](…)` would render as a broken image. A link
  * opens in the browser, where the session already exists.
  */
-/** Recognises the markers {@link placeholderFor} emits. */
-export const PLACEHOLDER_RE = /`\[jira [^\]]*\]`/
+/**
+ * Schemes for placeholders that can be turned back into the node they came from.
+ *
+ * An attachment carries its own identity, so it round-trips with no stored state: the
+ * link holds the media id and its layout attributes, and a push rebuilds the node from
+ * them. Anything else goes in a stash by token — there is nothing about an expand block
+ * or a macro that could be reconstructed from its name alone.
+ */
+const MEDIA_SCHEME = 'jira-media:'
+const NODE_SCHEME = 'jira-node:'
+
+/** Nodes we couldn't express, kept so a push can put the originals back. */
+export type AdfStash = Record<string, AdfNode>
+
+const NODE_TOKEN_RE = /`jira-node:([A-Za-z0-9]+)`/g
 
 /**
- * True when the text carries a marker standing in for something we couldn't convert.
- *
- * Pushing such text would replace the real node in Jira with the words describing it —
- * an attachment becomes the literal string "[jira attachment <id>]" and the file is gone
- * from the description. Callers must refuse the write instead.
+ * Placeholders in the text that this stash can't rebuild — the note was written
+ * elsewhere, or the stash was lost. These are the only ones a caller must refuse to push:
+ * writing them would replace a real node with the words describing it.
  */
-export function hasPlaceholder(md: string): boolean {
-  return PLACEHOLDER_RE.test(md ?? '')
+export function unrestorablePlaceholders(md: string, stash?: AdfStash): string[] {
+  const out: string[] = []
+  for (const m of (md ?? '').matchAll(NODE_TOKEN_RE)) {
+    if (!stash?.[m[1]]) out.push(m[0])
+  }
+  return out
 }
 
-function placeholderFor(node: AdfNode): string {
+/** The media node inside a mediaSingle/mediaGroup wrapper, or the node itself. */
+function mediaOf(node: AdfNode): AdfNode | null {
+  if (node.type === 'media') return node
+  return (node.content ?? []).find((c) => c.type === 'media') ?? null
+}
+
+/** An attachment as a link carrying everything needed to rebuild the node. */
+function mediaLink(wrapper: AdfNode, media: AdfNode): string {
+  const a = media.attrs ?? {}
+  const params = new URLSearchParams()
+  const pairs: [string, unknown][] = [
+    ['c', a.collection],
+    ['w', a.width],
+    ['h', a.height],
+    ['t', a.type],
+    ['l', wrapper.attrs?.layout]
+  ]
+  // Only scalars: an attribute holding an object would stringify to "[object Object]" and
+  // silently corrupt the link rather than being left out.
+  for (const [key, val] of pairs) {
+    if (typeof val === 'string' && val) params.set(key, val)
+    else if (typeof val === 'number') params.set(key, String(val))
+  }
+  const q = params.toString()
+  const name = typeof a.alt === 'string' && a.alt ? a.alt : 'attachment'
+  const id = typeof a.id === 'string' ? a.id : ''
+  return `[${name}](${MEDIA_SCHEME}${id}${q ? `?${q}` : ''})`
+}
+
+function placeholderFor(node: AdfNode, stash?: AdfStash): string {
   const attrs = node.attrs ?? {}
   const url = typeof attrs.url === 'string' ? attrs.url : typeof attrs.href === 'string' ? attrs.href : ''
   const name = typeof attrs.alt === 'string' ? attrs.alt : typeof attrs.text === 'string' ? attrs.text : node.type
   if (url) return `[${name}](${url})`
-  if (node.type === 'media' || node.type === 'mediaSingle' || node.type === 'mediaGroup') {
-    const id = typeof attrs.id === 'string' ? attrs.id : ''
-    return `\`[jira attachment${id ? ` ${id}` : ''}]\``
-  }
-  return `\`[jira ${node.type}]\``
+
+  const media = mediaOf(node)
+  if (media) return mediaLink(node, media)
+
+  // Nothing about this node can be inferred from its name, so keep the original and
+  // reference it by token. With nowhere to keep it, name it and let the caller refuse.
+  if (!stash) return `\`${NODE_SCHEME}${node.type}\``
+  const token = `n${Object.keys(stash).length + 1}${node.type
+    .replace(/[^a-z]/gi, '')
+    .toLowerCase()
+    .slice(0, 6)}`
+  stash[token] = node
+  return `\`${NODE_SCHEME}${token}\``
 }
 
-function inline(nodes: AdfNode[] | undefined): string {
+function inline(nodes: AdfNode[] | undefined, stash?: AdfStash): string {
   return (nodes ?? [])
     .map((n) => {
       if (n.type === 'text') return applyMarks(n.text ?? '', n.marks)
       if (n.type === 'hardBreak') return '\n'
       if (n.type === 'emoji') return typeof n.attrs?.text === 'string' ? n.attrs.text : ''
       if (n.type === 'mention') return typeof n.attrs?.text === 'string' ? n.attrs.text : ''
-      if (n.type === 'inlineCard') return placeholderFor(n)
-      return n.content ? inline(n.content) : placeholderFor(n)
+      if (n.type === 'inlineCard') return placeholderFor(n, stash)
+      return n.content ? inline(n.content, stash) : placeholderFor(n, stash)
     })
     .join('')
 }
@@ -118,7 +170,7 @@ function tableToMarkdown(node: AdfNode, depth: number): string {
   return lines.join('\n')
 }
 
-function block(node: AdfNode, depth = 0): string {
+function block(node: AdfNode, depth = 0, stash?: AdfStash): string {
   switch (node.type) {
     case 'paragraph':
       return inline(node.content)
@@ -145,6 +197,12 @@ function block(node: AdfNode, depth = 0): string {
       return '---'
     case 'table':
       return tableToMarkdown(node, depth)
+    case 'media':
+    case 'mediaSingle':
+    case 'mediaGroup':
+      // Handled here rather than falling through: the wrapper carries the layout, and
+      // descending into it would reach the media node without it.
+      return placeholderFor(node, stash)
     case 'panel':
       // A panel's body is ordinary content; a callout keeps the emphasis without inventing
       // syntax Jira can't express back.
@@ -157,6 +215,10 @@ function block(node: AdfNode, depth = 0): string {
     case 'text':
       return inline([node])
     default:
+      // With a stash, keep the node itself: it can then go back to Jira exactly as it
+      // came. Without one — a read purely for display — descend instead, so the text
+      // inside an unknown wrapper is at least visible.
+      if (stash) return placeholderFor(node, stash)
       return node.content?.length ? (node.content ?? []).map((c) => block(c, depth)).join('\n') : placeholderFor(node)
   }
 }
@@ -165,13 +227,13 @@ function block(node: AdfNode, depth = 0): string {
  * Convert a description to Markdown. Accepts the ADF document, or a plain string for the
  * v2 API and for older issues whose description was never migrated.
  */
-export function adfToMarkdown(doc: unknown): string {
+export function adfToMarkdown(doc: unknown, stash?: AdfStash): string {
   if (doc == null) return ''
   if (typeof doc === 'string') return doc.trim()
   const root = doc as AdfNode
   if (!Array.isArray(root.content)) return ''
   return root.content
-    .map((n) => block(n))
+    .map((n) => block(n, 0, stash))
     .join('\n\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
@@ -182,6 +244,22 @@ export function adfToMarkdown(doc: unknown): string {
 const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(~~[^~]+~~)|(\[[^\]]*\]\([^)]*\))|(_[^_]+_)|(\*[^*]+\*)/
 
 /** Split a line into ADF text nodes, applying the marks we can represent. */
+/** Rebuild the media node a jira-media link stands for. */
+function mediaFromLink(alt: string, href: string): AdfNode {
+  const [id, query] = href.slice(MEDIA_SCHEME.length).split('?')
+  const q = new URLSearchParams(query ?? '')
+  const attrs: Record<string, unknown> = { id, type: q.get('t') ?? 'file' }
+  if (alt && alt !== 'attachment') attrs.alt = alt
+  if (q.get('c')) attrs.collection = q.get('c')
+  if (q.get('w')) attrs.width = Number(q.get('w'))
+  if (q.get('h')) attrs.height = Number(q.get('h'))
+  return {
+    type: 'mediaSingle',
+    attrs: { layout: q.get('l') ?? 'center' },
+    content: [{ type: 'media', attrs }]
+  }
+}
+
 function inlineNodes(text: string): AdfNode[] {
   if (!text) return []
   const out: AdfNode[] = []
@@ -267,6 +345,14 @@ function listNode(items: string[], ordered: boolean): AdfNode {
   }
 }
 
+/** A line that is nothing but a placeholder becomes the node it stands for. */
+function restoreLine(line: string, stash?: AdfStash): AdfNode | null {
+  const media = /^\[([^\]]*)\]\((jira-media:[^)]*)\)$/.exec(line)
+  if (media) return mediaFromLink(media[1], media[2])
+  const token = /^`jira-node:([A-Za-z0-9]+)`$/.exec(line)
+  return (token && stash?.[token[1]]) || null
+}
+
 /**
  * Markdown → ADF, for writing a description back to Jira.
  *
@@ -275,7 +361,7 @@ function listNode(items: string[], ordered: boolean): AdfNode {
  * Obsidian embed — is carried across as literal text in a paragraph rather than dropped,
  * which keeps the content and makes the gap visible instead of silent.
  */
-export function markdownToAdf(md: string): AdfNode {
+export function markdownToAdf(md: string, stash?: AdfStash): AdfNode {
   const lines = (md ?? '').replace(/\r\n/g, '\n').split('\n')
   const content: AdfNode[] = []
   let para: string[] = []
@@ -296,6 +382,14 @@ export function markdownToAdf(md: string): AdfNode {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
+
+    // A whole line that is just one placeholder is the node itself, put back as it was.
+    const restored = restoreLine(line.trim(), stash)
+    if (restored) {
+      flush()
+      content.push(restored)
+      continue
+    }
 
     const fence = /^```(\w*)\s*$/.exec(line)
     if (fence) {

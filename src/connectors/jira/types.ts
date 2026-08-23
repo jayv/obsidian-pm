@@ -89,6 +89,12 @@ export interface JiraTaskExt {
   conflict?: JiraConflict
   /** Last-synced field values; the baseline for field-level outbound diffing. */
   shadow?: JiraShadow
+  /**
+   * Jira description nodes Markdown can't hold — an expand block, a macro — kept verbatim
+   * and referenced from the note by token, so pushing puts the original back instead of
+   * the words describing it. Attachments aren't here: their link carries its own id.
+   */
+  adfStash?: Record<string, unknown>
 }
 
 /**

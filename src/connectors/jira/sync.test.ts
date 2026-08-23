@@ -1285,14 +1285,13 @@ describe('jira sync — descriptions must not damage Jira [both]', () => {
     expect(await jiraText(plugin, key)).toBe('Theirs.')
   })
 
-  it('refuses to push text holding a placeholder, rather than destroying the attachment', async () => {
+  it('puts the attachment back when the note around it is edited', async () => {
     const { plugin } = harness()
     const { project, cfg } = connect(plugin)
     setDefaultMaps(cfg)
     const task = localTask(project, { title: 'Doc' })
     await exportTasks(plugin, project, [task.id])
     const key = must(taskExt(task).key)
-    // What Jira has: a description whose attachment we can't represent.
     await mutateMock(plugin, (s) => {
       const issue = mustIssue(s, key)
       issue.fields.description = {
@@ -1300,26 +1299,26 @@ describe('jira sync — descriptions must not damage Jira [both]', () => {
         version: 1,
         content: [
           { type: 'paragraph', content: [{ type: 'text', text: 'See:' }] },
-          { type: 'mediaSingle', content: [{ type: 'media', attrs: { id: 'abc-123', type: 'file' } }] }
+          {
+            type: 'mediaSingle',
+            attrs: { layout: 'center' },
+            content: [{ type: 'media', attrs: { id: 'abc-123', type: 'file', alt: 'Shot.png' } }]
+          }
         ]
       }
       issue.fields.updated = FUTURE
     })
-    await runSync(plugin, project) // adopts it, placeholder and all
-    const local = must(findTask(project.tasks, task.id))
-    expect(local.description).toContain('[jira attachment abc-123]')
+    await runSync(plugin, project) // adopt it
 
-    // Now edit the note around the placeholder — the realistic case, and the one that puts
-    // the description in the push set.
+    const local = must(findTask(project.tasks, task.id))
+    expect(local.description).toContain('jira-media:abc-123')
     local.description = `Extra context.\n\n${local.description}`
     await runSync(plugin, project)
 
-    // Reading Jira's own media node back through the converter shows a placeholder too, so
-    // the text form proves nothing here. What matters is the stored document: the media
-    // node is still a node, not the words describing it.
     const stored = JSON.stringify((await readMock(plugin)).getIssue(key)?.fields.description)
-    expect(stored).toContain('mediaSingle')
-    expect(stored).not.toContain('jira attachment')
+    expect(stored).toContain('"mediaSingle"') // a real node, not the words describing one
+    expect(stored).toContain('abc-123')
+    expect(stored).toContain('Extra context.') // and the edit landed
   })
 
   it('refuses to clear a description Jira has', async () => {

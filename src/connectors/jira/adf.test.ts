@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { adfToMarkdown, markdownToAdf } from './adf'
+import { adfToMarkdown, markdownToAdf, unrestorablePlaceholders } from './adf'
 
 const doc = (...content: unknown[]) => ({ type: 'doc', version: 1, content })
 const p = (...content: unknown[]) => ({ type: 'paragraph', content })
@@ -69,14 +69,21 @@ describe('adfToMarkdown', () => {
   it('links an attachment rather than embedding it — the URL needs auth Obsidian cannot send', () => {
     const media = {
       type: 'mediaSingle',
+      attrs: { layout: 'center' },
       content: [{ type: 'media', attrs: { id: 'abc-123', type: 'file', alt: 'Screenshot.png' } }]
     }
-    expect(adfToMarkdown(doc(media))).toBe('`[jira attachment abc-123]`')
+    expect(adfToMarkdown(doc(media))).toBe('[Screenshot.png](jira-media:abc-123?t=file&l=center)')
   })
 
-  it('keeps an unknown node visible instead of dropping it', () => {
-    expect(adfToMarkdown(doc({ type: 'expand', attrs: {} }))).toBe('`[jira expand]`')
-    expect(adfToMarkdown(doc({ type: 'status', attrs: { text: 'DONE' } }))).toBe('`[jira status]`')
+  it('keeps an unknown node visible, and in the stash so it can go back', () => {
+    const stash = {}
+    const md = adfToMarkdown(doc({ type: 'expand', attrs: { title: 'Details' } }), stash)
+    expect(md).toMatch(/^`jira-node:\w+`$/)
+    expect(Object.values(stash)).toEqual([{ type: 'expand', attrs: { title: 'Details' } }])
+  })
+
+  it('names an unknown node when there is nowhere to keep it', () => {
+    expect(adfToMarkdown(doc({ type: 'expand', attrs: {} }))).toBe('`jira-node:expand`')
   })
 
   it('follows an unknown wrapper into its children rather than discarding them', () => {
@@ -167,6 +174,50 @@ describe('tables', () => {
     expect(adf.content?.[0]?.type).toBe('table')
     expect(rows[0]?.content?.map((c) => c.type)).toEqual(['tableHeader', 'tableHeader'])
     expect(rows[1]?.content?.map((c) => c.type)).toEqual(['tableCell', 'tableCell'])
+  })
+})
+
+/*
+ * The whole point of the placeholders: what Markdown can't express still has to reach
+ * Jira unchanged. Anything less makes a description Jira-only, which it isn't.
+ */
+describe('placeholders go back as the nodes they came from', () => {
+  it('rebuilds an attachment, with its layout attributes', () => {
+    const media = {
+      type: 'mediaSingle',
+      attrs: { layout: 'wide' },
+      content: [
+        { type: 'media', attrs: { id: 'abc-123', type: 'file', collection: 'coll-9', width: 320, alt: 'Shot.png' } }
+      ]
+    }
+    const md = adfToMarkdown({ type: 'doc', version: 1, content: [media] })
+    expect(markdownToAdf(md).content?.[0]).toEqual(media)
+  })
+
+  it('rebuilds a stashed node verbatim', () => {
+    const expand = { type: 'expand', attrs: { title: 'Details' }, content: [p(t('hidden'))] }
+    const stash = {}
+    const md = adfToMarkdown({ type: 'doc', version: 1, content: [expand] }, stash)
+    expect(markdownToAdf(md, stash).content?.[0]).toEqual(expand)
+  })
+
+  it('reports a placeholder it can no longer rebuild, rather than writing the words', () => {
+    const stash = {}
+    const md = adfToMarkdown({ type: 'doc', version: 1, content: [{ type: 'expand', attrs: {} }] }, stash)
+    expect(unrestorablePlaceholders(md, stash)).toEqual([]) // stash intact
+    expect(unrestorablePlaceholders(md, {})).toHaveLength(1) // stash lost
+  })
+
+  it('carries an attachment through an edit around it', () => {
+    const media = {
+      type: 'mediaSingle',
+      attrs: { layout: 'center' },
+      content: [{ type: 'media', attrs: { id: 'x1', type: 'file' } }]
+    }
+    const md = adfToMarkdown({ type: 'doc', version: 1, content: [p(t('Before.')), media] })
+    const edited = `${md}\n\nAfter.`
+    const back = markdownToAdf(edited)
+    expect(back.content?.map((n) => n.type)).toEqual(['paragraph', 'mediaSingle', 'paragraph'])
   })
 })
 
