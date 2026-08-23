@@ -23,8 +23,8 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>228</strong> tests</span>
-    <span class="stat"><strong>57</strong> areas</span>
+    <span class="stat"><strong>229</strong> tests</span>
+    <span class="stat"><strong>58</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
 
@@ -354,6 +354,9 @@
 <tr><td>does not push the local text back after adopting Jira’s</td><td class="file">sync.test.ts</td></tr>
 <tr><td>puts the attachment back when the note around it is edited</td><td class="file">sync.test.ts</td></tr>
 <tr><td>refuses to clear a description Jira has</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — upgrading old attachment links <span class="dir dir-JO">J→O</span> <span class="muted">1</span></td></tr>
+    <tr><td>replaces a link written before they pointed at the issue</td><td class="file">sync.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">task link — new-task default + checkbox state <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">3</span></td></tr>
     <tr><td>defaults a brand-new task to synced</td><td class="file">taskLink.test.ts</td></tr>

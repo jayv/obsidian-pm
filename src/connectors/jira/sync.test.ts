@@ -1330,3 +1330,40 @@ describe('jira sync — descriptions must not damage Jira [both]', () => {
     expect(await jiraText(plugin, key)).toBe('Theirs.')
   })
 })
+
+describe('jira sync — upgrading old attachment links [J→O]', () => {
+  it('replaces a link written before they pointed at the issue', async () => {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    const task = localTask(project, { title: 'Doc' })
+    await exportTasks(plugin, project, [task.id])
+    const key = must(taskExt(task).key)
+    await mutateMock(plugin, (s) => {
+      const issue = mustIssue(s, key)
+      issue.fields.description = {
+        type: 'doc',
+        version: 1,
+        content: [
+          {
+            type: 'mediaSingle',
+            attrs: { layout: 'center' },
+            content: [{ type: 'media', attrs: { id: 'abc-123', type: 'file', alt: 'Shot.png' } }]
+          }
+        ]
+      }
+      issue.fields.updated = FUTURE
+    })
+    await runSync(plugin, project)
+
+    // What an older build wrote into the note: same node, unclickable form.
+    must(findTask(project.tasks, task.id)).description = '[Shot.png](jira-media:abc-123?t=file&l=center)'
+
+    await runSync(plugin, project)
+
+    const after = must(findTask(project.tasks, task.id)).description
+    expect(after).toContain('#pm-media=abc-123')
+    expect(after).not.toContain('jira-media:')
+    expect(taskExt(must(findTask(project.tasks, task.id))).reconciled).not.toBe(false) // not a conflict
+  })
+})

@@ -13,7 +13,7 @@ import {
   projectKeyOf,
   typeForLevel
 } from './JiraModel'
-import { SYNC_FIELDS, type SyncField, fieldsEqual, threeWay } from './reconcile'
+import { SYNC_FIELDS, type SyncField, canonicalDescription, fieldsEqual, threeWay } from './reconcile'
 import { markdownToAdf, unrestorablePlaceholders, type AdfStash } from './adf'
 import { ensureMockBackend, mockBaseUrl } from './JiraMockServer'
 import type { JiraEpicConfig, JiraIssueProps, JiraProjectConfig, JiraShadow, JiraValueMap } from './types'
@@ -200,6 +200,16 @@ export async function resolveConflict(
   Reflect.deleteProperty(jx, 'conflict')
   patch.ext = { ...task.ext, [JIRA_ID]: jx }
   await plugin.store.applyExternalUpdates(project, [{ taskId: task.id, patch }])
+}
+
+/**
+ * True when our text differs from Jira's only in carrying the old, unclickable form of an
+ * attachment link. Canonically the two are the same document, so nothing is lost by taking
+ * Jira's — and nothing else is: any real difference fails the canonical check.
+ */
+function staleMediaLinks(mine: string, theirs: string): boolean {
+  if (!mine.includes('jira-media:') || mine === theirs) return false
+  return canonicalDescription(mine) === canonicalDescription(theirs)
 }
 
 /**
@@ -1097,6 +1107,16 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     const parentUnsynced = Boolean(localParentId) && !desiredParent
     const parentDiverged = parentUnsynced || (Boolean(desiredParent) && issue.parentKey !== desiredParent)
     const localDiverged = !ext.shadow || !shadowEqual(mine, ext.shadow) || parentDiverged
+
+    // An attachment written before the links pointed at the issue reads as unchanged —
+    // both forms rebuild the same node, so the comparison rightly sees no difference and
+    // would never rewrite the note. Take Jira's rendering when that's the only difference,
+    // which upgrades the link without touching content or pushing anything.
+    if (staleMediaLinks(mine.description, issue.description)) {
+      patches.push({ taskId: t.id, patch: { description: issue.description } })
+      t.description = issue.description
+      mine.description = issue.description
+    }
 
     // Nothing changed on either side and no open conflict → skip (no HTTP).
     if (!localDiverged && issue.updated <= prev && ext.reconciled !== false) continue
