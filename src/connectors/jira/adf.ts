@@ -31,7 +31,12 @@ function applyMarks(text: string, marks: AdfNode['marks']): string {
   for (const mark of marks ?? []) {
     const wrap = MARK_WRAPPERS[mark.type]
     if (wrap) out = wrap[0] + out + wrap[1]
-    else if (mark.type === 'link' && typeof mark.attrs?.href === 'string') out = `[${out}](${mark.attrs.href})`
+    else if (mark.type === 'link' && typeof mark.attrs?.href === 'string') {
+      // Jira autolinks a pasted URL, giving a link whose text is the URL itself. Writing
+      // that as "[url](url)" would be noise; the bare URL is the same thing and is what
+      // Markdown renders as a link anyway.
+      out = out === mark.attrs.href ? out : `[${out}](${mark.attrs.href})`
+    }
   }
   return out
 }
@@ -253,7 +258,8 @@ export function adfToMarkdown(doc: unknown, stash?: AdfStash, issueUrl?: string)
 
 // ── Markdown → ADF ──────────────────────────────────────────────────────────
 
-const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(~~[^~]+~~)|(\[[^\]]*\]\([^)]*\))|(_[^_]+_)|(\*[^*]+\*)/
+const INLINE =
+  /(`[^`]+`)|(\*\*[^*]+\*\*)|(~~[^~]+~~)|(\[[^\]]*\]\([^)]*\))|(_[^_]+_)|(\*[^*]+\*)|(https?:\/\/[^\s<>()[\]]+)/
 
 /** Split a line into ADF text nodes, applying the marks we can represent. */
 /** Rebuild the media node a jira-media link stands for. */
@@ -293,6 +299,9 @@ function inlineNodes(text: string): AdfNode[] {
           marks: [{ type: 'link', attrs: { href: link[2] } }]
         })
       }
+    } else if (/^https?:\/\//.test(tok)) {
+      // A pasted URL is a link in Jira; leaving it as text would render it dead there.
+      out.push({ type: 'text', text: tok, marks: [{ type: 'link', attrs: { href: tok } }] })
     } else out.push(marked(tok.slice(1, -1), 'em'))
     rest = rest.slice(m.index + tok.length)
   }

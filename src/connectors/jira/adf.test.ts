@@ -129,6 +129,19 @@ describe('markdownToAdf', () => {
     )
   })
 
+  it('links a bare URL, the way pasting one into Jira would', () => {
+    // Obsidian renders a bare URL as a link, so it looks fine there — but the ADF we send
+    // had no link mark, and Jira showed dead text.
+    const url = 'https://claude.ai/share/e931ec35'
+    expect(markdownToAdf(url)).toEqual(doc(p(t(url, [{ type: 'link', attrs: { href: url } }]))))
+  })
+
+  it('does not double-link a URL already inside a Markdown link', () => {
+    expect(markdownToAdf('[text](https://x.test)')).toEqual(
+      doc(p(t('text', [{ type: 'link', attrs: { href: 'https://x.test' } }])))
+    )
+  })
+
   it('reads a link back', () => {
     expect(markdownToAdf('[text](https://x.test)')).toEqual(
       doc(p(t('text', [{ type: 'link', attrs: { href: 'https://x.test' } }])))
@@ -242,6 +255,8 @@ describe('adf round trip', () => {
     ['a hard break', 'one\ntwo'],
     ['inline marks', '**b** _i_ `c` ~~s~~'],
     ['a link', 'See [the doc](https://x.test) first.'],
+    ['a bare URL', 'https://claude.ai/share/e931ec35'],
+    ['a bare URL in a sentence', 'See https://x.test/a?b=1 for details.'],
     ['headings', '# One\n\n## Two\n\n### Three'],
     ['a bullet list', '- a\n- b\n- c'],
     ['an ordered list', '1. a\n2. b'],
