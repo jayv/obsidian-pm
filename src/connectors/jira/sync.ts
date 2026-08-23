@@ -14,7 +14,7 @@ import {
   typeForLevel
 } from './JiraModel'
 import { SYNC_FIELDS, type SyncField, fieldsEqual, threeWay } from './reconcile'
-import { markdownToAdf } from './adf'
+import { hasPlaceholder, markdownToAdf } from './adf'
 import { ensureMockBackend, mockBaseUrl } from './JiraMockServer'
 import type { JiraEpicConfig, JiraIssueProps, JiraProjectConfig, JiraShadow, JiraValueMap } from './types'
 import {
@@ -180,6 +180,10 @@ export async function resolveConflict(
   if (take.has('due')) patch.due = theirs.due
   if (take.has('assignees')) patch.assignees = [...theirs.assignees]
   if (take.has('milestone')) patch.type = theirs.milestone ? 'milestone' : 'task'
+  // Adopting Jira's description has to write the note's body. Missing this meant picking
+  // "Jira" changed nothing locally while the shadow moved to Jira's value — so the next
+  // sync saw the untouched local text as a fresh edit and pushed it back over Jira's.
+  if (take.has('description')) patch.description = theirs.description
   if (take.has('blockedBy')) {
     const idOf = new Map<string, string>()
     for (const f of flattenTasks(project.tasks)) {
@@ -193,6 +197,26 @@ export async function resolveConflict(
   Reflect.deleteProperty(jx, 'conflict')
   patch.ext = { ...task.ext, [JIRA_ID]: jx }
   await plugin.store.applyExternalUpdates(project, [{ taskId: task.id, patch }])
+}
+
+/**
+ * Why a description must not be written back, or null when it's safe.
+ *
+ * The conversion is lossy in one direction that matters: anything we couldn't represent
+ * came through as a placeholder, and pushing that text would replace the real node in
+ * Jira with the words describing it — an attachment becomes the literal string
+ * "[jira attachment <id>]" and the file is gone from the issue.
+ *
+ * Blanking a description Jira has is refused for the same reason: it's far more often a
+ * task whose body we failed to read than a deliberate deletion, and the cost of being
+ * wrong is someone else's writing.
+ */
+function unpushableDescription(mine: string, theirs: string): string | null {
+  if (hasPlaceholder(mine)) {
+    return "it holds a placeholder for something Jira has that Markdown can't — edit it in Jira instead"
+  }
+  if (!mine.trim() && theirs.trim()) return 'it is empty here and not in Jira — refusing to clear it'
+  return null
 }
 
 /**
@@ -1133,7 +1157,11 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
         }
       }
     }
-    if (tw.push.includes('description')) fields.description = markdownToAdf(t.description || '')
+    if (tw.push.includes('description')) {
+      const why = unpushableDescription(t.description || '', issue.description)
+      if (why) held.push(`description (${why})`)
+      else fields.description = markdownToAdf(t.description || '')
+    }
     if (tw.push.includes('assignees')) {
       const a = assigneeField(plugin, t, cfg)
       // `undefined` = a local assignee with no JIRA-user mapping. Don't silently drop

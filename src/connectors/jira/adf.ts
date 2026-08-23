@@ -45,6 +45,20 @@ function applyMarks(text: string, marks: AdfNode['marks']): string {
  * Obsidian's renderer can't supply, so `![](…)` would render as a broken image. A link
  * opens in the browser, where the session already exists.
  */
+/** Recognises the markers {@link placeholderFor} emits. */
+export const PLACEHOLDER_RE = /`\[jira [^\]]*\]`/
+
+/**
+ * True when the text carries a marker standing in for something we couldn't convert.
+ *
+ * Pushing such text would replace the real node in Jira with the words describing it —
+ * an attachment becomes the literal string "[jira attachment <id>]" and the file is gone
+ * from the description. Callers must refuse the write instead.
+ */
+export function hasPlaceholder(md: string): boolean {
+  return PLACEHOLDER_RE.test(md ?? '')
+}
+
 function placeholderFor(node: AdfNode): string {
   const attrs = node.attrs ?? {}
   const url = typeof attrs.url === 'string' ? attrs.url : typeof attrs.href === 'string' ? attrs.href : ''

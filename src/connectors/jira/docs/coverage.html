@@ -23,8 +23,8 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>215</strong> tests</span>
-    <span class="stat"><strong>54</strong> areas</span>
+    <span class="stat"><strong>222</strong> tests</span>
+    <span class="stat"><strong>56</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
 
@@ -136,6 +136,11 @@
 <tr><td>reads the inline marks back</td><td class="file">adf.test.ts</td></tr>
 <tr><td>reads a link back</td><td class="file">adf.test.ts</td></tr>
 <tr><td>stores "no description" the way Jira does, not as an empty doc</td><td class="file">adf.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">tables <span class="dir dir-unit">unit</span> <span class="muted">3</span></td></tr>
+    <tr><td>reads a Jira table as a Markdown table</td><td class="file">adf.test.ts</td></tr>
+<tr><td>escapes a bar inside a cell so it does not split the row</td><td class="file">adf.test.ts</td></tr>
+<tr><td>writes the first row back as header cells</td><td class="file">adf.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">adf round trip <span class="dir dir-unit">unit</span> <span class="muted">0</span></td></tr>
     
@@ -335,6 +340,12 @@
 <tr><td>leaves an untouched description alone — the round trip is not an edit</td><td class="file">sync.test.ts</td></tr>
 <tr><td>is not fooled when the round trip reformats — "* a" comes home as "- a"</td><td class="file">sync.test.ts</td></tr>
 <tr><td>flags a conflict when both sides changed it</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — descriptions must not damage Jira <span class="dir dir-both">both</span> <span class="muted">4</span></td></tr>
+    <tr><td>writes Jira’s description into the note when the conflict is resolved that way</td><td class="file">sync.test.ts</td></tr>
+<tr><td>does not push the local text back after adopting Jira’s</td><td class="file">sync.test.ts</td></tr>
+<tr><td>refuses to push text holding a placeholder, rather than destroying the attachment</td><td class="file">sync.test.ts</td></tr>
+<tr><td>refuses to clear a description Jira has</td><td class="file">sync.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">task link — new-task default + checkbox state <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">3</span></td></tr>
     <tr><td>defaults a brand-new task to synced</td><td class="file">taskLink.test.ts</td></tr>

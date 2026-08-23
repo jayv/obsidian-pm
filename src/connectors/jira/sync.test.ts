@@ -1238,3 +1238,96 @@ describe('jira sync — descriptions [both]', () => {
     expect(after.description).toBe('My version.') // local kept until resolved
   })
 })
+
+/*
+ * Two failures seen against a real instance, in one sequence: resolving a description
+ * conflict in Jira's favour changed nothing locally but moved the shadow, so the next sync
+ * pushed the untouched local text back over Jira's — and where the description held an
+ * attachment, Jira ended up with the literal words "[jira attachment <id>]" in place of
+ * the file.
+ */
+describe('jira sync — descriptions must not damage Jira [both]', () => {
+  async function conflicted(mine: string, theirs: string) {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    const task = localTask(project, { title: 'Doc', description: 'Original.' })
+    await exportTasks(plugin, project, [task.id])
+    await runSync(plugin, project)
+    const key = must(taskExt(task).key)
+    must(findTask(project.tasks, task.id)).description = mine
+    await mutateMock(plugin, (s) => {
+      const issue = mustIssue(s, key)
+      issue.fields.description = markdownToAdf(theirs)
+      issue.fields.updated = FUTURE
+    })
+    await runSync(plugin, project)
+    return { plugin, project, task, key }
+  }
+  const jiraText = async (plugin: ReturnType<typeof harness>['plugin'], key: string) =>
+    adfToMarkdown((await readMock(plugin)).getIssue(key)?.fields.description)
+
+  it('writes Jira’s description into the note when the conflict is resolved that way', async () => {
+    const { plugin, project, task } = await conflicted('Mine.', 'Theirs.')
+    expect(taskExt(must(findTask(project.tasks, task.id))).reconciled).toBe(false)
+
+    await resolveConflict(plugin, project, must(findTask(project.tasks, task.id)), ['description'])
+
+    expect(must(findTask(project.tasks, task.id)).description).toBe('Theirs.')
+  })
+
+  it('does not push the local text back after adopting Jira’s', async () => {
+    const { plugin, project, task, key } = await conflicted('Mine.', 'Theirs.')
+    await resolveConflict(plugin, project, must(findTask(project.tasks, task.id)), ['description'])
+
+    await runSync(plugin, project)
+
+    expect(await jiraText(plugin, key)).toBe('Theirs.')
+  })
+
+  it('refuses to push text holding a placeholder, rather than destroying the attachment', async () => {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    const task = localTask(project, { title: 'Doc' })
+    await exportTasks(plugin, project, [task.id])
+    const key = must(taskExt(task).key)
+    // What Jira has: a description whose attachment we can't represent.
+    await mutateMock(plugin, (s) => {
+      const issue = mustIssue(s, key)
+      issue.fields.description = {
+        type: 'doc',
+        version: 1,
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'See:' }] },
+          { type: 'mediaSingle', content: [{ type: 'media', attrs: { id: 'abc-123', type: 'file' } }] }
+        ]
+      }
+      issue.fields.updated = FUTURE
+    })
+    await runSync(plugin, project) // adopts it, placeholder and all
+    const local = must(findTask(project.tasks, task.id))
+    expect(local.description).toContain('[jira attachment abc-123]')
+
+    // Now edit the note around the placeholder — the realistic case, and the one that puts
+    // the description in the push set.
+    local.description = `Extra context.\n\n${local.description}`
+    await runSync(plugin, project)
+
+    // Reading Jira's own media node back through the converter shows a placeholder too, so
+    // the text form proves nothing here. What matters is the stored document: the media
+    // node is still a node, not the words describing it.
+    const stored = JSON.stringify((await readMock(plugin)).getIssue(key)?.fields.description)
+    expect(stored).toContain('mediaSingle')
+    expect(stored).not.toContain('jira attachment')
+  })
+
+  it('refuses to clear a description Jira has', async () => {
+    const { plugin, project, task, key } = await conflicted('', 'Theirs.')
+    await resolveConflict(plugin, project, must(findTask(project.tasks, task.id)), [])
+
+    await runSync(plugin, project)
+
+    expect(await jiraText(plugin, key)).toBe('Theirs.')
+  })
+})
