@@ -182,6 +182,18 @@ describe('tables', () => {
  * Jira unchanged. Anything less makes a description Jira-only, which it isn't.
  */
 describe('placeholders go back as the nodes they came from', () => {
+  it('links an attachment to its issue, so clicking it goes somewhere', () => {
+    const media = {
+      type: 'mediaSingle',
+      attrs: { layout: 'center' },
+      content: [{ type: 'media', attrs: { id: 'abc-123', type: 'file', alt: 'Shot.png' } }]
+    }
+    const md = adfToMarkdown({ type: 'doc', version: 1, content: [media] }, {}, 'https://acme.test/browse/ENG-1')
+    expect(md).toBe('[Shot.png](https://acme.test/browse/ENG-1#pm-media=abc-123&t=file&l=center)')
+    // And it still rebuilds: the fragment Jira ignores is what we read back.
+    expect(markdownToAdf(md).content?.[0]).toEqual(media)
+  })
+
   it('rebuilds an attachment, with its layout attributes', () => {
     const media = {
       type: 'mediaSingle',

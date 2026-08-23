@@ -197,12 +197,16 @@ function readXsrfCookie(headers: Record<string, string | string[] | undefined> |
 export class JiraClient {
   private readonly base: string
   private readonly auth: string
+  /** "https://site/browse" — where an issue is readable by a person, not by the API. */
+  private readonly browseBase: string
   /** Discovered custom-field id for "Start date" (JIRA has no built-in start field). */
   private startField: string | undefined
 
   constructor(creds: JiraCreds) {
     const site = creds.site.replace(/^https?:\/\//, '').replace(/\/+$/, '')
     this.base = creds.baseUrl ?? `https://${site}/rest/api/3`
+    // Where a human goes to see an issue — used to make attachment links clickable.
+    this.browseBase = site ? `https://${site}/browse` : ''
     this.auth = 'Basic ' + btoa(`${creds.email}:${creds.token}`)
   }
 
@@ -482,7 +486,7 @@ export class JiraClient {
       if (token) q.set('nextPageToken', token)
       const { data } = await this.req('GET', `/search/jql?${q.toString()}`)
       const page = (data ?? {}) as { issues?: unknown[]; nextPageToken?: string; isLast?: boolean }
-      for (const raw of page.issues ?? []) out.push(normalizeIssue(raw, this.startField))
+      for (const raw of page.issues ?? []) out.push(normalizeIssue(raw, this.startField, this.browseBase))
       if (page.isLast || !page.nextPageToken) break
       token = page.nextPageToken
     }
@@ -511,7 +515,7 @@ export class JiraClient {
   }
   async getIssue(key: string): Promise<JiraIssue | null> {
     const { data } = await this.req('GET', `/issue/${encodeURIComponent(key)}?fields=*navigable`)
-    return data ? normalizeIssue(data, this.startField) : null
+    return data ? normalizeIssue(data, this.startField, this.browseBase) : null
   }
 
   // ── Issue writes ─────────────────────────────────────────────────────────────────

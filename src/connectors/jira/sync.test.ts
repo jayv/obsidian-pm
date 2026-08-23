@@ -1311,7 +1311,7 @@ describe('jira sync — descriptions must not damage Jira [both]', () => {
     await runSync(plugin, project) // adopt it
 
     const local = must(findTask(project.tasks, task.id))
-    expect(local.description).toContain('jira-media:abc-123')
+    expect(local.description).toContain('pm-media=abc-123') // a link to the issue, not a dead scheme
     local.description = `Extra context.\n\n${local.description}`
     await runSync(plugin, project)
 

@@ -37,15 +37,6 @@ function applyMarks(text: string, marks: AdfNode['marks']): string {
 }
 
 /**
- * A node we can't represent. Rendered as a link when there's somewhere to point (an
- * attachment, an embedded page) and as a labelled marker otherwise — always something the
- * reader can act on, never a silent gap.
- *
- * Deliberately not an image embed for media: Jira attachment URLs need authentication that
- * Obsidian's renderer can't supply, so `![](…)` would render as a broken image. A link
- * opens in the browser, where the session already exists.
- */
-/**
  * Schemes for placeholders that can be turned back into the node they came from.
  *
  * An attachment carries its own identity, so it round-trips with no stored state: the
@@ -54,6 +45,8 @@ function applyMarks(text: string, marks: AdfNode['marks']): string {
  * or a macro that could be reconstructed from its name alone.
  */
 const MEDIA_SCHEME = 'jira-media:'
+/** Fragment that carries the media identity on an otherwise ordinary Jira URL. */
+const MEDIA_FRAGMENT = '#pm-media='
 const NODE_SCHEME = 'jira-node:'
 
 /** Nodes we couldn't express, kept so a push can put the originals back. */
@@ -80,8 +73,15 @@ function mediaOf(node: AdfNode): AdfNode | null {
   return (node.content ?? []).find((c) => c.type === 'media') ?? null
 }
 
-/** An attachment as a link carrying everything needed to rebuild the node. */
-function mediaLink(wrapper: AdfNode, media: AdfNode): string {
+/**
+ * An attachment as a link carrying everything needed to rebuild the node.
+ *
+ * When the issue's address is known the link points there, with the media identity in the
+ * fragment: clicking it opens the issue in a browser — where the attachment is visible and
+ * the session already exists — instead of doing nothing, which is what an unknown
+ * "jira-media:" scheme does. The fragment is ignored by Jira and read back on the way home.
+ */
+function mediaLink(wrapper: AdfNode, media: AdfNode, issueUrl?: string): string {
   const a = media.attrs ?? {}
   const params = new URLSearchParams()
   const pairs: [string, unknown][] = [
@@ -100,17 +100,27 @@ function mediaLink(wrapper: AdfNode, media: AdfNode): string {
   const q = params.toString()
   const name = typeof a.alt === 'string' && a.alt ? a.alt : 'attachment'
   const id = typeof a.id === 'string' ? a.id : ''
-  return `[${name}](${MEDIA_SCHEME}${id}${q ? `?${q}` : ''})`
+  const payload = `${id}${q ? `&${q}` : ''}`
+  return issueUrl
+    ? `[${name}](${issueUrl}${MEDIA_FRAGMENT}${payload})`
+    : `[${name}](${MEDIA_SCHEME}${id}${q ? `?${q}` : ''})`
 }
 
-function placeholderFor(node: AdfNode, stash?: AdfStash): string {
+/**
+ * A node we can't represent, as something the reader can act on and we can rebuild.
+ *
+ * Never an image embed for an attachment: Jira's media URLs need authentication Obsidian's
+ * renderer can't supply, so `![](…)` would render as a broken image. A link to the issue
+ * opens where the session already exists.
+ */
+function placeholderFor(node: AdfNode, stash?: AdfStash, issueUrl?: string): string {
   const attrs = node.attrs ?? {}
   const url = typeof attrs.url === 'string' ? attrs.url : typeof attrs.href === 'string' ? attrs.href : ''
   const name = typeof attrs.alt === 'string' ? attrs.alt : typeof attrs.text === 'string' ? attrs.text : node.type
   if (url) return `[${name}](${url})`
 
   const media = mediaOf(node)
-  if (media) return mediaLink(node, media)
+  if (media) return mediaLink(node, media, issueUrl)
 
   // Nothing about this node can be inferred from its name, so keep the original and
   // reference it by token. With nowhere to keep it, name it and let the caller refuse.
@@ -123,15 +133,15 @@ function placeholderFor(node: AdfNode, stash?: AdfStash): string {
   return `\`${NODE_SCHEME}${token}\``
 }
 
-function inline(nodes: AdfNode[] | undefined, stash?: AdfStash): string {
+function inline(nodes: AdfNode[] | undefined, stash?: AdfStash, issueUrl?: string): string {
   return (nodes ?? [])
     .map((n) => {
       if (n.type === 'text') return applyMarks(n.text ?? '', n.marks)
       if (n.type === 'hardBreak') return '\n'
       if (n.type === 'emoji') return typeof n.attrs?.text === 'string' ? n.attrs.text : ''
       if (n.type === 'mention') return typeof n.attrs?.text === 'string' ? n.attrs.text : ''
-      if (n.type === 'inlineCard') return placeholderFor(n, stash)
-      return n.content ? inline(n.content, stash) : placeholderFor(n, stash)
+      if (n.type === 'inlineCard') return placeholderFor(n, stash, issueUrl)
+      return n.content ? inline(n.content, stash, issueUrl) : placeholderFor(n, stash, issueUrl)
     })
     .join('')
 }
@@ -170,7 +180,7 @@ function tableToMarkdown(node: AdfNode, depth: number): string {
   return lines.join('\n')
 }
 
-function block(node: AdfNode, depth = 0, stash?: AdfStash): string {
+function block(node: AdfNode, depth = 0, stash?: AdfStash, issueUrl?: string): string {
   switch (node.type) {
     case 'paragraph':
       return inline(node.content)
@@ -202,7 +212,7 @@ function block(node: AdfNode, depth = 0, stash?: AdfStash): string {
     case 'mediaGroup':
       // Handled here rather than falling through: the wrapper carries the layout, and
       // descending into it would reach the media node without it.
-      return placeholderFor(node, stash)
+      return placeholderFor(node, stash, issueUrl)
     case 'panel':
       // A panel's body is ordinary content; a callout keeps the emphasis without inventing
       // syntax Jira can't express back.
@@ -218,8 +228,10 @@ function block(node: AdfNode, depth = 0, stash?: AdfStash): string {
       // With a stash, keep the node itself: it can then go back to Jira exactly as it
       // came. Without one — a read purely for display — descend instead, so the text
       // inside an unknown wrapper is at least visible.
-      if (stash) return placeholderFor(node, stash)
-      return node.content?.length ? (node.content ?? []).map((c) => block(c, depth)).join('\n') : placeholderFor(node)
+      if (stash) return placeholderFor(node, stash, issueUrl)
+      return node.content?.length
+        ? (node.content ?? []).map((c) => block(c, depth, undefined, issueUrl)).join('\n')
+        : placeholderFor(node, undefined, issueUrl)
   }
 }
 
@@ -227,13 +239,13 @@ function block(node: AdfNode, depth = 0, stash?: AdfStash): string {
  * Convert a description to Markdown. Accepts the ADF document, or a plain string for the
  * v2 API and for older issues whose description was never migrated.
  */
-export function adfToMarkdown(doc: unknown, stash?: AdfStash): string {
+export function adfToMarkdown(doc: unknown, stash?: AdfStash, issueUrl?: string): string {
   if (doc == null) return ''
   if (typeof doc === 'string') return doc.trim()
   const root = doc as AdfNode
   if (!Array.isArray(root.content)) return ''
   return root.content
-    .map((n) => block(n, 0, stash))
+    .map((n) => block(n, 0, stash, issueUrl))
     .join('\n\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
@@ -245,8 +257,8 @@ const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(~~[^~]+~~)|(\[[^\]]*\]\([^)]*\))|(_[^
 
 /** Split a line into ADF text nodes, applying the marks we can represent. */
 /** Rebuild the media node a jira-media link stands for. */
-function mediaFromLink(alt: string, href: string): AdfNode {
-  const [id, query] = href.slice(MEDIA_SCHEME.length).split('?')
+function mediaFromLink(alt: string, payload: string): AdfNode {
+  const [id, query] = payload.split(/[?&](.+)/)
   const q = new URLSearchParams(query ?? '')
   const attrs: Record<string, unknown> = { id, type: q.get('t') ?? 'file' }
   if (alt && alt !== 'attachment') attrs.alt = alt
@@ -347,7 +359,7 @@ function listNode(items: string[], ordered: boolean): AdfNode {
 
 /** A line that is nothing but a placeholder becomes the node it stands for. */
 function restoreLine(line: string, stash?: AdfStash): AdfNode | null {
-  const media = /^\[([^\]]*)\]\((jira-media:[^)]*)\)$/.exec(line)
+  const media = /^\[([^\]]*)\]\(\S*(?:jira-media:|#pm-media=)([^)]*)\)$/.exec(line)
   if (media) return mediaFromLink(media[1], media[2])
   const token = /^`jira-node:([A-Za-z0-9]+)`$/.exec(line)
   return (token && stash?.[token[1]]) || null

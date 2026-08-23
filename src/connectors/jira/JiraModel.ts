@@ -59,7 +59,7 @@ interface RawIssue {
 }
 
 /** `startFieldId` is the instance's "Start date" custom-field id (start has no built-in field). */
-export function normalizeIssue(raw: unknown, startFieldId?: string): JiraIssue {
+export function normalizeIssue(raw: unknown, startFieldId?: string, browseBase?: string): JiraIssue {
   const r = (raw ?? {}) as RawIssue
   const f = r.fields ?? {}
   const blockedBy: string[] = []
@@ -73,10 +73,14 @@ export function normalizeIssue(raw: unknown, startFieldId?: string): JiraIssue {
   const start = startFieldId ? (f[startFieldId] as string | null | undefined) : undefined
   const milestone = (r.properties?.[ISSUE_PROP] as { milestone?: boolean } | undefined)?.milestone === true
   const descriptionStash: AdfStash = {}
+  // An attachment link points at the issue so it opens somewhere useful; the media
+  // identity rides in the fragment. Without a site (the mock) it falls back to a scheme
+  // that still round-trips but isn't clickable.
+  const issueUrl = browseBase && r.key ? `${browseBase}/${r.key}` : undefined
   return {
     key: r.key ?? '',
     summary: f.summary ?? '',
-    description: adfToMarkdown(f.description, descriptionStash),
+    description: adfToMarkdown(f.description, descriptionStash, issueUrl),
     descriptionStash,
     status: f.status?.name ?? '',
     statusCategory: f.status?.statusCategory?.name ?? '',
