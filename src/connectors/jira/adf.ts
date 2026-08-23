@@ -80,6 +80,30 @@ function listItems(node: AdfNode, ordered: boolean, depth: number): string[] {
   })
 }
 
+/** A cell's text on one line — a Markdown table row can't contain block structure. */
+function cellText(cell: AdfNode, depth: number): string {
+  return (cell.content ?? [])
+    .map((c) => block(c, depth))
+    .join(' ')
+    .replace(/\s*\n+\s*/g, ' ')
+    .replace(/\|/g, '\\|') // a bar inside a cell would end it
+    .trim()
+}
+
+/**
+ * ADF table → a GitHub-style Markdown table. The first row becomes the header, which is
+ * what Jira's tables have and what Markdown requires; a table with no header row would
+ * otherwise have nowhere to put its separator.
+ */
+function tableToMarkdown(node: AdfNode, depth: number): string {
+  const rows = (node.content ?? []).filter((r) => r.type === 'tableRow')
+  if (!rows.length) return ''
+  const lines = rows.map((r) => `| ${(r.content ?? []).map((c) => cellText(c, depth)).join(' | ')} |`)
+  const width = (rows[0].content ?? []).length
+  lines.splice(1, 0, `| ${Array.from({ length: width }, () => '---').join(' | ')} |`)
+  return lines.join('\n')
+}
+
 function block(node: AdfNode, depth = 0): string {
   switch (node.type) {
     case 'paragraph':
@@ -105,6 +129,8 @@ function block(node: AdfNode, depth = 0): string {
         .join('\n')
     case 'rule':
       return '---'
+    case 'table':
+      return tableToMarkdown(node, depth)
     case 'panel':
       // A panel's body is ordinary content; a callout keeps the emphasis without inventing
       // syntax Jira can't express back.
@@ -185,6 +211,37 @@ function marked(text: string, mark: string): AdfNode {
   return { type: 'text', text, marks: [{ type: mark }] }
 }
 
+const TABLE_ROW = /^\s*\|(.*)\|\s*$/
+const TABLE_RULE = /^\s*\|[\s:|-]+\|\s*$/
+
+/** Split "| a | b |" into its cells, respecting an escaped bar. */
+function rowCells(line: string): string[] {
+  const inner = TABLE_ROW.exec(line)?.[1] ?? ''
+  return inner.split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, '|').trim())
+}
+
+/**
+ * A Markdown table becomes an ADF table, first row as the header — the shape
+ * {@link tableToMarkdown} produces, so a table survives the round trip intact.
+ *
+ * Requires the separator line: a lone "| a | b |" is just text with bars in it, and
+ * turning that into a one-row table would be a worse guess than leaving it alone.
+ */
+function tableNode(rows: string[][]): AdfNode {
+  return {
+    type: 'table',
+    attrs: { isNumberColumnEnabled: false, layout: 'default' },
+    content: rows.map((cells, row) => ({
+      type: 'tableRow',
+      content: cells.map((cell) => ({
+        type: row === 0 ? 'tableHeader' : 'tableCell',
+        attrs: {},
+        content: [paragraph(cell)]
+      }))
+    }))
+  }
+}
+
 function paragraph(text: string): AdfNode {
   return { type: 'paragraph', content: inlineNodes(text) }
 }
@@ -239,6 +296,17 @@ export function markdownToAdf(md: string): AdfNode {
 
     if (!line.trim()) {
       flush()
+      continue
+    }
+
+    if (TABLE_ROW.test(line) && i + 1 < lines.length && TABLE_RULE.test(lines[i + 1])) {
+      flush()
+      const rows = [rowCells(line)]
+      i++ // the separator carries no data
+      while (i + 1 < lines.length && TABLE_ROW.test(lines[i + 1]) && !TABLE_RULE.test(lines[i + 1])) {
+        rows.push(rowCells(lines[++i]))
+      }
+      content.push(tableNode(rows))
       continue
     }
 

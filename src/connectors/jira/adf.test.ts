@@ -138,6 +138,38 @@ describe('markdownToAdf', () => {
  * the trip home unchanged, every sync would see a remote edit nobody made and rewrite the
  * note — so these are the cases we're allowed to claim support for.
  */
+describe('tables', () => {
+  const cell = (text: string, header = false) => ({
+    type: header ? 'tableHeader' : 'tableCell',
+    attrs: {},
+    content: [{ type: 'paragraph', content: [{ type: 'text', text }] }]
+  })
+  const row = (...cells: unknown[]) => ({ type: 'tableRow', content: cells })
+
+  it('reads a Jira table as a Markdown table', () => {
+    const table = {
+      type: 'table',
+      content: [row(cell('Env', true), cell('Host', true)), row(cell('prod'), cell('a.example'))]
+    }
+    expect(adfToMarkdown({ type: 'doc', version: 1, content: [table] })).toBe(
+      '| Env | Host |\n| --- | --- |\n| prod | a.example |'
+    )
+  })
+
+  it('escapes a bar inside a cell so it does not split the row', () => {
+    const table = { type: 'table', content: [row(cell('a|b', true), cell('c', true))] }
+    expect(adfToMarkdown({ type: 'doc', version: 1, content: [table] })).toContain('| a\\|b | c |')
+  })
+
+  it('writes the first row back as header cells', () => {
+    const adf = markdownToAdf('| a | b |\n| --- | --- |\n| 1 | 2 |')
+    const rows = adf.content?.[0]?.content ?? []
+    expect(adf.content?.[0]?.type).toBe('table')
+    expect(rows[0]?.content?.map((c) => c.type)).toEqual(['tableHeader', 'tableHeader'])
+    expect(rows[1]?.content?.map((c) => c.type)).toEqual(['tableCell', 'tableCell'])
+  })
+})
+
 describe('adf round trip', () => {
   // The property the sync depends on. If a description that came from Jira doesn't survive
   // the trip home unchanged, every sync would see a remote edit nobody made and rewrite the
@@ -154,8 +186,10 @@ describe('adf round trip', () => {
     ['a quote', '> quoted'],
     ['a rule', '---'],
     ['a mixed document', '# Title\n\nSome **bold** text.\n\n- one\n- two\n\n```js\nconst a = 1\n```\n\n> note'],
-    // Not in the subset, so it can't be structured — but the words still reach Jira.
-    ['unsupported syntax, as plain text', '| a | b |']
+    ['a table', '| Env | Host |\n| --- | --- |\n| prod | a.example |\n| dev | b.example |'],
+    ['a table with formatting in a cell', '| Field | Note |\n| --- | --- |\n| **id** | see [doc](https://x.test) |'],
+    // Bars with no separator line aren't a table; leaving them as text beats guessing.
+    ['bars that are not a table', '| a | b |']
   ])('survives %s', (_name, md) => {
     expect(adfToMarkdown(markdownToAdf(md))).toBe(md)
   })
