@@ -1,4 +1,4 @@
-import { App, ButtonComponent, Modal } from 'obsidian'
+import { App, ButtonComponent, Component, MarkdownRenderer, Modal } from 'obsidian'
 
 /**
  * Two versions of one long field, side by side, big enough to actually read.
@@ -17,13 +17,29 @@ export class JiraTextCompareModal extends Modal {
       /** Marks which side the resolver currently has selected. */
       takeTheirs: boolean
       onPick: (takeTheirs: boolean) => void
+      /** For resolving links and embeds while previewing. */
+      sourcePath?: string
     }
   ) {
     super(app)
   }
 
+  /** Raw by default: the question is which text to keep, and rendering hides the
+   *  differences that decide it — a stray placeholder, a lost bullet, trailing space. */
+  private preview = false
+  private rendered = new Component()
+
+  onClose(): void {
+    this.rendered.unload()
+  }
+
   onOpen(): void {
     this.modalEl.addClass('pm-modal', 'pm-modal--compare')
+    // A fresh component per render, so a previous preview's children are cleaned up
+    // rather than leaking listeners across toggles.
+    this.rendered.unload()
+    this.rendered = new Component()
+    this.rendered.load()
     const el = this.contentEl
     el.empty()
     el.createEl('h3', { text: this.opts.title })
@@ -37,6 +53,13 @@ export class JiraTextCompareModal extends Modal {
     this.side(cols, 'Jira', this.opts.theirs, this.opts.takeTheirs, true)
 
     const footer = el.createDiv('pm-modal-footer')
+    new ButtonComponent(footer)
+      .setButtonText(this.preview ? 'Show raw text' : 'Show preview')
+      .setTooltip(this.preview ? 'Compare the text as stored' : 'Compare the text as it renders')
+      .onClick(() => {
+        this.preview = !this.preview
+        this.onOpen()
+      })
     footer.createDiv('pm-footer-spacer')
     new ButtonComponent(footer).setButtonText('Close').onClick(() => this.close())
   }
@@ -53,8 +76,12 @@ export class JiraTextCompareModal extends Modal {
         this.opts.onPick(takeTheirs)
         this.close()
       })
-    // A pre block, not rendered Markdown: which version to keep is a question about the
-    // text itself, and rendering would hide exactly the differences that decide it.
-    col.createEl('pre', { cls: 'pm-compare-text', text: text || '(empty)' })
+    if (!this.preview) {
+      col.createEl('pre', { cls: 'pm-compare-text', text: text || 'Empty' })
+      return
+    }
+    const body = col.createDiv('pm-compare-text pm-compare-text--rendered')
+    if (!text.trim()) body.setText('Empty')
+    else void MarkdownRenderer.render(this.app, text, body, this.opts.sourcePath ?? '', this.rendered)
   }
 }

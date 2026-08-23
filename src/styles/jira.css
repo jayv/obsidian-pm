@@ -468,6 +468,16 @@
   font-size: 12px;
   line-height: 1.5;
 }
+/* Rendered Markdown needs its own flow — pre-wrap would keep the source's line breaks. */
+.pm-compare-text--rendered {
+  white-space: normal;
+}
+.pm-compare-text--rendered :first-child {
+  margin-top: 0;
+}
+.pm-compare-text--rendered :last-child {
+  margin-bottom: 0;
+}
 .pm-jira-merge-compare {
   margin-left: 8px;
   padding: 0 6px;

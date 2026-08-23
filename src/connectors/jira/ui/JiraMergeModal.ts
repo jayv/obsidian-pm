@@ -160,6 +160,7 @@ export class JiraMergeModal extends Modal {
             mine: it.mine.description,
             theirs: it.theirs.description,
             takeTheirs: choice.get(field) ?? false,
+            sourcePath: it.task.filePath ?? '',
             onPick: (take) => {
               choice.set(field, take)
               this.render()
