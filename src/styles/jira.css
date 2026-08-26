@@ -488,3 +488,12 @@
   cursor: pointer;
   font-size: 11px;
 }
+
+/* Copy buttons beside a task's issue key: flat, and only as loud as they need to be. */
+.pm-prop-jira .clickable-icon {
+  padding: 2px 4px;
+  color: var(--pm-text-muted);
+}
+.pm-prop-jira .clickable-icon:hover {
+  color: var(--pm-text);
+}

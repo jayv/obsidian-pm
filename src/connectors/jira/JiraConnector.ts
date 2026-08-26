@@ -1,5 +1,5 @@
 /* eslint-disable obsidianmd/ui/sentence-case -- "Jira" is a product name */
-import { ButtonComponent, Notice } from 'obsidian'
+import { ButtonComponent, ExtraButtonComponent, Notice } from 'obsidian'
 import type PMPlugin from '../../main'
 import type { Project, Task, TaskBadge } from '../../types'
 import type { Connector, ConnectorDescriptor } from '../registry'
@@ -164,13 +164,27 @@ export class JiraConnector implements Connector {
         else unlinkTask(task, cfg)
       })
       if (ext.key) {
+        const key = ext.key
         const site = serverById(this.plugin, cfg.serverId)?.site
-        const a = wrap.createEl('a', {
-          text: ` ${ext.key}`,
-          cls: 'pm-prop-jira-key',
-          href: site ? `https://${site}/browse/${ext.key}` : '#'
-        })
+        const url = site ? `https://${site}/browse/${key}` : ''
+        const a = wrap.createEl('a', { text: ` ${key}`, cls: 'pm-prop-jira-key', href: url || '#' })
         a.setAttr('target', '_blank')
+
+        // Two things get pasted often and they aren't interchangeable: the key for a
+        // commit message or a chat, the URL for anywhere that wants a link. Distinct
+        // icons rather than two clipboards, and each tooltip names what lands on the
+        // clipboard so there's no guessing which is which.
+        const copy = (what: string, value: string, icon: string): void => {
+          new ExtraButtonComponent(wrap)
+            .setIcon(icon)
+            .setTooltip(`Copy ${what}: ${value}`)
+            .onClick(() => {
+              void navigator.clipboard.writeText(value)
+              new Notice(`Copied ${value}`)
+            })
+        }
+        copy('the issue key', key, 'hash')
+        if (url) copy('the link', url, 'link')
       }
       if (ext.reconciled === false) wrap.createSpan({ text: ' ⚠ out of sync', cls: 'pm-jira-limbo-badge' })
       return wrap
