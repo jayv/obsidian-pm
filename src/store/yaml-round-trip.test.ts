@@ -121,6 +121,46 @@ describe('task round-trip', () => {
     expect(task.description).toBe('User-written note.')
   })
 
+  /*
+   * The navigation links are frontmatter properties, not body lines. The body is the
+   * description and nothing else, because the Jira connector pushes it to the issue: a
+   * generated line left in it becomes text in Jira, and a strip rule loose enough to
+   * always catch it eats the user's own writing (see YamlParser.test.ts).
+   */
+  it('writes the parent link as a property, leaving the body to the description alone', () => {
+    const project = makeProject('P', 'Projects/P.md')
+    const parent = makeTask({ id: 'parent', title: 'Parent', filePath: 'Projects/P_tasks/parent.md' })
+    const child = makeTask({ id: 'child', description: 'Just my notes.' })
+    const md = serializeTask(child, project, parent)
+
+    expect(md).toContain('parent: "[[parent|Parent]]"')
+    const { body } = parseFrontmatter(md)
+    expect(body).toBe('Just my notes.') // no Parent: line, no ## Subtasks section
+  })
+
+  it('writes the project link when the task is top level', () => {
+    const md = serializeTask(makeTask({ id: 't' }), makeProject('My Project', 'Projects/my-project.md'), null)
+    expect(md).toContain('project: "[[my-project|My Project]]"')
+    expect(md).not.toContain('parent: "[[')
+  })
+
+  it('writes the subtask links as a property list', () => {
+    const project = makeProject('P', 'Projects/P.md')
+    const sub = makeTask({ id: 'sub', title: 'Sub', filePath: 'Projects/P_tasks/sub.md' })
+    const md = serializeTask(makeTask({ id: 'p', subtasks: [sub] }), project, null)
+    expect(md).toContain('subtasks:')
+    expect(md).toContain('"[[sub|Sub]]"')
+  })
+
+  it("round-trips a description containing the user's own '## Subtasks' heading", () => {
+    // This is what used to be destroyed: everything from the heading to the end of the
+    // body was cut on read and never written back.
+    const description = 'Design notes.\n\n## Subtasks\n- split the parser\n\n## Rollout\nStaged behind a flag.'
+    const sub = makeTask({ id: 'sub', title: 'Sub', filePath: 'Projects/P_tasks/sub.md' })
+    const { task } = roundTripTask(makeTask({ id: 'p', description, subtasks: [sub] }))
+    expect(task.description).toBe(description)
+  })
+
   it('defaults missing fields to safe values', () => {
     const frontmatter: Record<string, unknown> = { id: 't-x' }
     const { task } = hydrateTaskFromFile(frontmatter, '', 'path.md')
