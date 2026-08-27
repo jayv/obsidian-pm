@@ -1174,7 +1174,12 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
         held.push('parent (the new parent is too deep for the Jira hierarchy)')
       } else {
         fields.parent = { key: desiredParent }
-        if (ct.typeName.toLowerCase() !== issue.issueType.toLowerCase()) {
+        // Compare levels, not names. `ct.typeName` is the *preferred* type for a level
+        // (Task before Story before Bug), so matching on the name would rewrite a Bug into
+        // a Task on any reparent — losing the type, its workflow and its fields — even
+        // when the level was already right. Only an actual level change is a type change.
+        const currentLevel = typePlan.levelOf(issue.issueType)
+        if (currentLevel !== undefined && currentLevel !== ct.level) {
           fields.issuetype = { name: ct.typeName }
         }
       }

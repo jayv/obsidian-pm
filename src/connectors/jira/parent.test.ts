@@ -148,3 +148,37 @@ describe('jira parent hierarchy [O→J]', () => {
     expect(await parentKeyOf(plugin, childKey)).not.toBe(EPIC)
   })
 })
+
+describe('jira issue types are preserved [O→J]', () => {
+  it('does not turn a Bug into a Task when it moves to another parent at the same level', async () => {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    await runSync(plugin, project) // seeds the root issue in the mock
+    // Make the root an Initiative, so top-level tasks are Epics and *their* children sit
+    // at the standard level where a Bug can live.
+    await mutateMock(plugin, (s) => {
+      must(s.getIssue(EPIC)).fields.issuetype = { name: 'Initiative', subtask: false }
+    })
+
+    const a = localTask(project, { title: 'Epic A' })
+    const b = localTask(project, { title: 'Epic B' })
+    const bug = localTask(project, { title: 'Crash on boot' }, a.id)
+    await exportTasks(plugin, project, [a.id, b.id, bug.id])
+    const bugKey = must(taskExt(bug).key)
+    expect(await issueTypeOf(plugin, bugKey)).toBe('Task') // created as the level's default
+    // Someone retypes it in Jira, as they do.
+    await mutateMock(plugin, (s) => {
+      must(s.getIssue(bugKey)).fields.issuetype = { name: 'Bug', subtask: false }
+    })
+
+    // Move it under B: same level, so only the parent should change.
+    const moved = must(findTask(project.tasks, bug.id))
+    deleteTaskFromTree(project.tasks, bug.id)
+    addTaskToTree(project.tasks, moved, b.id)
+    await runSync(plugin, project)
+
+    expect(await parentKeyOf(plugin, bugKey)).toBe(taskExt(b).key)
+    expect(await issueTypeOf(plugin, bugKey)).toBe('Bug') // not rewritten to the level's default
+  })
+})

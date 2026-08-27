@@ -23,8 +23,8 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>231</strong> tests</span>
-    <span class="stat"><strong>58</strong> areas</span>
+    <span class="stat"><strong>232</strong> tests</span>
+    <span class="stat"><strong>59</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
 
@@ -243,6 +243,9 @@
 <tr><td>changes the Jira issue type when a reparent moves the task down a level</td><td class="file">parent.test.ts</td></tr>
 <tr><td>leaves the issue type alone when the new parent is at the same level</td><td class="file">parent.test.ts</td></tr>
 <tr><td>holds a task whose parent became unsynced instead of silently re-rooting it</td><td class="file">parent.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira issue types are preserved <span class="dir dir-OJ">O→J</span> <span class="muted">1</span></td></tr>
+    <tr><td>does not turn a Bug into a Task when it moves to another parent at the same level</td><td class="file">parent.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">threeWay merge (single shadow base) <span class="dir dir-unit">unit</span> <span class="muted">9</span></td></tr>
     <tr><td>does nothing when both sides match the base</td><td class="file">reconcile.test.ts</td></tr>

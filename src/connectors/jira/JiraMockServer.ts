@@ -83,6 +83,9 @@ const ISSUE_TYPES = [
   { id: '2', name: 'Epic', hierarchyLevel: 1, subtask: false },
   { id: '3', name: 'Story', hierarchyLevel: 0, subtask: false },
   { id: '4', name: 'Task', hierarchyLevel: 0, subtask: false },
+  // A second standard type at the same level, so tests can tell "wrong level" apart from
+  // "not the type we'd have picked".
+  { id: '6', name: 'Bug', hierarchyLevel: 0, subtask: false },
   { id: '5', name: 'Sub-task', hierarchyLevel: -1, subtask: true }
 ]
 
