@@ -83,6 +83,43 @@ describe('JiraMockServer + real JiraClient (full HTTP path) [HTTP]', () => {
     expect((await client.getIssue(aKey))?.blockedBy).toEqual([])
   })
 
+  /*
+   * The one fact in the whole link path that has to come from outside the codebase.
+   *
+   * `createLink` and this server's POST route both have to decide which key goes in
+   * `inwardIssue` and which in `outwardIssue`. When they agreed with each other and BOTH
+   * disagreed with Jira, every other link test still passed — and real Jira got every
+   * dependency reversed. This pins the raw POST → GET pairing, with no meaning attached
+   * and no client involved, to what a live instance actually did:
+   *
+   *   POST { inwardIssue: A, outwardIssue: B }
+   *     → GET B shows { inwardIssue: A }   and Jira renders that as "B is blocked by A"
+   *     → GET A shows { outwardIssue: B }  and renders as "A blocks B"
+   *
+   * So the payload's OUTWARD issue is the blocked one. Read the slot names as the roles
+   * they describe and you get it exactly backwards.
+   */
+  it('models the live POST → GET pairing for a Blocks link (raw payload, no client)', async () => {
+    const store = new JiraMockStore(emptyDb('DEMO'), () => '2026-06-27T12:00:00.000+0000')
+    store.registerStatus('To Do')
+    await connect(store)
+    const a = store.createIssue({ issuetype: { name: 'Story' }, summary: 'A' }).key
+    const b = store.createIssue({ issuetype: { name: 'Story' }, summary: 'B' }).key
+
+    const res = await requestUrl({
+      url: `http://127.0.0.1:${server.port}/rest/api/3/issueLink`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: { name: 'Blocks' }, inwardIssue: { key: a }, outwardIssue: { key: b } })
+    })
+    expect(res.status).toBe(201)
+
+    type Entry = { inwardIssue?: { key: string }; outwardIssue?: { key: string } }
+    const linksOf = (key: string): Entry[] => (store.getIssue(key)?.fields.issuelinks as Entry[]) ?? []
+    expect(linksOf(b).map((l) => l.inwardIssue?.key)).toEqual([a])
+    expect(linksOf(a).map((l) => l.outwardIssue?.key)).toEqual([b])
+  })
+
   it('paginates GET /search/jql via nextPageToken (current Cloud endpoint)', async () => {
     const store = new JiraMockStore(emptyDb('DEMO'), () => '2026-06-27T12:00:00.000+0000')
     store.registerStatus('To Do')

@@ -254,10 +254,14 @@ function route(store: JiraMockStore, method: string, path: string, url: URL, bod
   }
 
   // POST /issueLink (dependencies) — body: { type, inwardIssue, outwardIssue }.
+  // The slots are the opposite way round from how they read: a live instance given
+  // `inwardIssue: A, outwardIssue: B` produces a link that B renders as "is blocked by A".
+  // Mirroring the connector's own (wrong) assumption here is what hid the bug — route and
+  // client cancelled out, so every link test passed while real Jira got the link reversed.
   if (method === 'POST' && path === '/issueLink') {
     const b = safeParse(body) as { inwardIssue?: { key?: string }; outwardIssue?: { key?: string } } | null
-    const blocked = b?.inwardIssue?.key // the "is blocked by" side
-    const blocker = b?.outwardIssue?.key // the "blocks" side
+    const blocked = b?.outwardIssue?.key
+    const blocker = b?.inwardIssue?.key
     if (!blocked || !blocker || !store.getIssue(blocked) || !store.getIssue(blocker)) {
       return { status: 404, body: { errorMessages: ['issueLink endpoint(s) not found'] } }
     }

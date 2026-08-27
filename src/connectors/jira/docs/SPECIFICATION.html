@@ -263,6 +263,9 @@ id="toc-issue-normalization-normalizeissueraw-startfieldid-browsebase">6.
 Issue normalization
 (<code>normalizeIssue(raw, startFieldId?, browseBase?)</code>)</a>
 <ul>
+<li><a href="#a-link-direction-blocks"
+id="toc-a-link-direction-blocks">6.1a Link direction
+(<code>Blocks</code>)</a></li>
 <li><a href="#description-conversion-adf.ts"
 id="toc-description-conversion-adf.ts">6.1 Description conversion
 (<code>adf.ts</code>)</a></li>
@@ -736,8 +739,10 @@ name doesn’t misfire.) - <code>getProperty(key, propKey)</code> →
 undefined. - <code>setProperty(key, propKey, value)</code> →
 <code>PUT …/properties/{propKey}</code> body = value → ok. -
 <code>createLink(blockedKey, blockerKey)</code> →
-<code>POST /issueLink {type:{name:'Blocks'}, inwardIssue:{key:blockedKey}, outwardIssue:{key:blockerKey}}</code>
-(blocked “is blocked by” blocker). - <code>deleteLink(id)</code> →
+<code>POST /issueLink {type:{name:'Blocks'}, inwardIssue:{key:blockerKey}, outwardIssue:{key:blockedKey}}</code>.
+<strong>The slots are the opposite way round from how they read</strong>
+— see §6.1a; having them the intuitive way round wrote every dependency
+into Jira reversed. - <code>deleteLink(id)</code> →
 <code>DELETE /issueLink/{id}</code>. - <code>setJiraApiDebug(on)</code>
 — module-level flag for §5.1 logging.</p>
 <hr />
@@ -756,6 +761,30 @@ description = adfToMarkdown(fields.description, descriptionStash, issueUrl)  // 
 descriptionStash = { token → AdfNode }   // nodes Markdown can&#39;t hold, kept verbatim
 blockedBy = keys of issuelinks where type.inward === &#39;is blocked by&#39; (inwardIssue.key),
 blockLinks = those links with their { id, key }</code></pre>
+<h3 id="a-link-direction-blocks">6.1a Link direction
+(<code>Blocks</code>)</h3>
+<p>The single fact the whole dependency path rests on, and it cannot be
+derived from the field names — it was read off a live instance, one link
+seen from both ends:</p>
+<pre><code>POST /issueLink { type:{name:&#39;Blocks&#39;}, inwardIssue: A, outwardIssue: B }
+
+GET B → issuelinks: [{ id, type, inwardIssue:  { key: A } }]   Jira renders: B &quot;is blocked by&quot; A
+GET A → issuelinks: [{ id, type, outwardIssue: { key: B } }]   Jira renders: A &quot;blocks&quot; B</code></pre>
+<p>So, on <strong>read</strong>, an entry naming the other end under
+<code>inwardIssue</code> means <em>this</em> issue is blocked by it (an
+<code>outwardIssue</code> entry is the mirror — this issue blocks that
+one, which is that issue’s blocker relationship, not ours). And on
+<strong>write</strong>, the blocked issue goes in
+<code>outwardIssue</code> and its blocker in <code>inwardIssue</code> —
+the reverse of what “inward = the is blocked by side” suggests.</p>
+<p>Reading the slots as the roles they describe put
+<code>blockedKey</code> in <code>inwardIssue</code>, which reversed
+every dependency the connector wrote. The local server’s POST route
+mirrored the same assumption, so route and client cancelled: the round
+trip was self-consistent, every link test passed, and only real Jira
+disagreed. The raw POST → GET pairing above is now pinned by its own
+test, with no client involved and no meaning attached, so the two can no
+longer be wrong together.</p>
 <p><code>issueUrl = browseBase &amp;&amp; key ?</code>{browseBase}/{key}<code>: undefined</code>
 — the client passes its <code>https://{site}/browse</code> base so
 attachment links can point at something openable (§6.1).</p>
@@ -1497,10 +1526,15 @@ covered):</strong> writes are refused as XSRF through
 <strong>priority scheme</strong>, not the instance’s priorities; the
 “Start date” field may be absent, on a later issue type, or reported in
 a different envelope; the instance-wide <code>/issuetype</code> list
-repeats names at different hierarchy levels. Every one passed the suite
-beforehand because the mock had been written to match the connector’s
-assumptions — it now models these shapes (§13), and each fix was
-verified by reverting it and watching its test fail.</p>
+repeats names at different hierarchy levels;
+<strong><code>inwardIssue</code>/<code>outwardIssue</code> on a
+<code>Blocks</code> link mean the opposite of what they read
+like</strong> (§6.1a), so every dependency was written to Jira reversed
+— and the local server had been given the same assumption, so the
+mistake was invisible to the suite in both directions at once. Every one
+passed the suite beforehand because the mock had been written to match
+the connector’s assumptions — it now models these shapes (§13), and each
+fix was verified by reverting it and watching its test fail.</p>
 <p><strong>Residual (still unproven without a real instance):</strong>
 company- vs team-managed <code>parent</code>/“Epic Link” on other
 project styles; rate-limits (failures surface as conflict, no backoff);

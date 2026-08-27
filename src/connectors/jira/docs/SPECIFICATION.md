@@ -312,7 +312,7 @@ All of the createmeta readers accept whichever envelope Cloud returns — a pagi
   false if none/!ok. (Callers pass the persisted status id so a rename/duplicate name doesn't misfire.)
 - `getProperty(key, propKey)` → `GET …/properties/{propKey}` → `.value` or undefined.
 - `setProperty(key, propKey, value)` → `PUT …/properties/{propKey}` body = value → ok.
-- `createLink(blockedKey, blockerKey)` → `POST /issueLink {type:{name:'Blocks'}, inwardIssue:{key:blockedKey}, outwardIssue:{key:blockerKey}}` (blocked "is blocked by" blocker).
+- `createLink(blockedKey, blockerKey)` → `POST /issueLink {type:{name:'Blocks'}, inwardIssue:{key:blockerKey}, outwardIssue:{key:blockedKey}}`. **The slots are the opposite way round from how they read** — see §6.1a; having them the intuitive way round wrote every dependency into Jira reversed.
 - `deleteLink(id)` → `DELETE /issueLink/{id}`.
 - `setJiraApiDebug(on)` — module-level flag for §5.1 logging.
 
@@ -334,6 +334,31 @@ descriptionStash = { token → AdfNode }   // nodes Markdown can't hold, kept ve
 blockedBy = keys of issuelinks where type.inward === 'is blocked by' (inwardIssue.key),
 blockLinks = those links with their { id, key }
 ```
+
+### 6.1a Link direction (`Blocks`)
+
+The single fact the whole dependency path rests on, and it cannot be derived from the
+field names — it was read off a live instance, one link seen from both ends:
+
+```
+POST /issueLink { type:{name:'Blocks'}, inwardIssue: A, outwardIssue: B }
+
+GET B → issuelinks: [{ id, type, inwardIssue:  { key: A } }]   Jira renders: B "is blocked by" A
+GET A → issuelinks: [{ id, type, outwardIssue: { key: B } }]   Jira renders: A "blocks" B
+```
+
+So, on **read**, an entry naming the other end under `inwardIssue` means *this* issue is
+blocked by it (an `outwardIssue` entry is the mirror — this issue blocks that one, which is
+that issue's blocker relationship, not ours). And on **write**, the blocked issue goes in
+`outwardIssue` and its blocker in `inwardIssue` — the reverse of what "inward = the is
+blocked by side" suggests.
+
+Reading the slots as the roles they describe put `blockedKey` in `inwardIssue`, which
+reversed every dependency the connector wrote. The local server's POST route mirrored the
+same assumption, so route and client cancelled: the round trip was self-consistent, every
+link test passed, and only real Jira disagreed. The raw POST → GET pairing above is now
+pinned by its own test, with no client involved and no meaning attached, so the two can no
+longer be wrong together.
 
 `issueUrl = browseBase && key ? `{browseBase}/{key}` : undefined` — the client passes its
 `https://{site}/browse` base so attachment links can point at something openable (§6.1).
@@ -861,7 +886,10 @@ hardcoded.
 XSRF through `requestUrl` (§5.1.1); a project accepts only its **priority scheme**, not
 the instance's priorities; the "Start date" field may be absent, on a later issue type,
 or reported in a different envelope; the instance-wide `/issuetype` list repeats names at
-different hierarchy levels. Every one passed the suite beforehand because the mock had
+different hierarchy levels; **`inwardIssue`/`outwardIssue` on a `Blocks` link mean the
+opposite of what they read like** (§6.1a), so every dependency was written to Jira
+reversed — and the local server had been given the same assumption, so the mistake was
+invisible to the suite in both directions at once. Every one passed the suite beforehand because the mock had
 been written to match the connector's assumptions — it now models these shapes
 (§13), and each fix was verified by reverting it and watching its test fail.
 

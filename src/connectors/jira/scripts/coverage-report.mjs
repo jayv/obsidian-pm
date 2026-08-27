@@ -134,7 +134,7 @@ const RISKS = [
   [
     'MED',
     'Mock fidelity',
-    "Every live bug so far passed the suite because the mock had been written to match the connector's assumptions. It now models real instance shapes (priority schemes, a missing Start date field, createmeta envelope variants, XSRF-refused writes, foreign issue types at wrong levels) and each fix was verified by reverting it, but any NEW endpoint the mock hand-rolls carries the same risk until checked against a real payload."
+    "Every live bug so far passed the suite because the mock had been written to match the connector's assumptions. It now models real instance shapes (priority schemes, a missing Start date field, createmeta envelope variants, XSRF-refused writes, foreign issue types at wrong levels, and the issuelink POST-to-GET pairing) and each fix was verified by reverting it, but any NEW endpoint the mock hand-rolls carries the same risk until checked against a real payload. The sharpest case so far: the mock's link route mirrored the connector's own reading of inwardIssue/outwardIssue, so client and server cancelled out and every link test passed while real Jira received every dependency reversed. Facts that can only come from a real instance now get a test that pins the raw wire behaviour with no client involved."
   ],
   [
     'MED',

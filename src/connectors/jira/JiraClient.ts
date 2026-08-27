@@ -536,10 +536,18 @@ export class JiraClient {
 
   /** Create a "Blocks" link: `blockedKey` is blocked by `blockerKey` (its predecessor). */
   async createLink(blockedKey: string, blockerKey: string): Promise<boolean> {
+    // Which key goes in which slot is NOT what it reads like, and getting it wrong writes
+    // the dependency into Jira backwards. Observed on a live instance (one link, seen from
+    // both ends): a POST of `inwardIssue: A, outwardIssue: B` produces a link that issue B
+    // renders as "is blocked by A" — B's own view carries A under `inwardIssue`.
+    //
+    // So the BLOCKED issue is the payload's `outwardIssue`, and its blocker is the
+    // `inwardIssue`. Reading the slot names as the roles they describe ("inward" = the
+    // "is blocked by" side) is the trap: it is the opposite way round.
     const { status } = await this.req('POST', '/issueLink', {
       type: { name: 'Blocks' },
-      inwardIssue: { key: blockedKey }, // "is blocked by"
-      outwardIssue: { key: blockerKey } // "blocks"
+      inwardIssue: { key: blockerKey },
+      outwardIssue: { key: blockedKey }
     })
     return status >= 200 && status < 300
   }
