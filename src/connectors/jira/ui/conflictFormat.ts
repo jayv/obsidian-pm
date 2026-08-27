@@ -16,6 +16,7 @@ export const FIELD_LABEL: Record<SyncField, string> = {
   assignees: 'Assignee',
   milestone: 'Type',
   description: 'Description',
+  parent: 'Parent',
   blockedBy: 'Blocked by'
 }
 
@@ -24,6 +25,8 @@ export function formatField(settings: LabelSettings, field: SyncField, s: JiraSh
   switch (field) {
     case 'title':
       return s.title || '—'
+    case 'parent':
+      return s.parent || '(top level)'
     case 'description':
       // A description can be pages long; the resolver shows a row per field, so give it a
       // recognisable first line rather than a wall of prose.

@@ -5,7 +5,7 @@ import type { Project, Task } from '../../../types'
 import { flattenTasks } from '../../../store/TaskTreeOps'
 import { safeAsync } from '../../../utils'
 import { type SyncField, conflictFields } from '../reconcile'
-import { resolveConflict, shadowOf } from '../sync'
+import { localParentKey, resolveConflict, shadowOf } from '../sync'
 import type { JiraShadow } from '../types'
 import { taskExt } from '../types'
 import { FIELD_LABEL, formatField } from './conflictFormat'
@@ -73,7 +73,7 @@ export class JiraMergeModal extends Modal {
     for (const f of flattenTasks(this.project.tasks)) {
       const ext = taskExt(f.task)
       if (ext.reconciled !== false || !ext.conflict) continue
-      const mine = shadowOf(f.task, keyOf)
+      const mine = shadowOf(f.task, keyOf, localParentKey(this.project, f.task.id))
       const theirs = ext.conflict.theirs
       const fields = conflictFields(mine, ext.shadow, theirs)
       if (!fields.length) continue // stale flag (no diffs) — self-heals on the next sync

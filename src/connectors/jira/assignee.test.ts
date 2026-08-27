@@ -17,6 +17,7 @@ import {
   exportTasks,
   fetchEpicStories,
   importStories,
+  localParentKey,
   renameAcrossProjects,
   resolveConflict,
   runSync,
@@ -178,7 +179,8 @@ describe('jira sync — assignee conflicts [both]', () => {
     // Reproduce the merge editor's split: only fields WE changed that still differ are decisions.
     const t = must(findTask(projA.tasks, ax.id))
     const ext = taskExt(t)
-    const fields = conflictFields(shadowOf(t), ext.shadow, must(ext.conflict).theirs)
+    const mine = shadowOf(t, undefined, localParentKey(projA, t.id))
+    const fields = conflictFields(mine, ext.shadow, must(ext.conflict).theirs)
     const decisions = fields.filter((f) => !f.defaultTakeTheirs).map((f) => f.field)
     const autoTheirs = fields.filter((f) => f.defaultTakeTheirs).map((f) => f.field)
     expect(decisions).toEqual(['assignees']) // only the contested field

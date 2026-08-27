@@ -16,7 +16,7 @@ import {
 import { SYNC_FIELDS, type SyncField, canonicalDescription, fieldsEqual, threeWay } from './reconcile'
 import { markdownToAdf, unrestorablePlaceholders, type AdfStash } from './adf'
 import { ensureMockBackend, mockBaseUrl } from './JiraMockServer'
-import type { JiraEpicConfig, JiraIssueProps, JiraProjectConfig, JiraShadow, JiraValueMap } from './types'
+import type { JiraEpicConfig, JiraIssueProps, JiraProjectConfig, JiraShadow, JiraTaskExt, JiraValueMap } from './types'
 import {
   CONFIG_PROP,
   ISSUE_PROP,
@@ -99,7 +99,7 @@ export function hasConflicts(project: Project): boolean {
  * `keyOf` (task id → JIRA key) to capture dependencies as the JIRA keys this task is
  * "blocked by"; without it `blockedBy` is empty (callers that set it explicitly).
  */
-export function shadowOf(task: Task, keyOf?: Map<string, string>): JiraShadow {
+export function shadowOf(task: Task, keyOf?: Map<string, string>, parentKey = ''): JiraShadow {
   return {
     title: task.title,
     status: task.status,
@@ -109,6 +109,7 @@ export function shadowOf(task: Task, keyOf?: Map<string, string>): JiraShadow {
     assignees: [...task.assignees],
     milestone: task.type === 'milestone',
     description: task.description || '',
+    parent: parentKey,
     blockedBy: keyOf ? desiredBlockerKeys(task, keyOf) : []
   }
 }
@@ -118,15 +119,33 @@ function shadowEqual(a: JiraShadow, b: JiraShadow): boolean {
   return SYNC_FIELDS.every((f) => fieldsEqual(a[f], b[f], f))
 }
 
+/**
+ * The JIRA key a task's position in the local tree implies: its parent task's key, or the
+ * mapped root's for a top-level task. '' when the parent exists locally but isn't synced —
+ * there's no key to compare, so the field can't be reconciled yet.
+ */
+export function localParentKey(project: Project, taskId: string): string {
+  const flat = flattenTasks(project.tasks)
+  const me = flat.find((f) => f.task.id === taskId)
+  if (!me) return ''
+  if (!me.parentId) return projectCfg(project)?.epicId ?? ''
+  const parent = flat.find((f) => f.task.id === me.parentId)
+  return (parent ? taskExt(parent.task).key : '') ?? ''
+}
+
 function withJiraKey(
   task: Task,
   key: string,
   keyOf: Map<string, string>,
   cfg: JiraProjectConfig,
   startField = '',
-  plugin: PMPlugin
+  plugin: PMPlugin,
+  parentKey = ''
 ): Record<string, unknown> {
-  const shadow = shadowOf(task, keyOf)
+  // `parentKey` is the parent the issue was created under. Recording it matters: with a
+  // blank parent in the baseline, a later local reparent has neither side matching the base
+  // and the merge reads a plain move as a conflict.
+  const shadow = shadowOf(task, keyOf, parentKey)
   // Same reasoning as the assignee below: with no start field discovered the date was
   // never sent, so don't record it as synced — leave it pending instead of losing it.
   if (!startField) shadow.start = ''
@@ -195,11 +214,29 @@ export async function resolveConflict(
     }
     patch.dependencies = theirs.blockedBy.map((k) => idOf.get(k)).filter((id): id is string => Boolean(id))
   }
-  const jx: Record<string, unknown> = { ...ext, shadow: theirs }
+  // Taking Jira's parent is a move, not a field write. When its target isn't a task here
+  // the move can't be made, so the baseline keeps OUR parent — otherwise the next sync
+  // would read our unchanged position as a local edit and push our hierarchy back over
+  // Jira's, quietly undoing the move the user just accepted.
+  const shadow: JiraShadow = { ...theirs }
+  let moveTo: string | null | undefined
+  if (take.has('parent')) {
+    const target = theirs.parent === projectCfg(project)?.epicId ? '' : theirs.parent
+    const targetId = target ? findTaskByKey(project, target)?.id : undefined
+    if (target && !targetId) shadow.parent = localParentKey(project, task.id)
+    else moveTo = targetId ?? null
+  }
+  const jx: Record<string, unknown> = { ...ext, shadow }
   Reflect.deleteProperty(jx, 'reconciled')
   Reflect.deleteProperty(jx, 'conflict')
   patch.ext = { ...task.ext, [JIRA_ID]: jx }
   await plugin.store.applyExternalUpdates(project, [{ taskId: task.id, patch }])
+  if (moveTo !== undefined) await plugin.store.moveTask(project, task.id, moveTo)
+}
+
+/** The local task linked to a JIRA key, if any. */
+function findTaskByKey(project: Project, key: string): Task | undefined {
+  return flattenTasks(project.tasks).find((f) => taskExt(f.task).key === key)?.task
 }
 
 /**
@@ -529,7 +566,10 @@ async function issueToTask(
   // Baseline for future field-level diffs. `blockedBy` is taken straight from the
   // issue (JIRA keys); the local `task.dependencies` are wired up by the caller after
   // all tasks exist, so they aren't available here.
-  ensureTaskExt(task).shadow = { ...shadowOf(task), blockedBy: [...issue.blockedBy] }
+  ensureTaskExt(task).shadow = {
+    ...shadowOf(task, undefined, issue.parentKey ?? cfg.epicId),
+    blockedBy: [...issue.blockedBy]
+  }
   return task
 }
 
@@ -715,7 +755,11 @@ export async function linkStoriesToTasks(
       due: issue.due ?? '',
       assignees: assigneeName ? [assigneeName] : [],
       milestone: issue.milestone,
-      blockedBy: [] // deps reconcile on a later normal sync, not at match time
+      // Hierarchy and deps both reconcile on a later normal sync, not at match time: the
+      // local tree isn't walked here, so a parent key on one side only would read as a
+      // move and make every match conflict.
+      parent: '',
+      blockedBy: []
     }
     const mine: JiraShadow = { ...shadowOf(task), blockedBy: [] }
     const differs = SYNC_FIELDS.some((f) => !fieldsEqual(mine[f], theirs[f], f))
@@ -811,7 +855,10 @@ export async function exportTasks(
     plan.levelByKey.set(key, ct.level)
     keyOf.set(f.task.id, key)
     createdIds.add(f.task.id)
-    patches.push({ taskId: f.task.id, patch: { ext: withJiraKey(f.task, key, keyOf, cfg, startField, plugin) } })
+    patches.push({
+      taskId: f.task.id,
+      patch: { ext: withJiraKey(f.task, key, keyOf, cfg, startField, plugin, parentKey) }
+    })
   }
   for (const f of flat) {
     const blockedKey = createdIds.has(f.task.id) ? keyOf.get(f.task.id) : undefined
@@ -926,6 +973,26 @@ export async function cleanJira(
   return { cleaned, failed, epic }
 }
 
+/**
+ * Is `key` the mapped root, or somewhere beneath it? Walks the issue's parent chain
+ * upwards, one GET per hop. Used when an inbound move names a parent we don't hold
+ * locally, to tell the two cases apart: still inside the root's tree (just not imported
+ * here — a conflict for the user to resolve) versus gone from it altogether (the task
+ * can't live here any more). An unreadable issue counts as outside: whatever it is, it
+ * isn't part of a tree we can see.
+ */
+async function underRoot(client: JiraClient, key: string, rootKey: string): Promise<boolean> {
+  let cur: string | null = key
+  // Jira's hierarchy is a handful of levels deep; the cap is a cycle guard, not a limit.
+  for (let hops = 0; cur && hops < 8; hops++) {
+    if (cur === rootKey) return true
+    const issue = await client.getIssue(cur)
+    if (!issue) return false
+    cur = issue.parentKey
+  }
+  return false
+}
+
 // ── Sync cycle (all reads/writes over the HTTP client) ────────────────────────
 
 export interface SyncResult {
@@ -941,6 +1008,8 @@ export interface SyncResult {
   skippedNoParent: string[]
   /** Issues under the epic not yet a local task and not ignored — offered for import. */
   newIssues: JiraIssue[]
+  /** Tasks archived locally because their issue left the mapped root's subtree in Jira. */
+  archived: number
 }
 
 /** Options for {@link runSync}. */
@@ -969,7 +1038,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   const full = opts.full !== false
   const r = await ready(plugin, project)
   const empty = { changed: false, jiraCreated: 0, jiraUpdated: 0, obsidianUpdated: 0, membersAdded: 0, conflicts: 0 }
-  if (!r || !r.cfg.epicId) return { ...empty, skippedTooDeep: [], skippedNoParent: [], newIssues: [] }
+  if (!r || !r.cfg.epicId) return { ...empty, skippedTooDeep: [], skippedNoParent: [], newIssues: [], archived: 0 }
   const { client, cfg } = r
   const progress = opts.onProgress ?? ((): void => undefined)
   progress('Reading Jira metadata…')
@@ -1012,13 +1081,15 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
 
   let jiraUpdated = 0
   const patches: { taskId: string; patch: Partial<Task> }[] = []
+  /** Reparents adopted from Jira, applied after the patches (a move rewrites the tree). */
+  const moves: { taskId: string; parentId: string | null }[] = []
 
   // 1. Create opted-in keyless tasks (parent-first). Only `sync === true` ones.
-  const toCreate = flat.filter((f) => !taskExt(f.task).key && taskExt(f.task).sync === true).length
+  const toCreate = flat.filter((f) => !taskExt(f.task).key && taskExt(f.task).sync === true && !f.task.archived).length
   let createdSoFar = 0
   for (const f of flat) {
     const ext = taskExt(f.task)
-    if (ext.key || ext.sync !== true) continue
+    if (ext.key || ext.sync !== true || f.task.archived) continue
     progress('Creating issues in Jira', createdSoFar++, toCreate)
     typePlan = typePlan ?? (await buildTypePlan(client, cfg)) // lazy: only when creating
     const parentId = parentOf.get(f.task.id) ?? null
@@ -1042,7 +1113,10 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     keyOf.set(f.task.id, key)
     createdKeys.add(key)
     createdIds.add(f.task.id)
-    patches.push({ taskId: f.task.id, patch: { ext: withJiraKey(f.task, key, keyOf, cfg, startField, plugin) } })
+    patches.push({
+      taskId: f.task.id,
+      patch: { ext: withJiraKey(f.task, key, keyOf, cfg, startField, plugin, parentKey) }
+    })
   }
   // Newly created issues have no links yet → add their dependencies.
   for (const f of flat) {
@@ -1070,7 +1144,11 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       const t = byKey.get(k)
       if (!t) return false
       const ext = taskExt(t)
-      return ext.reconciled === false || !ext.shadow || !shadowEqual(shadowOf(t, keyOf), ext.shadow)
+      // Same parent key the reconcile loop computes — without it every linked task reads as
+      // dirty (shadow parent vs a blank one) and an idle tick fetches the whole tree.
+      const pid = parentOf.get(t.id) ?? null
+      const pk = (pid ? keyOf.get(pid) : cfg.epicId) ?? ''
+      return ext.reconciled === false || !ext.shadow || !shadowEqual(shadowOf(t, keyOf, pk), ext.shadow)
     })
     const missing = dirtyKeys.filter((k) => !have.has(k))
     all = missing.length ? [...changed, ...(await client.issuesByKeys(missing))] : changed
@@ -1088,25 +1166,53 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     newIssues.push(issue) // under the epic, not local, not created this run, not ignored
   }
 
-  const linked = flat.filter((f) => taskExt(f.task).sync && taskExt(f.task).key).length
+  const linked = flat.filter((f) => taskExt(f.task).sync && taskExt(f.task).key && !f.task.archived).length
   let checked = 0
+  let archived = 0
+  /**
+   * Take a task out of the active sync set because its issue is no longer under the mapped
+   * root. Archiving (rather than unlinking) is deliberate: the Jira key stays, so the task
+   * is never mistaken for a new local one and recreated in Jira as a duplicate.
+   */
+  const archiveOutOfScope = (task: Task, ext: JiraTaskExt, why: string): void => {
+    archived++
+    patches.push({
+      taskId: task.id,
+      patch: { archived: true, ext: { ...task.ext, [JIRA_ID]: { ...ext, outOfScope: true } } }
+    })
+    console.warn(`[PM] Jira: ${ext.key} ${why} — archived "${task.title}" locally.`)
+  }
   for (const f of flat) {
     const t = f.task
     const ext = taskExt(t)
     if (!ext.sync || !ext.key) continue
+    // Archived = out of the active set, whoever archived it. The one exception is a task
+    // WE archived for leaving the root's scope: if the issue is back under the root, take
+    // it out of the archive and resume. A hand-archived task has no marker and stays put.
+    if (t.archived) {
+      if (full && ext.outOfScope && issueByKey.has(ext.key)) {
+        const jx: Record<string, unknown> = { ...ext }
+        Reflect.deleteProperty(jx, 'outOfScope')
+        patches.push({ taskId: t.id, patch: { archived: false, ext: { ...t.ext, [JIRA_ID]: jx } } })
+      }
+      continue
+    }
     progress('Reconciling tasks', checked++, linked)
     const issue = issueByKey.get(ext.key)
-    if (!issue) continue // linked issue not under this epic — leave the task untouched
-    const mine = shadowOf(t, keyOf)
-    // Hierarchy is driven from Obsidian: the issue's Jira parent must match the task's
-    // parent here. `parent` isn't one of the merged shadow fields, so compare it against
-    // the issue directly — and treat a mismatch as divergence, or a pure reparent (no
-    // other edit) would be skipped below and never reach Jira.
+    if (!issue) {
+      // A full sync crawls the whole subtree, so a linked issue missing from it has left
+      // the mapped root — moved to another project, or deleted. On an incremental tick the
+      // same absence only means "unchanged since the watermark", which is the normal case.
+      if (full) archiveOutOfScope(t, ext, `is no longer under ${cfg.epicId}`)
+      continue
+    }
+    // The parent is a merged field like any other, so a move made in Jira is adopted
+    // rather than reverted. It's held as a Jira key, the one form both sides can name.
     const localParentId = parentOf.get(t.id) ?? null
     const desiredParent = localParentId ? keyOf.get(localParentId) : cfg.epicId
     const parentUnsynced = Boolean(localParentId) && !desiredParent
-    const parentDiverged = parentUnsynced || (Boolean(desiredParent) && issue.parentKey !== desiredParent)
-    const localDiverged = !ext.shadow || !shadowEqual(mine, ext.shadow) || parentDiverged
+    const mine = shadowOf(t, keyOf, desiredParent ?? '')
+    const localDiverged = !ext.shadow || !shadowEqual(mine, ext.shadow)
 
     // An attachment written before the links pointed at the issue reads as unchanged —
     // both forms rebuild the same node, so the comparison rightly sees no difference and
@@ -1132,10 +1238,39 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       due: issue.due ?? '',
       assignees: assigneeName ? [assigneeName] : [],
       milestone: issue.milestone,
+      // Every issue here was fetched from inside the root's subtree, so a missing `parent`
+      // means it hangs off the root by the legacy "Epic Link" rather than "it has no
+      // parent" — read it as the root, or that would look like a move to top level.
+      parent: issue.parentKey ?? cfg.epicId,
       blockedBy: [...issue.blockedBy]
     }
-    const baseShadow = ext.shadow ?? theirs // legacy task with no shadow: treat JIRA as the base
+    // A shadow written before `parent` was a synced field has no parent baseline, so the
+    // merge can't tell which side moved. Read it as "we didn't": the old code pushed the
+    // local parent on every sync, so a Jira-side move that was being reverted each cycle
+    // now lands instead of being reverted once more.
+    const legacyParent = (ext.shadow as Partial<JiraShadow> | undefined)?.parent
+    const baseShadow: JiraShadow = ext.shadow ? { ...ext.shadow, parent: legacyParent ?? mine.parent } : theirs // legacy task with no shadow: treat JIRA as the base
     const tw = threeWay(mine, baseShadow, theirs)
+
+    // Jira's parent resolved to a local move, before anything is written. It lands one of
+    // four ways: a task here (move it), the root itself (top level), a parent still inside
+    // the root's tree but not imported here (nothing to move to — held for the resolver),
+    // or a parent outside the tree entirely, which archives the task. That last case is
+    // why this runs ahead of the pushes: the issue isn't ours to write to any more.
+    let moveTo: string | null | undefined
+    let parentHeld = ''
+    if (tw.adopt.includes('parent')) {
+      const target = theirs.parent === cfg.epicId ? '' : theirs.parent
+      const targetId = target ? byKey.get(target)?.id : undefined
+      if (!target || targetId) {
+        moveTo = targetId ?? null
+      } else if (await underRoot(client, target, cfg.epicId)) {
+        parentHeld = `parent (it moved under ${target} in Jira, which isn't a task in this project)`
+      } else {
+        archiveOutOfScope(t, ext, `moved under ${target}, outside ${cfg.epicId}`)
+        continue
+      }
+    }
 
     if (tw.conflicts.length) {
       conflicts++
@@ -1162,8 +1297,9 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       if (p) fields.priority = priorityRef(p)
       else held.push(`priority "${t.priority}" (no Jira value mapped with "→ Jira")`)
     }
-    if (parentUnsynced) held.push("parent (the parent task isn't synced to Jira yet)")
-    else if (parentDiverged && desiredParent) {
+    if (tw.push.includes('parent') && parentUnsynced) {
+      held.push("parent (the parent task isn't synced to Jira yet)")
+    } else if (tw.push.includes('parent') && desiredParent) {
       // Depth decides the Jira type, so a move across levels is a type change too: a task
       // that was top-level got created as the root's child type, and Jira rejects an issue
       // whose parent isn't exactly one level above it. Send the type with the parent so
@@ -1184,6 +1320,9 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
         }
       }
     }
+    // An inbound move with nowhere to land: surfaced as a conflict, so the baseline never
+    // advances as if it had been applied.
+    if (parentHeld) held.push(parentHeld)
     if (tw.push.includes('description')) {
       const why = unpushableDescription(t.description || '', issue.description, ext.adfStash)
       if (why) held.push(`description (${why})`)
@@ -1244,6 +1383,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     if (tw.adopt.includes('milestone')) patch.type = theirs.milestone ? 'milestone' : 'task'
     // Writing this rewrites the note's body — applyExternalUpdates picks the full write.
     if (tw.adopt.includes('description')) patch.description = theirs.description
+    if (moveTo !== undefined) moves.push({ taskId: t.id, parentId: moveTo })
     // Adopt JIRA's dependency set only when it's the side that changed (map keys → local ids).
     if (tw.adopt.includes('blockedBy')) {
       patch.dependencies = theirs.blockedBy.map((k) => byKey.get(k)?.id).filter((tid): tid is string => Boolean(tid))
@@ -1261,6 +1401,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       assignees: a('assignees') ? [...theirs.assignees] : [...mine.assignees],
       milestone: a('milestone') ? theirs.milestone : mine.milestone,
       description: a('description') ? theirs.description : mine.description,
+      parent: a('parent') ? theirs.parent : mine.parent,
       blockedBy: a('blockedBy') ? [...theirs.blockedBy] : [...mine.blockedBy]
     }
     patch.ext = withMergedShadow(t, merged, tw.adopt.includes('description') ? issue.descriptionStash : undefined)
@@ -1273,11 +1414,15 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   // Publish local mapping changes to the epic (status + priority only).
   await pushEpicConfig(client, cfg)
   await plugin.store.applyExternalUpdates(project, patches)
+  // After the patches: a move rewrites the moved task's file and both parents' bodies, so
+  // it must not race the field writes for the same notes.
+  for (const m of moves) await plugin.store.moveTask(project, m.taskId, m.parentId)
   return {
     changed: patches.length > 0,
     jiraCreated: createdIds.size,
     jiraUpdated,
     obsidianUpdated,
+    archived,
     membersAdded: project.teamMembers.length - membersBefore,
     conflicts,
     skippedTooDeep,

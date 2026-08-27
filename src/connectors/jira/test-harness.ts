@@ -4,7 +4,7 @@
 import type PMPlugin from '../../main'
 import type { Project, Task } from '../../types'
 import { DEFAULT_PRIORITIES, DEFAULT_STATUSES, makeProject, makeTask } from '../../types'
-import { addTaskToTree, flattenTasks, updateTaskInTree } from '../../store/TaskTreeOps'
+import { addTaskToTree, deleteTaskFromTree, findTask, flattenTasks, updateTaskInTree } from '../../store/TaskTreeOps'
 import type { ProjectStore } from '../../store/ProjectStore'
 import { loadMock, saveMock, type JiraMockStore, type MockIssueRecord } from './JiraMock'
 import { assigneeMapFor, ensureProjectCfg, ensureTaskExt, type JiraAssignee, type JiraProjectConfig } from './types'
@@ -21,6 +21,7 @@ type ConnectorStore = Pick<
   | 'loadAllProjects'
   | 'renameAssignee'
   | 'loadTaskBody'
+  | 'moveTask'
 >
 
 /** A clearly-future JIRA timestamp, for simulating teammate edits past any watermark. */
@@ -49,6 +50,14 @@ class FakeStore implements ConnectorStore {
   loadAllProjects(folder: string): Promise<Project[]> {
     void folder
     return Promise.resolve(this.projects)
+  }
+  /** Reparent in the in-memory tree, as the real store does on disk. */
+  moveTask(project: Project, taskId: string, parentId: string | null): Promise<void> {
+    const task = findTask(project.tasks, taskId)
+    if (!task) return Promise.resolve()
+    deleteTaskFromTree(project.tasks, taskId)
+    addTaskToTree(project.tasks, task, parentId)
+    return Promise.resolve()
   }
   /** Harness tasks live in memory, so their description is already whatever it is. */
   loadTaskBody(task: Task): Promise<void> {

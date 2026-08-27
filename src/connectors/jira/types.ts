@@ -69,6 +69,12 @@ export interface JiraShadow {
   milestone: boolean
   /** The note's body, as Markdown. Jira stores it as an ADF tree; see adf.ts. */
   description: string
+  /**
+   * The Jira key of the parent issue, or '' for a task directly under the mapped root.
+   * A key rather than a local id: it's the only form both sides can agree on, and the
+   * baseline has to survive a task being re-imported with a new local id.
+   */
+  parent: string
   /** JIRA keys this task is "blocked by" (dependencies), for the link 3-way merge. */
   blockedBy: string[]
 }
@@ -95,6 +101,12 @@ export interface JiraTaskExt {
    * the words describing it. Attachments aren't here: their link carries its own id.
    */
   adfStash?: Record<string, unknown>
+  /**
+   * Set when the task was archived automatically because its issue left the mapped root's
+   * subtree in Jira. It marks the archive as ours, so the task can be brought back if the
+   * issue returns — a hand-archived task stays archived and out of the sync set.
+   */
+  outOfScope?: boolean
 }
 
 /**

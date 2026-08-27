@@ -119,6 +119,7 @@ export class JiraConnector implements Connector {
         `  Updated in Obsidian: ${r.obsidianUpdated}`,
         `  Created Team Members: ${r.membersAdded}`,
         `  Conflicts: ${r.conflicts}`,
+        ...(r.archived ? [`  Archived (moved out of the Jira root): ${r.archived}`] : []),
         ...(r.skippedTooDeep.length ? [`  Too deeply nested for Jira (not created): ${r.skippedTooDeep.length}`] : []),
         ...(r.skippedNoParent.length ? [`  Waiting on an unsynced parent: ${r.skippedNoParent.length}`] : [])
       ]

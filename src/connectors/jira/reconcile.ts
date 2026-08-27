@@ -23,6 +23,7 @@ export const SYNC_FIELDS: SyncField[] = [
   'assignees',
   'milestone',
   'description',
+  'parent',
   'blockedBy'
 ]
 

@@ -11,6 +11,7 @@ const base: JiraShadow = {
   assignees: ['Alice'],
   milestone: false,
   description: '',
+  parent: 'ENG-1',
   blockedBy: []
 }
 const snap = (over: Partial<JiraShadow> = {}): JiraShadow => ({ ...base, ...over })
