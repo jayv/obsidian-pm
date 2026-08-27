@@ -257,9 +257,16 @@ id="toc-rest-client-jiraclient.ts">5. REST client
 <li><a href="#methods-exact-paths" id="toc-methods-exact-paths">5.2
 Methods (exact paths)</a></li>
 </ul></li>
-<li><a href="#issue-normalization-normalizeissueraw-startfieldid"
-id="toc-issue-normalization-normalizeissueraw-startfieldid">6. Issue
-normalization (<code>normalizeIssue(raw, startFieldId?)</code>)</a></li>
+<li><a
+href="#issue-normalization-normalizeissueraw-startfieldid-browsebase"
+id="toc-issue-normalization-normalizeissueraw-startfieldid-browsebase">6.
+Issue normalization
+(<code>normalizeIssue(raw, startFieldId?, browseBase?)</code>)</a>
+<ul>
+<li><a href="#description-conversion-adf.ts"
+id="toc-description-conversion-adf.ts">6.1 Description conversion
+(<code>adf.ts</code>)</a></li>
+</ul></li>
 <li><a href="#local-server-jiramock.ts-jiramockserver.ts"
 id="toc-local-server-jiramock.ts-jiramockserver.ts">7. Local server
 (<code>JiraMock.ts</code>, <code>JiraMockServer.ts</code>)</a>
@@ -299,6 +306,9 @@ gate</a></li>
 <li><a href="#deletes-ontaskdeleted-ignoreondelete"
 id="toc-deletes-ontaskdeleted-ignoreondelete">8.7 Deletes
 (<code>onTaskDeleted</code> → <code>ignoreOnDelete</code>)</a></li>
+<li><a href="#hierarchy-parent-issue-types-and-leaving-the-roots-scope"
+id="toc-hierarchy-parent-issue-types-and-leaving-the-roots-scope">8.8
+Hierarchy: parent, issue types, and leaving the root’s scope</a></li>
 </ul></li>
 <li><a href="#import-export-linking" id="toc-import-export-linking">9.
 Import / Export / linking</a>
@@ -460,12 +470,20 @@ lastSeenUpdated?: string</code></pre>
 sync?: boolean           // opt-in to sync
 reconciled?: boolean     // false ⇒ unresolved conflict (local &amp; JIRA both changed)
 conflict?: JiraConflict  // JIRA snapshot captured at conflict time; drives the resolve UI
-shadow?: JiraShadow      // last-synced values; the common base for the 3-way merge</code></pre>
-<pre><code>JiraShadow   = { title; status; priority; start; due; assignees: string[]; milestone: boolean; blockedBy: string[] }
+shadow?: JiraShadow      // last-synced values; the common base for the 3-way merge
+adfStash?: Record&lt;string, AdfNode&gt;  // description nodes Markdown can&#39;t hold, kept verbatim (§6.1)
+outOfScope?: boolean     // archived by us because the issue left the root&#39;s subtree (§8.8)</code></pre>
+<pre><code>JiraShadow   = { title; status; priority; start; due; assignees: string[]; milestone: boolean;
+                 description: string; parent: string; blockedBy: string[] }
 JiraConflict = { theirs: JiraShadow }   // JIRA side at detection; the live diff is recomputed in the UI</code></pre>
 <p><code>blockedBy</code> holds the JIRA keys the task is “blocked by”
 (its dependencies), so links are merged field-by-field like everything
 else.</p>
+<p><code>description</code> is the note’s body as Markdown (Jira stores
+an ADF tree — §6.1). <code>parent</code> is the <strong>JIRA
+key</strong> of the parent issue, or the mapped root’s key for a
+top-level task: the only name both sides can agree on, and one that
+survives a task being re-imported with a new local id.</p>
 <h3 id="entity-property-bags-stored-on-jira-issues">3.5 Entity-property
 bags (stored on JIRA issues)</h3>
 <ul>
@@ -484,6 +502,17 @@ sibling keys), <code>serverById</code>.</li>
 <li><code>getToken/setToken</code> — secret keyed
 <code>jira:{serverId}</code> in <code>connectorSecrets</code>.</li>
 <li><code>getDebug/setDebug</code> — the API debug-logging flag.</li>
+<li><code>assigneeMapFor(plugin, serverId)</code> — the
+<strong>live</strong> mapping list for one server (mutate, then
+<code>saveSettings</code>). Held per server, not per project: an
+<code>accountId</code> only means anything on the site it came from, but
+within a site a person is the same person on every project.
+<code>sharedAssignees(plugin, cfg)</code> returns that list and folds in
+any mappings still on the project (an older vault, or a config just
+adopted from the epic), then clears <code>cfg.assigneeMap</code> and
+persists immediately — so the project file stops carrying its own copy
+and a restart can’t lose the mapping from both places. Folding never
+clobbers: a name already mapped centrally wins.</li>
 <li><code>projectCfg(project)</code> /
 <code>ensureProjectCfg(project)</code> (creates a default config; runs
 <code>sanitizeValueMap</code> to drop legacy regex entries — entries
@@ -712,8 +741,10 @@ undefined. - <code>setProperty(key, propKey, value)</code> →
 <code>DELETE /issueLink/{id}</code>. - <code>setJiraApiDebug(on)</code>
 — module-level flag for §5.1 logging.</p>
 <hr />
-<h2 id="issue-normalization-normalizeissueraw-startfieldid">6. Issue
-normalization (<code>normalizeIssue(raw, startFieldId?)</code>)</h2>
+<h2
+id="issue-normalization-normalizeissueraw-startfieldid-browsebase">6.
+Issue normalization
+(<code>normalizeIssue(raw, startFieldId?, browseBase?)</code>)</h2>
 <p>Maps a raw JIRA issue → <code>JiraIssue</code>:</p>
 <pre><code>key, summary, status (fields.status.name), statusCategory,
 priority (fields.priority.name), assigneeAccountId, assigneeName,
@@ -721,8 +752,60 @@ start = fields[startFieldId] (if id known), due = fields.duedate,
 updated, parentKey = fields.parent.key,
 issueType = fields.issuetype.name,
 isSubtask = fields.issuetype.subtask === true || /sub-?task/i.test(name),
+description = adfToMarkdown(fields.description, descriptionStash, issueUrl)  // §6.1
+descriptionStash = { token → AdfNode }   // nodes Markdown can&#39;t hold, kept verbatim
 blockedBy = keys of issuelinks where type.inward === &#39;is blocked by&#39; (inwardIssue.key),
 blockLinks = those links with their { id, key }</code></pre>
+<p><code>issueUrl = browseBase &amp;&amp; key ?</code>{browseBase}/{key}<code>: undefined</code>
+— the client passes its <code>https://{site}/browse</code> base so
+attachment links can point at something openable (§6.1).</p>
+<h3 id="description-conversion-adf.ts">6.1 Description conversion
+(<code>adf.ts</code>)</h3>
+<p>Jira holds a description as <strong>ADF</strong> (Atlassian Document
+Format — a node tree), Obsidian holds it as the note’s Markdown body.
+One module converts both ways, and it is the only place that knows the
+format:</p>
+<ul>
+<li><code>adfToMarkdown(doc, stash?, issueUrl?)</code> → Markdown</li>
+<li><code>markdownToAdf(md, stash?)</code> → an ADF
+<code>doc</code></li>
+</ul>
+<p>Covered both ways: paragraphs, headings,
+<code>strong</code>/<code>em</code>/<code>code</code>/<code>strike</code>
+marks, links, bare URLs (autolinked), bullet and ordered lists, code
+blocks (with language), block quotes, panels, rules, hard breaks,
+mentions, emoji, and <strong>tables</strong> (kept as tables, not
+flattened).</p>
+<p><strong>Placeholders.</strong> Anything the conversion can’t
+represent in Markdown becomes a placeholder, and the placeholder is what
+puts the original node back on the way out:</p>
+<ul>
+<li><strong>Attachments</strong> round-trip <em>statelessly</em>,
+through the link itself:
+<code>[Shot.png](https://site/browse/ENG-1#pm-media=&lt;id&gt;&amp;c=&lt;collection&gt;&amp;w=&lt;width&gt;&amp;t=&lt;type&gt;&amp;l=&lt;layout&gt;)</code>.
+Every attribute Jira needs is in the URL, so no side table is required,
+and the link opens the issue in a browser rather than dying on an
+unknown scheme. (An older <code>jira-media:</code> form is still read,
+and upgraded in place — see §8.2.)</li>
+<li><strong>Everything else</strong> (an expand block, a macro) is
+stashed verbatim in <code>task.ext.jira.adfStash</code> under a
+<code>jira-node:&lt;token&gt;</code> link, and restored from there.</li>
+</ul>
+<p><code>unrestorablePlaceholders(md, stash)</code> names any
+placeholder that can no longer be put back (its stash entry is gone, or
+its link was mangled by editing). Only that blocks a push — see
+<code>unpushableDescription</code> in §8.2.</p>
+<p><strong>Reading vs syncing.</strong> <code>adfToMarkdown</code> with
+no <code>stash</code> is the <em>display</em> path: an unknown node’s
+children are rendered, so the reader sees the words. With a
+<code>stash</code> it is the <em>sync</em> path: the node is kept whole
+behind a placeholder, so pushing restores it exactly.</p>
+<p><strong>Canonical comparison.</strong> The conversion is not the
+identity function (<code>- a</code> may come home as <code>* a</code>),
+so <code>fieldsEqual(a, b, 'description')</code> also compares
+<code>canonicalDescription(md) = adfToMarkdown(markdownToAdf(md))</code>.
+Without this, every push would make the next sync read its own lossy
+round trip as a remote edit and rewrite the note.</p>
 <hr />
 <h2 id="local-server-jiramock.ts-jiramockserver.ts">7. Local server
 (<code>JiraMock.ts</code>, <code>JiraMockServer.ts</code>)</h2>
@@ -813,24 +896,36 @@ server stops the server and <strong>deletes the file</strong>
 null.</li>
 <li><code>ready(plugin, project)</code> = <code>ensureMockServer</code>
 + <code>seedMockFile</code> + <code>makeClient</code>.</li>
-<li><code>shadowOf(task, keyOf?)</code> = the <code>JiraShadow</code>
-fields from the task; <code>blockedBy</code> =
+<li><code>shadowOf(task, keyOf?, parentKey?)</code> = the
+<code>JiraShadow</code> fields from the task; <code>blockedBy</code> =
 <code>desiredBlockerKeys(task, keyOf)</code> when a key map is given,
-else <code>[]</code>.</li>
+else <code>[]</code>; <code>parent</code> = <code>parentKey</code>
+(callers pass what the task’s position implies, <code>''</code> when
+there is nothing to compare against).</li>
+<li><code>localParentKey(project, taskId)</code> = the JIRA key a task’s
+position in the local tree implies: its parent task’s key, or the mapped
+root’s for a top-level task; <code>''</code> when the parent exists
+locally but isn’t synced. Used wherever <code>mine</code> is built
+outside <code>runSync</code> (the merge editor,
+<code>resolveConflict</code>).</li>
 <li><code>assigneeField(task, cfg)</code>: no assignee →
 <code>null</code> (unassign); mapped → <code>{accountId}</code>;
 assignee present but unmapped → <code>undefined</code> (omit — don’t
 clobber).</li>
-<li><code>withJiraKey(task, key, keyOf, cfg, startField)</code> links a
-just-created task: <code>ext.jira =   {key, sync:true, shadow}</code>.
-The shadow records <strong>what was actually pushed</strong> — when
-<code>assigneeField(task,cfg) === undefined</code> (unmapped) the
-assignee wasn’t sent, so <code>shadow.assignees = []</code> (not the
-local name), and with no <code>startField</code> the date wasn’t sent
-either, so <code>shadow.start = ''</code>. Otherwise the next reconcile
-would read Jira’s empty value as a remote deletion and drop the local
-one; instead the field stays “to push” and surfaces as a conflict until
-the mapping/field exists.</li>
+<li><code>withJiraKey(task, key, keyOf, cfg, startField, plugin, parentKey)</code>
+links a just-created task:
+<code>ext.jira = {key, sync:true, shadow}</code>. The shadow records
+<strong>what was actually pushed</strong>, including the parent the
+issue was created under (with a blank parent baseline a later reparent
+has neither side matching the base, and a plain move reads as a
+conflict) — and when <code>assigneeField(task,cfg) === undefined</code>
+(unmapped) the assignee wasn’t sent, so
+<code>shadow.assignees = []</code> (not the local name), and with no
+<code>startField</code> the date wasn’t sent either, so
+<code>shadow.start = ''</code>. Otherwise the next reconcile would read
+Jira’s empty value as a remote deletion and drop the local one; instead
+the field stays “to push” and surfaces as a conflict until the
+mapping/field exists.</li>
 <li><code>priorityRef(entry)</code> =
 <code>entry.id ? {id} : {name: entry.jira}</code> — prefer the persisted
 priority id, fall back to the name.</li>
@@ -845,7 +940,7 @@ then <code>transitionTo(status.jira, status.id)</code> where
 </ul>
 <h3 id="runsyncplugin-project-opts-full-boolean-syncresult">8.2
 <code>runSync(plugin, project, opts?: { full?: boolean }) → SyncResult</code></h3>
-<p><code>SyncResult = { changed, jiraCreated, jiraUpdated, obsidianUpdated, membersAdded, conflicts, skippedTooDeep, newIssues }</code>.
+<p><code>SyncResult = { changed, jiraCreated, jiraUpdated, obsidianUpdated, membersAdded, conflicts, archived, skippedTooDeep, skippedNoParent, newIssues }</code>.
 Requires <code>cfg.enabled</code> and <code>cfg.epicId</code>.</p>
 <p><strong>Full vs incremental.</strong> <code>opts.full</code> defaults
 to <code>true</code>. A <strong>full</strong> sync (manual
@@ -868,17 +963,23 @@ incrementally; ticks rely on the last full sync having adopted it.</p>
 <code>getProperty(epic, CONFIG_PROP)</code>; if present →
 <code>mergeEpicConfig</code>; else if local maps exist → set
 <code>mappingsDirty</code> (bootstrap publish later).</li>
-<li>Index local tasks (by id, by key, parentOf,
-<code>keyOf</code>).</li>
+<li>Index local tasks (by id, by key, parentOf, <code>keyOf</code>).
+Then <strong>hydrate the bodies</strong> of every linked, synced task
+(<code>store.loadTaskBody</code>): note bodies load lazily, and an
+unread body reads as <code>''</code> — which, now that the description
+is a synced field, would look like “the user cleared it” and push an
+empty description over Jira’s.</li>
 <li><strong>Create</strong> opted-in keyless tasks (parent-first, both
-modes): for each flat task with no <code>key</code> and
-<code>sync === true</code>, lazily <code>buildTypePlan</code> (so a
-no-create tick fetches no type metadata), resolve the child type via
-<code>childTypeFor</code> (skip + <code>skippedTooDeep</code> when
-nested below the lowest type), <code>pushNewIssue</code> with the
-parent’s key; record key; patch the task <code>ext</code> with
-<code>{key, sync:true, shadow}</code>. Then <code>reconcileLinks</code>
-per created task.</li>
+modes): for each flat task with no <code>key</code>,
+<code>sync === true</code> and <strong>not archived</strong>, lazily
+<code>buildTypePlan</code> (so a no-create tick fetches no type
+metadata), resolve the child type via <code>childTypeFor</code> (skip +
+<code>skippedTooDeep</code> when nested below the lowest type; skip +
+<code>skippedNoParent</code> when the task’s own parent isn’t synced yet
+— never re-root onto the epic, which would create it a level too high),
+<code>pushNewIssue</code> with the parent’s key; record key; patch the
+task <code>ext</code> with <code>{key, sync:true, shadow}</code>. Then
+<code>reconcileLinks</code> per created task.</li>
 <li><strong>Fetch the JIRA side</strong> then <strong>reconcile</strong>
 every linked &amp; synced task with a single <strong>3-way
 merge</strong> against its issue (see 8.3).
@@ -893,15 +994,48 @@ any locally-dirty tracked key (shadow diverged or
 Index by key; track <code>maxUpdated</code>. Issues in <code>all</code>
 that are not a local task, not created this run, and not in
 <code>ignoredKeys</code> → <code>newIssues</code>. Then for each flat
-task with <code>sync</code> and <code>key</code> (issues absent from
-<code>all</code> are simply skipped — unchanged):</li>
-<li><code>mine = shadowOf(task, keyOf)</code>;
+task with <code>sync</code> and <code>key</code>:</li>
+<li><strong>Archived tasks are out of the active set</strong> — no
+reads, no writes, no creates, whoever archived them. The one exception:
+a task <em>we</em> archived for leaving the root’s subtree
+(<code>outOfScope</code>) whose issue is back in a <strong>full</strong>
+crawl is un-archived and the marker cleared. A hand-archived task has no
+marker and stays put (§8.8).</li>
+<li><strong>Issue absent from <code>all</code></strong>: on a
+<strong>full</strong> sync the crawl covered the whole subtree, so
+absence means the issue left the mapped root (moved to another project,
+or deleted) → archive the task (§8.8). On an
+<strong>incremental</strong> tick absence only means “unchanged since
+the watermark”, so the task is skipped untouched.</li>
+<li><code>desiredParent = keyOf(parentOf(task)) ?? epicId</code>;
+<code>mine = shadowOf(task, keyOf, desiredParent ?? '')</code>;
 <code>localDiverged = !ext.shadow || mine ≠ ext.shadow</code>. Skip (no
 HTTP) when
-<code>!localDiverged &amp;&amp; issue.updated ≤ prevWatermark &amp;&amp;   ext.reconciled !== false</code>.</li>
+<code>!localDiverged &amp;&amp; issue.updated ≤ prevWatermark &amp;&amp; ext.reconciled !== false</code>.</li>
+<li><strong>Stale attachment links</strong>: when
+<code>mine.description</code> differs from Jira’s <em>only</em> by
+carrying the old <code>jira-media:</code> form (canonically the same
+document), take Jira’s rendering. Both forms rebuild the same ADF, so
+the merge rightly sees no change and would never rewrite the note — this
+upgrades the link without pushing anything.</li>
 <li><code>theirs</code> from the issue (<code>resolveAssignee</code> may
-auto-create a mapped member); <code>blockedBy = issue.blockedBy</code>.
-<code>base = ext.shadow ?? theirs</code>.</li>
+auto-create a mapped member); <code>blockedBy = issue.blockedBy</code>;
+<code>description = issue.description</code>;
+<code>parent = issue.parentKey ?? epicId</code> (every issue here came
+from inside the root’s subtree, so a missing <code>parent</code> means
+it hangs off the root by the legacy “Epic Link”, not that it has no
+parent). <code>base = ext.shadow ?? theirs</code>, and a legacy shadow
+with no <code>parent</code> baseline reads as <code>mine.parent</code> —
+“we didn’t move it” — so a Jira-side move that the old one-way code
+reverted every cycle lands instead of being reverted once more.</li>
+<li><strong>Resolve an inbound parent move</strong> (before any write,
+since an out-of-scope issue is not ours to write to): if
+<code>parent</code> is in <code>tw.adopt</code>, its target is either a
+task here (queue a local move), the root itself (queue a move to top
+level), still inside the root’s tree but not imported here (nothing to
+move to → <em>held</em>), or outside the tree entirely (→ archive the
+task and skip it). “Outside” is proven, not assumed: the new parent’s
+ancestry is walked up with <code>underRoot</code> (§8.8).</li>
 <li><code>tw = threeWay(mine, base, theirs)</code> (8.3). If
 <code>tw.conflicts</code> non-empty →
 <code>flagConflict(task, theirs)</code> (<code>reconciled:false</code>,
@@ -909,8 +1043,10 @@ auto-create a mapped member); <code>blockedBy = issue.blockedBy</code>.
 continue. <strong>The shadow is NOT advanced</strong>, so the next sync
 re-examines it.</li>
 <li><strong>Push</strong> <code>tw.push</code> fields:
-<code>summary</code>/<code>duedate</code>/<code>[startField]</code>/<code>priority</code>
-via <code>editIssue</code> (<code>priority</code> =
+<code>summary</code>/<code>duedate</code>/<code>[startField]</code>/<code>priority</code>/
+<code>description</code> (as <code>markdownToAdf(body, adfStash)</code>)
+/ <code>parent</code> (with <code>issuetype</code> when the move crosses
+a level — §8.8) via <code>editIssue</code> (<code>priority</code> =
 <code>priorityRef(mapOutboundEntry)</code> → id or name);
 <code>status</code> via
 <code>transitionTo(status.jira, status.id)</code> from
@@ -925,19 +1061,31 @@ an <code>assignee</code> whose local member has no JIRA-user mapping
 <code>[PM] Jira: {key} held back — {reasons}</code>, and treated as a
 failure. These are surfaced, never silently dropped — a held field that
 left <code>fields</code> empty would skip the edit entirely and still
-advance the shadow, losing the change (how start dates vanished live).
-If held/<code>!ok</code> → <code>flagConflict(task, theirs)</code>,
+advance the shadow, losing the change (how start dates vanished live). A
+<strong>description</strong> is also held rather than written when
+<code>unpushableDescription</code> says so: an
+<code>unrestorablePlaceholders</code> hit (pushing the placeholder text
+would replace a real attachment in Jira with the words describing it —
+the file would be gone from the issue), or a locally empty description
+where Jira has one (far more often a body we failed to read than a
+deliberate deletion, and being wrong costs someone else’s writing). An
+inbound parent move with nowhere to land is held the same way. If
+held/<code>!ok</code> → <code>flagConflict(task, theirs)</code>,
 <code>conflicts++</code>, continue (no shadow advance). Else
 <code>jiraUpdated++</code> if <code>tw.push</code> non-empty.</li>
 <li><strong>Adopt</strong> <code>tw.adopt</code> fields into a task
 patch
 (<code>status</code>/<code>priority</code>/<code>title</code>/<code>start</code>/
-<code>due</code>/<code>assignees</code>/<code>type</code>;
-<code>blockedBy</code> → <code>dependencies</code> via key→id).
+<code>due</code>/<code>assignees</code>/<code>type</code>/<code>description</code>
+— which rewrites the note body, so <code>applyExternalUpdates</code>
+picks the full write; <code>blockedBy</code> → <code>dependencies</code>
+via key→id; <code>parent</code> → the queued move).
 <code>obsidianUpdated++</code> if <code>tw.adopt</code> non-empty.</li>
 <li>Advance the shadow to the <strong>merged baseline</strong> (adopted
 fields take JIRA’s value, the rest stay local) and clear
-<code>reconciled</code>/<code>conflict</code>.</li>
+<code>reconciled</code>/<code>conflict</code>. When the description was
+adopted, the issue’s <code>descriptionStash</code> is stored with it, so
+its placeholders stay restorable.</li>
 </ul></li>
 <li><code>cfg.dirtyQueue = []</code>;
 <code>lastSeenUpdated = maxUpdated</code>;
@@ -946,7 +1094,10 @@ fields take JIRA’s value, the rest stay local) and clear
 <code>setProperty(epic, CONFIG_PROP, {maps})</code>, clear the
 flag.</li>
 <li><code>applyExternalUpdates(project, patches)</code> (store-level,
-persists).</li>
+persists), <strong>then</strong> the queued parent moves via
+<code>store.moveTask</code> — a move rewrites the moved task’s file and
+both parents’ bodies, so it must not race the field writes for the same
+notes.</li>
 </ol>
 <p>The dirty queue is now only a hint for <code>syncTick</code> (which
 tasks to look at first); the 3-way merge is what decides
@@ -956,9 +1107,13 @@ behind and the next sync retries.</p>
 <code>threeWay(mine, base, theirs)</code>
 (<code>reconcile.ts</code>)</h3>
 <p>The single reconcile primitive, applied per field over
-<code>SYNC_FIELDS</code> (the eight <code>JiraShadow</code> keys).
-<code>fieldsEqual</code> compares scalars by <code>===</code> and arrays
-(<code>assignees</code>, <code>blockedBy</code>) as unordered sets.</p>
+<code>SYNC_FIELDS</code> (all ten <code>JiraShadow</code> keys: title,
+status, priority, start, due, assignees, milestone, description, parent,
+blockedBy). <code>fieldsEqual</code> compares scalars by
+<code>===</code>, arrays (<code>assignees</code>,
+<code>blockedBy</code>) as unordered sets, and <code>description</code>
+by canonical form as well (§6.1) so a lossy round trip isn’t read as
+someone’s edit.</p>
 <table>
 <colgroup>
 <col style="width: 49%" />
@@ -996,13 +1151,27 @@ behind and the next sync retries.</p>
 <p>User-driven conflict resolution. For each field in
 <code>takeTheirs</code>, apply JIRA’s captured value
 (<code>ext.conflict.theirs</code>) to the task (<code>blockedBy</code> →
-<code>dependencies</code> via key→id); every other field keeps its local
-value. Reset <code>shadow = theirs</code> (the new baseline) and clear
+<code>dependencies</code> via key→id; <code>description</code> writes
+the note body); every other field keeps its local value. Reset
+<code>shadow = theirs</code> (the new baseline) and clear
 <code>reconciled</code>/<code>conflict</code>. Persist via
 <code>applyExternalUpdates</code>. Because the baseline is now JIRA’s
 snapshot, kept-local fields differ from it and the next sync
 <strong>pushes</strong> them, while taken fields already match and stay
 put.</p>
+<p>Two fields need more than a value write:</p>
+<ul>
+<li><code>description</code> — missing this was a live data-loss bug:
+taking Jira’s description changed nothing locally while the shadow moved
+to Jira’s value, so the next sync read the untouched local text as a
+fresh edit and pushed it back over Jira’s.</li>
+<li><code>parent</code> — a structural change, applied with
+<code>store.moveTask</code> after the patch. When the target isn’t a
+task here the move can’t be made, so the baseline keeps
+<strong>our</strong> parent; otherwise the next sync would read our
+unchanged position as a local edit and push our hierarchy back over
+Jira’s, quietly undoing the move just accepted.</li>
+</ul>
 <h3 id="reconcilelinksclient-blockedkey-currentlinks-desired">8.4
 <code>reconcileLinks(client, blockedKey, currentLinks, desired)</code></h3>
 <p>For each <code>k</code> in <code>desired</code> not in
@@ -1014,12 +1183,18 @@ put.</p>
 <h3 id="resolveassigneeproject-issue">8.5
 <code>resolveAssignee(project, issue)</code></h3>
 <p>Find a mapping by
-<code>jiraUser === assigneeAccountId || assigneeName</code>.
+<code>jiraUser === assigneeAccountId || assigneeName</code> in the
+server’s <strong>shared</strong> list (<code>sharedAssignees</code>,
+§3.6).
 <code>name = found?.name ?? assigneeName ?? assigneeAccountId</code>. If
 not found, push a new mapping <code>{name, jiraUser, jiraDisplay}</code>
-and set <code>mappingsDirty</code>. <strong>Always</strong> ensure
-<code>name</code> is in <code>project.teamMembers</code>. Return name
-(or null when the issue has no assignee).</p>
+(to the shared list — the mapping is a property of the site, so every
+project on it learns the person at once). <strong>Always</strong> ensure
+<code>name</code> is in <code>project.teamMembers</code> — but only for
+the project the task is in: a person Jira introduces joins a project
+<strong>on demand</strong>, when a task there names them, not by being
+pushed into every linked project’s member list. Return name (or null
+when the issue has no assignee).</p>
 <h3 id="synctick-interval-gate">8.6 <code>syncTick</code> / interval
 gate</h3>
 <p><code>dueForSync(cfg, now)</code> =
@@ -1049,10 +1224,89 @@ project. <code>JiraConnector.onTaskDeleted</code> →
 <code>key</code>, add it to <code>ignoredKeys</code>. So the next sync
 leaves the issue alone and, crucially, does <strong>not</strong>
 re-offer it as a <code>newIssue</code> (the bounce-back a plain tree
-removal would cause). Inbound is intentionally asymmetric: a linked task
-whose issue is no longer found is left untouched (a missing issue may be
-out-of-scope or transient — never delete local data on JIRA
-absence).</p>
+removal would cause). Inbound is intentionally asymmetric: a JIRA issue
+that disappears never deletes local data. A <strong>full</strong> sync
+archives the task instead (§8.8) — it leaves the active set but keeps
+its key, its note, and its history; an incremental tick leaves it alone
+entirely, since absence there only means “unchanged”.</p>
+<h3 id="hierarchy-parent-issue-types-and-leaving-the-roots-scope">8.8
+Hierarchy: parent, issue types, and leaving the root’s scope</h3>
+<p><strong>Type plan.</strong> <code>buildTypePlan(client, cfg)</code>
+reads the project’s issue types with their <code>hierarchyLevel</code>
+(<code>subtask ⇒ −1</code>) and the root issue’s own type, giving
+<code>levelOf(name)</code>, <code>rootLevel</code>, and
+<code>levelByKey</code> (keys discovered as issues are seen).
+<code>typeForLevel(level)</code> picks the preferred type for a level —
+Task before Story before Bug before Epic before Sub-task — so a
+<em>new</em> issue gets the conventional type.
+<code>childTypeFor(client, plan, parentKey)</code> = exactly one level
+below the parent’s, resolving the parent’s level from
+<code>levelByKey</code> or by fetching it; <code>null</code> when that
+would fall below the lowest type (→ <code>skippedTooDeep</code>).</p>
+<p><strong>Depth decides the type.</strong> A move across levels is
+therefore a type change too, and Jira validates <code>parent</code>
+against the issue’s <em>current</em> type — so “become a Task and take
+this Epic as parent” is rejected outright, and changing only the type
+doesn’t help either (the parent it still has is now the wrong level).
+<code>pushEdit</code> walks it through legal intermediate states
+instead: detach (<code>parent: null</code>) → convert
+(<code>issuetype</code>) → re-attach. A partly-applied walk is safe: the
+next sync still sees the parent diverged and finishes.</p>
+<p><strong>A same-level move must not retype the issue.</strong> The
+comparison is on hierarchy <em>levels</em>, not type names:
+<code>typeForLevel</code> returns the level’s <em>preferred</em> type,
+so matching on the name would rewrite a <strong>Bug</strong> into a Task
+on any reparent — losing the type, its workflow and its fields — even
+when the level was already right.</p>
+<p><strong>Parent is a merged field.</strong> It is one of
+<code>SYNC_FIELDS</code> (held as a JIRA key, §3.4), so a move made in
+Jira is adopted rather than reverted, a move made here is pushed, and a
+move made on both sides is a conflict the resolver shows like any other
+field.</p>
+<p><strong>Leaving the root’s scope → archive.</strong> A parent moved
+<em>outside</em> the mapped root’s subtree can’t be represented locally
+at all — the issue simply isn’t in the tree this project syncs. The task
+is <strong>archived</strong>: it leaves the active set (§8.2 step 4)
+while keeping its JIRA key, which is what stops it being mistaken for a
+new local task and recreated in Jira as a duplicate.
+<code>ext.jira.outOfScope</code> marks the archive as ours, so the task
+comes back if the issue returns under the root; a hand-archived task has
+no marker and stays archived.</p>
+<p>Two routes reach it, and they differ in what counts as evidence:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>signal</th>
+<th>when it fires</th>
+<th>why</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>the issue’s new parent is outside the tree —
+<code>underRoot(client, key, rootKey)</code> walks the parent chain up
+(≤8 hops; an unreadable issue counts as outside)</td>
+<td>full <strong>and</strong> incremental</td>
+<td>positive evidence: the issue was fetched and names a parent we can
+prove isn’t under the root, so a periodic tick can act on it</td>
+</tr>
+<tr class="even">
+<td>the issue is absent from the fetched set</td>
+<td><strong>full only</strong></td>
+<td>a full sync crawls the whole subtree, so absence means it’s gone
+(moved project, or deleted). On a tick absence just means “unchanged
+since the watermark” — acting on it would archive the entire
+project</td>
+</tr>
+</tbody>
+</table>
+<p><code>SyncResult.archived</code> counts them, and the manual-sync
+notice reports the line.</p>
 <hr />
 <h2 id="import-export-linking">9. Import / Export / linking</h2>
 <h3 id="opt-in-linking-tasklink.ts">9.1 Opt-in linking
@@ -1178,6 +1432,13 @@ changed it); base is reference only. <strong>Use all Obsidian</strong> /
 changed) — adopted automatically, never a decision; listed in an “Also
 merging from Jira: …” note so the merge isn’t a black box.</li>
 </ul></li>
+<li><strong>Compare…</strong> on a long value (a description) opens
+<code>JiraTextCompareModal</code>: the two sides full-height and side by
+side, raw text by default, with a <strong>Show preview</strong> toggle
+that renders each side as Markdown (<code>MarkdownRenderer</code>
+against the task’s own path, so links and embeds resolve as they would
+in the note). One line of a description is almost never enough to decide
+with.</li>
 <li><strong>Resolve &amp; next</strong> calls
 <code>resolveConflict(task, takeTheirs)</code> (8.3a) with
 <code>autoTheirs ∪ {decisions whose Jira cell is selected}</code>, then
@@ -1211,8 +1472,14 @@ common shadow (disjoint changes auto-merge, both-sided changes surface
 as a conflict — no clobber); a rejected push keeps the shadow behind and
 surfaces a conflict (no silent drop); conflicts resolve field-by-field
 (keep mine re-pushes, take theirs adopts); two-way create/edit/status/
-assignee/unassign/dependencies/milestone/dates/hierarchy; map
-validation; merges never duplicate a JIRA value; all I/O over HTTP.</p>
+assignee/unassign/dependencies/milestone/dates/hierarchy/<strong>description</strong>;
+a reparent in either direction (adopted, pushed with the type change a
+level move needs, or surfaced as a conflict) and an out-of-scope move
+archived rather than duplicated; an issue’s type is never rewritten by a
+same-level move; descriptions round-trip through ADF with attachments
+and unknown nodes restored as the nodes they were, and are never pushed
+as placeholder text; map validation; merges never duplicate a JIRA
+value; all I/O over HTTP.</p>
 <p><strong>Validated against a real Jira Cloud instance:</strong> an
 end-to-end outbound write — create under an Epic parent, summary, status
 transition, due date, <strong>start date</strong>, priority, assignee,
@@ -1240,11 +1507,30 @@ project styles; rate-limits (failures surface as conflict, no backoff);
 nesting below the lowest issue type (skipped + flagged); inbound
 reconcile and conflict resolution against a real instance (proven on the
 mock only).</p>
+<p><strong>Descriptions, specifically.</strong> The ADF converter has
+been exercised against real issue descriptions only in small numbers;
+every defect found so far came from real data, not from the synthetic
+tests (a bare URL arriving as dead text, an attachment link that opened
+nothing, a placeholder pushed as literal text). Node types outside the
+list in §6.1 survive the round trip via the stash rather than being
+converted, so they are safe but not <em>editable</em> here.</p>
+<p><strong>Known gap (not yet closed).</strong>
+<code>serializeTask</code> appends generated body lines (a
+<code>Parent: [[…]]</code> backlink, a <code>## Subtasks</code> list)
+and <code>stripAutoGeneratedContent</code> removes them again with
+exact-line patterns. Now that the body is pushed to Jira, a miss escapes
+into the issue, and the <code>## Subtasks</code> rule truncates whatever
+follows a heading a user wrote themselves. The fix is either fencing the
+generated block in <code>%% pm:auto %%</code> comments or moving the
+backlinks into frontmatter properties; neither is implemented.</p>
 <hr />
 <h2 id="testing">13. Testing</h2>
 <ul>
 <li><strong>Unit</strong>: <code>JiraModel</code>,
-<code>JiraMock</code>, <code>taskLink</code>, value-map validation.</li>
+<code>JiraMock</code>, <code>taskLink</code>, value-map validation, and
+<code>adf.test.ts</code> (ADF ⇄ Markdown both ways, including tables,
+autolinks, and every placeholder form round-tripping to the node it came
+from).</li>
 <li><strong>HTTP integration</strong>: real <code>JiraClient</code> ↔︎
 local server (<code>JiraMockServer.test</code>).</li>
 <li><strong>End-to-end</strong> (<code>sync.test</code>): a fake
@@ -1257,6 +1543,18 @@ working solely in JIRA.</li>
 the report from the test files — one area per <code>describe</code>, one
 row per <code>it</code> → <code>docs/coverage.html</code> (interaction
 matrix + confidence score + residual-risk audit).</li>
+<li><strong>Scenario suites</strong>: <code>parent.test.ts</code>
+(hierarchy both ways: created parent-first, held when the parent isn’t
+synced, pushed reparents with/without a type change, a Bug kept a Bug,
+adopted Jira-side moves, both-sided move conflicts, and each route into
+the out-of-scope archive incl. the full-vs-incremental distinction);
+<code>assignee.test.ts</code> (mappings, renames across projects,
+on-demand membership); <code>incremental.test.ts</code>;
+<code>two-project.test.ts</code> (two Obsidian users on one epic).</li>
+<li><strong>Every fix is verified by reverting it</strong>: a new test
+is run against the disabled fix and must fail. Several tests were
+rewritten after passing that way — the check is what caught them being
+vacuous.</li>
 <li><strong>Drift guards</strong>: the test <code>FakeStore</code> is
 <code>implements Pick&lt;ProjectStore, …&gt;</code> (signature drift
 fails the build), and <code>integration.test.ts</code> drives the
@@ -1326,6 +1624,35 @@ writes (<code>priorityRef</code> → <code>{id}</code>;
 <code>transitionTo</code> matches <code>to.id</code>), backfilled onto
 legacy rules; team-member ids already covered by
 <code>assigneeMap.jiraUser</code>.</li>
+<li><strong>Real-instance hardening</strong> — the XSRF transport
+fallback, priority <em>scheme</em> per project, Start-date discovery
+across envelopes, per-project issue-type levels, a live sync-progress
+popup, and a “Check access” report of what the token may actually do.
+Each shipped as a live bug first; the local server now models the shape
+that caused it.</li>
+<li><strong>Assignee mappings centralized</strong> — moved from each
+project to one list per <strong>server</strong>
+(<code>connectors.jira.assignees[serverId]</code>), migrated on load and
+persisted immediately; a dedicated two-column mapping dialog; members
+addable straight from the Jira user directory; renames propagate to
+every linked project’s member list <em>and</em> its tasks; identities
+are never published to the epic property.</li>
+<li><strong>Descriptions</strong> — <code>adf.ts</code> converts ADF ⇄
+Markdown; <code>description</code> became a synced field with canonical
+comparison, lazy body hydration, attachments round-tripping statelessly
+through their link (upgraded in place from the old
+<code>jira-media:</code> form), other unconvertible nodes stashed
+verbatim, and a side-by-side compare with a Markdown preview in the
+resolver. Two live failures drove it: a conflict resolution that adopted
+nothing locally and then pushed stale text back over Jira’s, and a
+placeholder pushed as literal text that replaced a real attachment.</li>
+<li><strong>Hierarchy both ways</strong> — a cross-level move walked
+through legal intermediate states (detach → convert → re-attach),
+retyping decided by hierarchy <em>level</em> so a same-level move stops
+rewriting a Bug into a Task, <code>parent</code> promoted to a merged
+shadow field (a Jira-side move is adopted instead of silently reverted),
+and a move outside the root’s subtree archives the task — keeping its
+key, so it is never recreated in Jira as a duplicate.</li>
 </ol>
 </body>
 </html>
