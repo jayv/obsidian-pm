@@ -8,7 +8,7 @@ import type PMPlugin from '../../main'
 import { ProjectStore } from '../../store/ProjectStore'
 import { stopMockServer } from './JiraMockServer'
 import { ensureProjectCfg, taskExt } from './types'
-import { exportTasks, fetchEpicStories, importStories, runSync } from './sync'
+import { exportTasks, fetchEpicStories, importStories, linkedKeys, runSync } from './sync'
 
 /**
  * Drift guard: drive the JIRA connector through the REAL ProjectStore over the
@@ -73,6 +73,32 @@ describe('jira ↔ core store integration (real ProjectStore) [both]', () => {
     const rt = must(reloaded.tasks.find((x) => x.title === 'Build widget'))
     expect(taskExt(rt).key).toBeTruthy()
     expect(taskExt(rt).sync).toBe(true)
+  })
+
+  /*
+   * Live incident: after a structural change, one sync offered a pile of already-linked
+   * issues for import. Nothing on disk was wrong before or after — the sync's in-memory
+   * task tree was momentarily incomplete, and `newIssues` reads "no task claims this key"
+   * as "this issue isn't tracked here". Importing then duplicates a task that exists.
+   *
+   * The tree is a snapshot; the vault is the durable answer. This drives the real store
+   * with a task present on disk but absent from the tree — exactly that transient.
+   */
+  it('never offers an issue that a task file on disk already claims', async () => {
+    const { plugin, store } = realPlugin()
+    const { project } = await connected(plugin, store)
+    const t = makeTask({ title: 'Already tracked' })
+    await store.insertTask(project, t, null)
+    await exportTasks(plugin, project, [t.id]) // linked, and persisted to its .md
+
+    const key = must(taskExt(must(project.tasks.find((x) => x.title === 'Already tracked'))).key)
+    // The tree loses the task; its note stays exactly where it was.
+    project.tasks = project.tasks.filter((x) => x.title !== 'Already tracked')
+
+    const r = await runSync(plugin, project)
+
+    expect(r.newIssues.map((i) => i.key)).not.toContain(key)
+    expect(await linkedKeys(plugin, project)).toContain(key) // the file still claims it
   })
 
   it('import persists nested subtasks and a new team member to disk', async () => {

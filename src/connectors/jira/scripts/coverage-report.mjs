@@ -147,6 +147,11 @@ const RISKS = [
     'Closed: the parent/project/subtask links are frontmatter properties, so the note body is the description and nothing else. Previously a generated line the strip patterns missed (trailing whitespace defeated the anchor) was pushed to Jira as a dead wiki-link, and the greedy ## Subtasks rule deleted user text below a heading of their own from both the note and the issue. The legacy patterns remain, tightened to the exact shape at the end of a body, for notes written before the change.'
   ],
   [
+    'LOW',
+    'In-memory tree vs the vault',
+    'The project tree a sync reads is a snapshot and can be momentarily incomplete (a note read while being rewritten drops its task for that load; losing one file can leave a branch out of one pass). That was enough for one sync to offer a pile of already-linked issues for import — importing them would have duplicated live tasks. Import candidates are now re-checked against the task files on disk before being offered, and the mismatch is logged. Other consumers of the tree still trust it.'
+  ],
+  [
     'MED',
     'Permissions / rate limits (429)',
     'Failed writes surface as a conflict and retry next sync; no backoff yet. The incremental tick (subtree+watermark, cached metadata, paused while hidden) keeps request volume low, reducing 429 exposure.'

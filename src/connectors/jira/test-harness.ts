@@ -22,6 +22,7 @@ type ConnectorStore = Pick<
   | 'renameAssignee'
   | 'loadTaskBody'
   | 'moveTask'
+  | 'taskExtsOnDisk'
 >
 
 /** A clearly-future JIRA timestamp, for simulating teammate edits past any watermark. */
@@ -58,6 +59,15 @@ class FakeStore implements ConnectorStore {
     deleteTaskFromTree(project.tasks, taskId)
     addTaskToTree(project.tasks, task, parentId)
     return Promise.resolve()
+  }
+  /**
+   * The harness has no vault, so "on disk" is the project it was given. Tests that need the
+   * tree and the files to disagree (the transient the real store can hit) override this.
+   */
+  taskExtsOnDisk(project: Project): Promise<Record<string, unknown>[]> {
+    const out: Record<string, unknown>[] = []
+    for (const f of flattenTasks(project.tasks)) if (f.task.ext) out.push(f.task.ext)
+    return Promise.resolve(out)
   }
   /** Harness tasks live in memory, so their description is already whatever it is. */
   loadTaskBody(task: Task): Promise<void> {

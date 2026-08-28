@@ -13,6 +13,7 @@ import {
   fetchEpicStories,
   hasConflicts,
   importedKeys,
+  linkedKeys,
   importStories,
   linkStoriesToTasks,
   updateIgnoredKeys
@@ -32,6 +33,8 @@ export class JiraImportModal extends Modal {
   /** issue key → existing (keyless) task id to link it to, instead of creating a new task. */
   private matches = new Map<string, string>()
   private showIgnored = false
+  /** JIRA keys claimed by task FILES on disk — see linkedKeys. */
+  private claimed = new Set<string>()
 
   constructor(
     app: App,
@@ -64,6 +67,7 @@ export class JiraImportModal extends Modal {
   private async load(status: HTMLElement): Promise<void> {
     try {
       this.stories = await fetchEpicStories(this.plugin, this.project)
+      this.claimed = await linkedKeys(this.plugin, this.project)
     } catch (e) {
       status.setText('Failed to load issues. Check the console.')
       console.error('JiraImport: load failed', e)
@@ -80,7 +84,9 @@ export class JiraImportModal extends Modal {
   }
 
   private visibleStories(): JiraIssue[] {
-    const already = importedKeys(this.project)
+    // Union of the tree's answer and the vault's: a task missing from this pass of the
+    // tree must not be offered as a new issue and imported a second time.
+    const already = new Set([...importedKeys(this.project), ...this.claimed])
     const ignored = new Set(projectCfg(this.project)?.ignoredKeys ?? [])
     return this.stories.filter((s) => !already.has(s.key) && (this.showIgnored || !ignored.has(s.key)))
   }

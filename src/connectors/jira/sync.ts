@@ -532,6 +532,19 @@ async function walkRename(
 
 // ── Setup / import (all over HTTP) ────────────────────────────────────────────
 
+/**
+ * The JIRA keys claimed by the project's task FILES (not its in-memory tree). The durable
+ * answer to "do we already track this issue" — see ProjectStore.taskExtsOnDisk.
+ */
+export async function linkedKeys(plugin: PMPlugin, project: Project): Promise<Set<string>> {
+  const keys = new Set<string>()
+  for (const ext of await plugin.store.taskExtsOnDisk(project)) {
+    const key = (ext[JIRA_ID] as JiraTaskExt | undefined)?.key
+    if (key) keys.add(key)
+  }
+  return keys
+}
+
 export function importedKeys(project: Project): Set<string> {
   const keys = new Set<string>()
   for (const f of flattenTasks(project.tasks)) {
@@ -1164,6 +1177,22 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   for (const issue of all) {
     if (byKey.has(issue.key) || createdKeys.has(issue.key) || cfg.ignoredKeys.includes(issue.key)) continue
     newIssues.push(issue) // under the epic, not local, not created this run, not ignored
+  }
+  // `byKey` comes from the in-memory tree, and that tree is a snapshot: a note read while
+  // it is being rewritten drops its task for that load, and losing one file can leave a
+  // whole branch out of a single pass. Offering those issues as NEW is how a linked task
+  // gets a duplicate — the one mistake this dialog must never make. So before offering
+  // anything, confirm against the vault that no task file already claims the key.
+  if (newIssues.length) {
+    const claimed = await linkedKeys(plugin, project)
+    const stale = newIssues.filter((i) => claimed.has(i.key))
+    if (stale.length) {
+      console.warn(
+        `[PM] Jira: ${stale.length} issue(s) looked new but are already linked on disk — not offering them ` +
+          `(the project's task tree was incomplete this pass): ${stale.map((i) => i.key).join(', ')}`
+      )
+      newIssues.splice(0, newIssues.length, ...newIssues.filter((i) => !claimed.has(i.key)))
+    }
   }
 
   const linked = flat.filter((f) => taskExt(f.task).sync && taskExt(f.task).key && !f.task.archived).length

@@ -537,7 +537,14 @@ Steps, in order:
      locally-dirty tracked key (shadow diverged or `reconciled === false`) not already in
      that result, also `issuesByKeys(missing)` so a local-only edit still pushes.
    Index by key; track `maxUpdated`. Issues in `all` that are not a local task, not created
-   this run, and not in `ignoredKeys` → `newIssues`. Then for each flat task with `sync`
+   this run, and not in `ignoredKeys` → `newIssues` — and then, only when that list is
+   non-empty, each candidate is re-checked against the **vault** (`linkedKeys` →
+   `ProjectStore.taskExtsOnDisk`) and dropped if a task file already claims its key. The
+   in-memory tree is a snapshot: a note read while it is being rewritten yields no task for
+   that load, and losing one file can leave a whole branch out of a single pass. Offering
+   those issues as new is how a linked task acquires a duplicate, so the durable answer
+   wins. The mismatch is logged rather than silently swallowed. `JiraImportModal` applies
+   the same union (§10.x). Then for each flat task with `sync`
    and `key`:
    - **Archived tasks are out of the active set** — no reads, no writes, no creates,
      whoever archived them. The one exception: a task *we* archived for leaving the root's

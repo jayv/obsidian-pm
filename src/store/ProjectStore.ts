@@ -414,6 +414,35 @@ export class ProjectStore {
     return result
   }
 
+  /**
+   * The connector `ext` bag of every task file in the project's folder, read from the
+   * vault instead of the in-memory tree.
+   *
+   * The tree is a snapshot and can be momentarily incomplete — a note read while it is
+   * being rewritten yields no task for that load, and a whole branch can be missing for
+   * one pass. Code that reads "no task claims this" as "this does not exist here" then
+   * acts on a transient. Anything that would duplicate or destroy should ask the vault,
+   * which is the durable answer.
+   */
+  async taskExtsOnDisk(project: Project): Promise<Record<string, unknown>[]> {
+    const folder = this.app.vault.getAbstractFileByPath(this.projectTaskFolder(project))
+    if (!(folder instanceof TFolder)) return []
+    const files: TFile[] = []
+    const collect = (f: TFolder): void => {
+      for (const child of f.children) {
+        if (child instanceof TFile && child.extension === 'md') files.push(child)
+        else if (child instanceof TFolder) collect(child)
+      }
+    }
+    collect(folder)
+    const out: Record<string, unknown>[] = []
+    for (const file of files) {
+      const { task } = await this.loadTaskFile(file)
+      if (task?.ext) out.push(task.ext)
+    }
+    return out
+  }
+
   async loadTaskFile(file: TFile): Promise<{ task: Task | null; subtaskIds: string[]; parentId: string | null }> {
     try {
       // Fast path: pull frontmatter from Obsidian's metadataCache, skip the body
