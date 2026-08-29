@@ -1,5 +1,5 @@
 import { MarkdownView, Plugin, Notice } from 'obsidian'
-import { DEFAULT_SETTINGS, PMSettings, Project, ViewMode } from './types'
+import { DEFAULT_SETTINGS, PMSettings, Project, ViewMode, isVirtualFilterKey } from './types'
 import { flattenTasks, findTask } from './store/TaskTreeOps'
 import { ProjectStore } from './store'
 import { PMSettingTab } from './settings'
@@ -297,11 +297,16 @@ export default class PMPlugin extends Plugin {
   }
 
   async cleanupStaleProjectFilters(): Promise<void> {
+    // A synthetic key isn't a path and can never resolve to a file, so "does this file
+    // still exist" is the wrong question for it. Asking it anyway deleted the
+    // all-projects filter and every saved view on it, on every single startup.
+    const exists = (path: string): boolean =>
+      isVirtualFilterKey(path) || this.app.vault.getAbstractFileByPath(path) !== null
     const filters = this.settings.projectFilters
     const cleaned: typeof filters = {}
     let dirty = false
     for (const [path, entry] of Object.entries(filters)) {
-      if (this.app.vault.getAbstractFileByPath(path)) {
+      if (exists(path)) {
         cleaned[path] = entry
       } else {
         dirty = true
@@ -309,7 +314,7 @@ export default class PMPlugin extends Plugin {
     }
     const cleanedCollapsed: typeof this.settings.collapsedTasks = {}
     for (const [path, ids] of Object.entries(this.settings.collapsedTasks)) {
-      if (this.app.vault.getAbstractFileByPath(path)) {
+      if (exists(path)) {
         cleanedCollapsed[path] = ids
       } else {
         dirty = true

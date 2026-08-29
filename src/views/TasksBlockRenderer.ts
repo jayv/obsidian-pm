@@ -78,21 +78,23 @@ export class TasksBlockRenderer extends MarkdownRenderChild {
     const list = el.createDiv('pm-tasks-block-list')
     // Grouping by project is noise when the block already names one.
     if (spec.group === 'none' || spec.project) {
-      for (const row of rows) this.renderRow(list, row.project, row.task, !spec.project)
+      for (const row of rows) this.renderRow(list, row.project, row.task, row.depth, !spec.project)
       return
     }
     for (const group of groupByProject(rows)) {
       const header = list.createDiv('pm-tasks-block-group')
       header.createSpan({ cls: 'pm-tasks-block-group-dot' }).style.background = group.project.color
       header.createSpan({ text: group.project.title, cls: 'pm-tasks-block-group-name' })
-      header.createSpan({ text: String(group.tasks.length), cls: 'pm-tasks-block-count' })
-      for (const task of group.tasks) this.renderRow(list, group.project, task, false)
+      header.createSpan({ text: String(group.rows.length), cls: 'pm-tasks-block-count' })
+      for (const row of group.rows) this.renderRow(list, group.project, row.task, row.depth, false)
     }
   }
 
   /** One task. `withProject` names the project inline, for the ungrouped layout. */
-  private renderRow(parent: HTMLElement, project: Project, task: Task, withProject: boolean): void {
+  private renderRow(parent: HTMLElement, project: Project, task: Task, depth: number, withProject: boolean): void {
     const row = parent.createDiv('pm-tasks-block-row')
+    // Indent under a listed parent, so a kept container reads as the heading it is.
+    if (depth) row.style.paddingLeft = `${4 + depth * 14}px`
     const status = this.plugin.settings.statuses.find((s) => s.id === task.status)
     const dot = row.createSpan({ cls: 'pm-tasks-block-dot' })
     dot.style.background = status?.color ?? 'var(--text-faint)'

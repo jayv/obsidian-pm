@@ -159,11 +159,50 @@ describe('pm-tasks block — selection', () => {
     expect(rows.map((r) => r.task.title)).not.toContain('Parent')
   })
 
-  it('orders by due date and puts undated work last', () => {
-    // A panel is "what is coming up"; a task with no date isn't, so it sinks rather than
-    // sorting as if it were due in year zero.
+  it('orders by due date within a level, keeping a parent above its own rows', () => {
+    // A panel is "what is coming up", so undated work sinks. But the ordering is per
+    // level, not global: a kept parent has to stay adjacent to its sub-tasks or the
+    // indentation reads as nonsense (here 'My subtask' is due before 'Parent' has a date
+    // at all, yet must stay under it).
     const rows = selectBlockTasks(projects, filter(), DEFAULT_STATUSES)
-    expect(rows.map((r) => r.task.title)).toEqual(['Theirs', 'Mine', 'My subtask', 'Parent', 'Someday'])
+    expect(rows.map((r) => r.task.title)).toEqual(['Theirs', 'Mine', 'Parent', 'My subtask', 'Someday'])
+    expect(rows.map((r) => r.depth)).toEqual([0, 0, 0, 1, 0])
+  })
+
+  it('drops a matching parent when none of its sub-tasks match', () => {
+    // A container row is a heading, and a panel of headings is not a list of what to do.
+    const child = makeTask({ title: 'Not mine', assignees: ['Sam'], status: 'todo' })
+    const container = makeTask({ title: 'Container', assignees: ['Jo'], status: 'todo', subtasks: [child] })
+    const rows = selectBlockTasks([project('Alpha', [container])], filter({ assignees: ['Jo'] }), DEFAULT_STATUSES)
+    expect(rows).toHaveLength(0)
+  })
+
+  it('keeps a matching parent when a sub-task matches, nested under it', () => {
+    const child = makeTask({ title: 'Mine', assignees: ['Jo'], status: 'todo' })
+    const container = makeTask({ title: 'Container', assignees: ['Jo'], status: 'todo', subtasks: [child] })
+    const rows = selectBlockTasks([project('Alpha', [container])], filter({ assignees: ['Jo'] }), DEFAULT_STATUSES)
+    expect(rows.map((r) => [r.task.title, r.depth])).toEqual([
+      ['Container', 0],
+      ['Mine', 1]
+    ])
+  })
+
+  it('lifts a matching sub-task whose parent was not kept', () => {
+    // The child matched; why its parent isn't shown is none of its business.
+    const child = makeTask({ title: 'Mine', assignees: ['Jo'], status: 'todo' })
+    const container = makeTask({ title: 'Container', assignees: ['Sam'], status: 'todo', subtasks: [child] })
+    const rows = selectBlockTasks([project('Alpha', [container])], filter({ assignees: ['Jo'] }), DEFAULT_STATUSES)
+    expect(rows.map((r) => [r.task.title, r.depth])).toEqual([['Mine', 0]])
+  })
+
+  it('drops a parent whose only surviving child is itself an empty container', () => {
+    // Bottom-up: the grandchild fails, so the middle container goes, so the top one has
+    // nothing under it either.
+    const grandchild = makeTask({ title: 'Theirs', assignees: ['Sam'], status: 'todo' })
+    const middle = makeTask({ title: 'Middle', assignees: ['Jo'], status: 'todo', subtasks: [grandchild] })
+    const top = makeTask({ title: 'Top', assignees: ['Jo'], status: 'todo', subtasks: [middle] })
+    const rows = selectBlockTasks([project('Alpha', [top])], filter({ assignees: ['Jo'] }), DEFAULT_STATUSES)
+    expect(rows).toHaveLength(0)
   })
 
   it('applies a limit after sorting, so the cap keeps the most urgent', () => {
@@ -183,6 +222,6 @@ describe('pm-tasks block — selection', () => {
     const rows = selectBlockTasks(projects, filter(), DEFAULT_STATUSES)
     const groups = groupByProject(rows)
     expect(groups.map((g) => g.project.title)).toEqual(['Alpha', 'Beta'])
-    expect(groups[1].tasks.map((t) => t.title)).toEqual(['My subtask', 'Parent', 'Someday'])
+    expect(groups[1].rows.map((r) => r.task.title)).toEqual(['Parent', 'My subtask', 'Someday'])
   })
 })

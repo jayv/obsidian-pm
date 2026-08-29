@@ -140,6 +140,20 @@ export interface PriorityConfig {
   icon: string
 }
 
+/**
+ * `projectFilters` and `collapsedTasks` are keyed by a project's note path. A view with no
+ * file — the all-projects timeline — uses a synthetic key with this prefix instead. It is
+ * not a path and must never be treated as one: pruning "keys that aren't files" wiped the
+ * all-projects filter and its saved views on every restart.
+ */
+export const VIRTUAL_FILTER_PREFIX = '::'
+/** Filter/saved-view key for the all-projects timeline. */
+export const UBER_FILTER_KEY = `${VIRTUAL_FILTER_PREFIX}all-projects`
+
+export function isVirtualFilterKey(key: string): boolean {
+  return key.startsWith(VIRTUAL_FILTER_PREFIX)
+}
+
 export interface PMSettings {
   projectsFolder: string
   defaultView: ViewMode

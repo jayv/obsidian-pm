@@ -9,12 +9,8 @@
  *
  * This half is pure: parsing, resolution and selection, no DOM.
  */
-import type { FilterState, Project, SavedView, StatusConfig, Task } from '../types'
-import { flattenTasks } from '../store/TaskTreeOps'
+import { UBER_FILTER_KEY, type FilterState, type Project, type SavedView, type StatusConfig, type Task } from '../types'
 import { matchesFilter } from '../store/TaskFilter'
-
-/** Filter state key of the all-projects view — see UberProjectView. */
-export const UBER_FILTER_KEY = '::all-projects'
 
 export interface TasksBlockSpec {
   /**
@@ -172,12 +168,67 @@ export function resolveBlock(
 export interface BlockRow {
   project: Project
   task: Task
+  /** Nesting level among the rows that survived — 0 for a row with no listed parent. */
+  depth: number
+}
+
+/** A kept task with the kept tasks under it. */
+interface KeptNode {
+  task: Task
+  children: KeptNode[]
 }
 
 /**
- * Every task across `projects` the filter accepts, flattened (a matching subtask counts on
- * its own) and ordered by due date — undated last, since a panel is a list of what is
- * coming up and a task with no date isn't.
+ * Keep the tasks the filter accepts, minus container rows.
+ *
+ * A task that has sub-tasks is only worth a row when some of that work is on the list
+ * too: on its own it is a heading, and a panel of headings is not a list of what to do.
+ * So a parent survives only if something beneath it did — applied bottom-up, so a parent
+ * whose only surviving child is itself a dropped container goes as well.
+ *
+ * A surviving task whose parent was dropped is lifted rather than lost: it matched, and
+ * the reason its parent isn't shown has nothing to do with it.
+ */
+function keep(tasks: Task[], filter: FilterState, statuses: StatusConfig[]): KeptNode[] {
+  const out: KeptNode[] = []
+  for (const task of tasks) {
+    const children = keep(task.subtasks, filter, statuses)
+    const matches = matchesFilter(task, filter, statuses)
+    if (!task.subtasks.length) {
+      if (matches) out.push({ task, children: [] })
+    } else if (matches && children.length) {
+      out.push({ task, children })
+    } else {
+      out.push(...children) // parent not shown; its survivors stand on their own
+    }
+  }
+  return out
+}
+
+/** Due date first (undated last — a panel is what's coming up), then title. */
+function byDueThenTitle(a: KeptNode, b: KeptNode): number {
+  const ad = a.task.due || ''
+  const bd = b.task.due || ''
+  if (ad !== bd) {
+    if (!ad) return 1
+    if (!bd) return -1
+    return ad < bd ? -1 : 1
+  }
+  return a.task.title.localeCompare(b.task.title)
+}
+
+/** Depth-first, siblings sorted, so a parent always sits directly above its own rows. */
+function flattenKept(nodes: KeptNode[], project: Project, depth: number, rows: BlockRow[]): void {
+  for (const node of [...nodes].sort(byDueThenTitle)) {
+    rows.push({ project, task: node.task, depth })
+    flattenKept(node.children, project, depth + 1, rows)
+  }
+}
+
+/**
+ * Every task across `projects` the filter accepts, as rows ordered by due date within each
+ * level. Ordering is per level rather than global so a kept parent stays attached to its
+ * own sub-tasks — the rows only read as a hierarchy if they are adjacent.
  */
 export function selectBlockTasks(
   projects: Project[],
@@ -187,35 +238,23 @@ export function selectBlockTasks(
 ): BlockRow[] {
   const rows: BlockRow[] = []
   for (const project of projects) {
-    for (const { task } of flattenTasks(project.tasks)) {
-      if (matchesFilter(task, filter, statuses)) rows.push({ project, task })
-    }
+    flattenKept(keep(project.tasks, filter, statuses), project, 0, rows)
   }
-  rows.sort((a, b) => {
-    const ad = a.task.due || ''
-    const bd = b.task.due || ''
-    if (ad !== bd) {
-      if (!ad) return 1
-      if (!bd) return -1
-      return ad < bd ? -1 : 1
-    }
-    return a.task.title.localeCompare(b.task.title)
-  })
   return limit > 0 ? rows.slice(0, limit) : rows
 }
 
 /** Rows grouped under their project, preserving the order projects were loaded in. */
-export function groupByProject(rows: BlockRow[]): { project: Project; tasks: Task[] }[] {
-  const out: { project: Project; tasks: Task[] }[] = []
-  const index = new Map<string, { project: Project; tasks: Task[] }>()
-  for (const { project, task } of rows) {
-    let group = index.get(project.id)
+export function groupByProject(rows: BlockRow[]): { project: Project; rows: BlockRow[] }[] {
+  const out: { project: Project; rows: BlockRow[] }[] = []
+  const index = new Map<string, { project: Project; rows: BlockRow[] }>()
+  for (const row of rows) {
+    let group = index.get(row.project.id)
     if (!group) {
-      group = { project, tasks: [] }
-      index.set(project.id, group)
+      group = { project: row.project, rows: [] }
+      index.set(row.project.id, group)
       out.push(group)
     }
-    group.tasks.push(task)
+    group.rows.push(row)
   }
   return out
 }

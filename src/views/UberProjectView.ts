@@ -1,6 +1,14 @@
 import { ItemView, WorkspaceLeaf, Notice } from 'obsidian'
 import type PMPlugin from '../main'
-import { makeDefaultFilter, makeId, type FilterState, type Project, type SavedView, type Task } from '../types'
+import {
+  UBER_FILTER_KEY,
+  makeDefaultFilter,
+  makeId,
+  type FilterState,
+  type Project,
+  type SavedView,
+  type Task
+} from '../types'
 import { buildUberProject, type UberProject } from '../store/UberProject'
 import { applyTaskFilterPromote } from '../store/TaskFilter'
 import { countTasks, findTask, flattenTasks } from '../store/TaskTreeOps'
@@ -10,12 +18,6 @@ import { PrimaryRow } from '../ui/composites/ProjectHeader/PrimaryRow'
 import { computeResourceConflicts } from './gantt/ResourceConflicts'
 import type { HeaderUiState } from '../ui/composites/ProjectHeader/ProjectHeader'
 import { GanttView } from './gantt/GanttView'
-
-/**
- * Filter state key. Not a real path — `projectFilters` is keyed by project file, and this
- * view has no file. A leading "::" can't collide with a vault path.
- */
-const UBER_FILTER_KEY = '::all-projects'
 
 export const PM_UBER_VIEW_TYPE = 'pm-uber-project'
 

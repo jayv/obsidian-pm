@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { formatDateShort, formatDateLong, priorityRank } from './utils'
-import { DEFAULT_PRIORITIES, type TaskPriority } from './types'
+import { DEFAULT_PRIORITIES, UBER_FILTER_KEY, isVirtualFilterKey, type TaskPriority } from './types'
 
 describe('date formatters use the local calendar date', () => {
   // Pin a negative-offset timezone: a bare YYYY-MM-DD parsed as UTC midnight would
@@ -36,5 +36,26 @@ describe('priorityRank', () => {
 
   it('sorts an unknown priority last', () => {
     expect(priorityRank(priorities, 'nonexistent' as TaskPriority)).toBeGreaterThan(priorityRank(priorities, 'low'))
+  })
+})
+
+/*
+ * The all-projects timeline has no note, so its filter and saved views are keyed by a
+ * synthetic `::all-projects` rather than a path. Startup prunes projectFilters entries
+ * whose path no longer resolves to a file — and that key never resolves, so it was
+ * deleted on every launch: the filter looked like it saved, then came back empty.
+ */
+describe('virtual filter keys', () => {
+  it('recognises the all-projects key as virtual, and real paths as not', () => {
+    expect(isVirtualFilterKey(UBER_FILTER_KEY)).toBe(true)
+    expect(isVirtualFilterKey('Projects/Athlon.md')).toBe(false)
+  })
+
+  it('survives the stale-filter prune, while a deleted project does not', () => {
+    // Mirrors cleanupStaleProjectFilters: keep a key when it is virtual OR still a file.
+    const files = new Set(['Projects/Alive.md'])
+    const keep = (key: string): boolean => isVirtualFilterKey(key) || files.has(key)
+    const kept = ['Projects/Alive.md', 'Projects/Deleted.md', UBER_FILTER_KEY].filter(keep)
+    expect(kept).toEqual(['Projects/Alive.md', UBER_FILTER_KEY])
   })
 })
