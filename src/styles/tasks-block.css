@@ -1,0 +1,118 @@
+/* ---------------------------------------------------------------------------
+   pm-tasks BLOCK — a saved all-projects view, embedded in a note
+   --------------------------------------------------------------------------- */
+.pm-tasks-block {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  padding: 10px 12px;
+  font-size: var(--font-ui-small);
+}
+
+.pm-tasks-block-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pm-tasks-block-title {
+  font-weight: 600;
+}
+/* Counts sit on the right of their row, muted and tabular so they don't jitter. */
+.pm-tasks-block-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.pm-tasks-block-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.pm-tasks-block-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Project heading: the project's own colour, so a glance tells you whose work it is. */
+.pm-tasks-block-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 2px;
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.pm-tasks-block-group:first-child {
+  margin-top: 0;
+}
+.pm-tasks-block-group-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.pm-tasks-block-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  min-width: 0;
+}
+.pm-tasks-block-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.pm-tasks-block-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* The title takes the slack; everything after it keeps its natural width. */
+.pm-tasks-block-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-tasks-block-project {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
+
+.pm-tasks-block-due {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A misconfigured block explains itself rather than rendering blank. */
+.pm-tasks-block-error {
+  color: var(--text-muted);
+}
+.pm-tasks-block-error-title {
+  font-family: var(--font-monospace);
+  font-weight: 600;
+  color: var(--text-error);
+  margin-bottom: 4px;
+}
+.pm-tasks-block-error ul {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+.pm-tasks-block-error-hint {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}

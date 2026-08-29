@@ -6,6 +6,7 @@ import { PMSettingTab } from './settings'
 import { ProjectView, PM_PROJECT_VIEW_TYPE } from './views/ProjectView'
 import { DashboardView, PM_DASHBOARD_VIEW_TYPE } from './views/DashboardView'
 import { UberProjectView, PM_UBER_VIEW_TYPE } from './views/UberProjectView'
+import { TasksBlockRenderer } from './views/TasksBlockRenderer'
 import { PMViewRouter } from './views/PMViewRouter'
 import { openProjectModal, openTaskModal, openProjectPicker, openTaskPicker, openImportModal } from './ui/ModalFactory'
 import { Notifier } from './components/Notifier'
@@ -66,6 +67,12 @@ export default class PMPlugin extends Plugin {
     this.registerView(PM_PROJECT_VIEW_TYPE, (leaf) => new ProjectView(leaf, this))
     this.registerView(PM_DASHBOARD_VIEW_TYPE, (leaf) => new DashboardView(leaf, this))
     this.registerView(PM_UBER_VIEW_TYPE, (leaf) => new UberProjectView(leaf, this))
+
+    // `pm-tasks` blocks: a saved view from the all-projects timeline, rendered inside any
+    // note. The block names the view; all the filtering lives over there.
+    this.registerMarkdownCodeBlockProcessor('pm-tasks', (source, el, ctx) => {
+      ctx.addChild(new TasksBlockRenderer(el, this, source))
+    })
 
     this.app.workspace.onLayoutReady(
       safeAsync(async () => {
