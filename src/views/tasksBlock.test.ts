@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_STATUSES, makeProject, makeTask } from '../types'
 import type { FilterState, Project, SavedView } from '../types'
-import { findSavedView, groupByProject, parseTasksBlock, selectBlockTasks, uberSavedViews } from './tasksBlock'
+import {
+  findSavedView,
+  groupByProject,
+  parseTasksBlock,
+  resolveBlock,
+  selectBlockTasks,
+  uberSavedViews
+} from './tasksBlock'
 
 const filter = (over: Partial<FilterState> = {}): FilterState => ({
   text: '',
@@ -52,8 +59,68 @@ describe('pm-tasks block — parsing', () => {
     expect(spec.group).toBe('project')
   })
 
-  it('requires a view', () => {
-    expect(parseTasksBlock('limit: 5').errors.join(' ')).toContain('view')
+  it('reads a project scope', () => {
+    expect(parseTasksBlock('project: Athlon\nview: Blocked').project).toBe('Athlon')
+  })
+})
+
+describe('pm-tasks block — resolution', () => {
+  const uberView = { id: 'u', name: 'My work', filter: filter({ assignees: ['Jo'] }), sortKey: '', sortDir: 'asc' }
+  const ownView = { id: 'p', name: 'Blocked', filter: filter({ statuses: ['blocked'] }), sortKey: '', sortDir: 'asc' }
+  const alpha = project('Alpha', [makeTask({ title: 'a' })])
+  const beta = project('Beta', [makeTask({ title: 'b' })])
+  alpha.savedViews = [ownView as SavedView]
+  const settings = { '::all-projects': { savedViews: [uberView as SavedView] } }
+
+  it('reads the all-projects views and scans everything when no project is named', () => {
+    const r = resolveBlock(parseTasksBlock('view: My work'), [alpha, beta], settings)
+    expect(r.errors).toEqual([])
+    expect(r.projects.map((p) => p.title)).toEqual(['Alpha', 'Beta'])
+    expect(r.filter.assignees).toEqual(['Jo'])
+    expect(r.title).toBe('My work')
+  })
+
+  it("reads the project's OWN saved views, and scopes to it, when one is named", () => {
+    // Saved views belong to a project; the all-projects timeline is the exception that
+    // keeps its own in settings. `project:` picks the namespace as well as the scope.
+    const r = resolveBlock(parseTasksBlock('project: Alpha\nview: Blocked'), [alpha, beta], settings)
+    expect(r.errors).toEqual([])
+    expect(r.projects.map((p) => p.title)).toEqual(['Alpha'])
+    expect(r.filter.statuses).toEqual(['blocked'])
+  })
+
+  it('does not find a project view from the all-projects namespace, or the reverse', () => {
+    expect(resolveBlock(parseTasksBlock('view: Blocked'), [alpha, beta], settings).errors.join(' ')).toContain(
+      'Blocked'
+    )
+    expect(
+      resolveBlock(parseTasksBlock('project: Alpha\nview: My work'), [alpha, beta], settings).errors.join(' ')
+    ).toContain('My work')
+  })
+
+  it('matches the project by title or by note path', () => {
+    expect(resolveBlock(parseTasksBlock('project: alpha'), [alpha, beta], settings).projects).toHaveLength(1)
+    expect(resolveBlock(parseTasksBlock('project: Projects/Alpha.md'), [alpha, beta], settings).projects).toHaveLength(
+      1
+    )
+  })
+
+  it('shows the whole project when it is named without a view', () => {
+    const r = resolveBlock(parseTasksBlock('project: Beta'), [alpha, beta], settings)
+    expect(r.errors).toEqual([])
+    expect(r.projects.map((p) => p.title)).toEqual(['Beta'])
+    expect(r.title).toBe('Beta')
+  })
+
+  it('needs a view when no project is named', () => {
+    expect(resolveBlock(parseTasksBlock('limit: 5'), [alpha, beta], settings).errors.join(' ')).toContain('view')
+  })
+
+  it('lists the valid names for whatever was wrong', () => {
+    const missingProject = resolveBlock(parseTasksBlock('project: Gamma\nview: x'), [alpha, beta], settings)
+    expect(missingProject.available).toEqual(['Alpha', 'Beta'])
+    const missingView = resolveBlock(parseTasksBlock('project: Alpha\nview: Nope'), [alpha, beta], settings)
+    expect(missingView.available).toEqual(['Blocked'])
   })
 })
 

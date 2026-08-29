@@ -1,13 +1,13 @@
 /**
- * The `pm-tasks` code block: a saved view from the all-projects timeline, rendered as a
- * panel inside any note (a homepage, a daily note).
+ * The `pm-tasks` code block: a saved view rendered as a panel inside any note (a homepage,
+ * a daily note).
  *
- * It deliberately owns no filtering of its own. The block names one of the saved views the
- * all-projects view already persists, and the tasks are selected with `matchesFilter` —
- * the same predicate the views use. So "my tasks this week" is whatever you defined it to
- * be over there, and the panel can never drift from the chart it mirrors.
+ * It owns no filtering of its own. The block names a saved view — one of a project's own,
+ * or one belonging to the all-projects timeline — and selects with `matchesFilter`, the
+ * same predicate the views use. So "my tasks this week" is whatever you defined it to be
+ * over there, and the panel can never drift from the view it mirrors.
  *
- * This half is pure: parsing and selection, no DOM.
+ * This half is pure: parsing, resolution and selection, no DOM.
  */
 import type { FilterState, Project, SavedView, StatusConfig, Task } from '../types'
 import { flattenTasks } from '../store/TaskTreeOps'
@@ -17,7 +17,12 @@ import { matchesFilter } from '../store/TaskFilter'
 export const UBER_FILTER_KEY = '::all-projects'
 
 export interface TasksBlockSpec {
-  /** Name of the saved view to mirror (required). */
+  /**
+   * Which project's saved views to look in, by title or note path. Omitted = the
+   * all-projects timeline, whose views live in settings because it has no file.
+   */
+  project: string
+  /** Name of the saved view to mirror. Optional only when a project is named. */
   view: string
   /** Group rows under their project (default) or list them flat. */
   group: 'project' | 'none'
@@ -29,7 +34,7 @@ export interface TasksBlockSpec {
   errors: string[]
 }
 
-const KEYS = new Set(['view', 'group', 'limit', 'title'])
+const KEYS = new Set(['project', 'view', 'group', 'limit', 'title'])
 
 /**
  * Parse the block body: one `key: value` per line, `#` comments, blanks ignored.
@@ -39,7 +44,7 @@ const KEYS = new Set(['view', 'group', 'limit', 'title'])
  * silently dropped, which is worse than saying "I don't know that key".
  */
 export function parseTasksBlock(source: string): TasksBlockSpec {
-  const spec: TasksBlockSpec = { view: '', group: 'project', limit: 0, title: '', errors: [] }
+  const spec: TasksBlockSpec = { project: '', view: '', group: 'project', limit: 0, title: '', errors: [] }
   for (const raw of source.split('\n')) {
     const line = raw.trim()
     if (!line || line.startsWith('#')) continue
@@ -55,6 +60,7 @@ export function parseTasksBlock(source: string): TasksBlockSpec {
       continue
     }
     if (key === 'view') spec.view = value
+    else if (key === 'project') spec.project = value
     else if (key === 'title') spec.title = value
     else if (key === 'group') {
       if (value === 'project' || value === 'none') spec.group = value
@@ -65,7 +71,6 @@ export function parseTasksBlock(source: string): TasksBlockSpec {
       else spec.errors.push(`limit must be a whole number, not "${value}"`)
     }
   }
-  if (!spec.view) spec.errors.push('no `view:` given — name a saved view from the all-projects timeline')
   return spec
 }
 
@@ -78,6 +83,90 @@ export function uberSavedViews(projectFilters: Record<string, { savedViews?: Sav
 export function findSavedView(views: SavedView[], name: string): SavedView | undefined {
   const wanted = name.trim().toLowerCase()
   return views.find((v) => v.name.trim().toLowerCase() === wanted)
+}
+
+/** A filter that keeps everything — a project named with no view shows all of its work. */
+export function matchAllFilter(): FilterState {
+  return {
+    text: '',
+    statuses: [],
+    priorities: [],
+    assignees: [],
+    tags: [],
+    dueDateFilter: 'any',
+    activeWeeks: [],
+    showArchived: false
+  }
+}
+
+export interface ResolvedBlock {
+  /** The projects to scan: one when the block names it, otherwise all of them. */
+  projects: Project[]
+  filter: FilterState
+  title: string
+  errors: string[]
+  /** Valid names for whatever the block got wrong, so the panel can say what to type. */
+  available: string[]
+}
+
+/**
+ * Work out what a block is asking for. Saved views belong to a project, so `project:`
+ * chooses the namespace as well as the scope; without it the block reads the all-projects
+ * timeline's views (kept in settings — that view is fileless and has nowhere else to put
+ * them) and scans everything.
+ */
+export function resolveBlock(
+  spec: TasksBlockSpec,
+  allProjects: Project[],
+  projectFilters: Record<string, { savedViews?: SavedView[] }> | undefined
+): ResolvedBlock {
+  const errors = [...spec.errors]
+  let projects = allProjects
+  let views = uberSavedViews(projectFilters)
+
+  if (spec.project) {
+    const wanted = spec.project.trim().toLowerCase()
+    const found = allProjects.find(
+      (p) => p.title.trim().toLowerCase() === wanted || p.filePath.toLowerCase() === wanted
+    )
+    if (!found) {
+      return {
+        projects: [],
+        filter: matchAllFilter(),
+        title: spec.title,
+        errors: [...errors, `no project named "${spec.project}"`],
+        available: allProjects.map((p) => p.title)
+      }
+    }
+    projects = [found]
+    views = found.savedViews
+  }
+
+  if (spec.view) {
+    const saved = findSavedView(views, spec.view)
+    if (!saved) {
+      return {
+        projects: [],
+        filter: matchAllFilter(),
+        title: spec.title,
+        errors: [...errors, `no saved view named "${spec.view}"`],
+        available: views.map((v) => v.name)
+      }
+    }
+    return { projects, filter: saved.filter, title: spec.title || saved.name, errors, available: [] }
+  }
+
+  // No view named. Fine when a project is: that's "everything in this project".
+  if (!spec.project) {
+    return {
+      projects: [],
+      filter: matchAllFilter(),
+      title: spec.title,
+      errors: [...errors, 'name a `view:` (and optionally a `project:`)'],
+      available: views.map((v) => v.name)
+    }
+  }
+  return { projects, filter: matchAllFilter(), title: spec.title || projects[0].title, errors, available: [] }
 }
 
 export interface BlockRow {

@@ -10,7 +10,7 @@ import type PMPlugin from '../main'
 import type { Project, Task } from '../types'
 import { openTaskModal } from '../ui/ModalFactory'
 import { renderTaskBadges } from '../ui/primitives/TaskBadges'
-import { findSavedView, groupByProject, parseTasksBlock, selectBlockTasks, uberSavedViews } from './tasksBlock'
+import { groupByProject, parseTasksBlock, resolveBlock, selectBlockTasks } from './tasksBlock'
 
 export class TasksBlockRenderer extends MarkdownRenderChild {
   private timer: number | null = null
@@ -56,25 +56,18 @@ export class TasksBlockRenderer extends MarkdownRenderChild {
     el.empty()
 
     const spec = parseTasksBlock(this.source)
-    const views = uberSavedViews(this.plugin.settings.projectFilters)
-    const saved = spec.view ? findSavedView(views, spec.view) : undefined
+    const projects = await this.plugin.store.loadAllProjects(this.plugin.settings.projectsFolder)
+    const resolved = resolveBlock(spec, projects, this.plugin.settings.projectFilters)
 
-    if (spec.errors.length || !saved) {
-      const problems = [...spec.errors]
-      if (spec.view && !saved) problems.push(`no saved view named "${spec.view}"`)
-      this.renderProblems(
-        el,
-        problems,
-        views.map((v) => v.name)
-      )
+    if (resolved.errors.length) {
+      this.renderProblems(el, resolved.errors, resolved.available, Boolean(spec.project))
       return
     }
 
-    const projects = await this.plugin.store.loadAllProjects(this.plugin.settings.projectsFolder)
-    const rows = selectBlockTasks(projects, saved.filter, this.plugin.settings.statuses, spec.limit)
+    const rows = selectBlockTasks(resolved.projects, resolved.filter, this.plugin.settings.statuses, spec.limit)
 
     const head = el.createDiv('pm-tasks-block-head')
-    head.createSpan({ text: spec.title || saved.name, cls: 'pm-tasks-block-title' })
+    head.createSpan({ text: resolved.title, cls: 'pm-tasks-block-title' })
     head.createSpan({ text: String(rows.length), cls: 'pm-tasks-block-count' })
 
     if (!rows.length) {
@@ -83,8 +76,9 @@ export class TasksBlockRenderer extends MarkdownRenderChild {
     }
 
     const list = el.createDiv('pm-tasks-block-list')
-    if (spec.group === 'none') {
-      for (const row of rows) this.renderRow(list, row.project, row.task, true)
+    // Grouping by project is noise when the block already names one.
+    if (spec.group === 'none' || spec.project) {
+      for (const row of rows) this.renderRow(list, row.project, row.task, !spec.project)
       return
     }
     for (const group of groupByProject(rows)) {
@@ -123,16 +117,17 @@ export class TasksBlockRenderer extends MarkdownRenderChild {
   }
 
   /** Say what's wrong and what the valid answers are — an empty panel explains nothing. */
-  private renderProblems(el: HTMLElement, problems: string[], viewNames: string[]): void {
+  private renderProblems(el: HTMLElement, problems: string[], available: string[], scoped: boolean): void {
     const box = el.createDiv('pm-tasks-block-error')
     box.createDiv({ text: 'pm-tasks', cls: 'pm-tasks-block-error-title' })
     const list = box.createEl('ul')
     for (const p of problems) list.createEl('li', { text: p })
+    const where = scoped ? 'that project' : 'the all-projects timeline'
     box.createDiv({
       cls: 'pm-tasks-block-error-hint',
-      text: viewNames.length
-        ? `Saved views on the all-projects timeline: ${viewNames.join(', ')}`
-        : 'No saved views yet — open the all-projects timeline, set up a filter, and save it.'
+      text: available.length
+        ? `Available: ${available.join(', ')}`
+        : `No saved views on ${where} yet — open it, set up a filter, and save it.`
     })
   }
 }
