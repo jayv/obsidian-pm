@@ -33,10 +33,9 @@ export interface OutlineOpts {
  * its title and its own badge and nothing else. Rendering the empty fields would put a
  * row of blanks above every group.
  */
-function lineOf(row: FlatTask, opts: OutlineOpts): string {
-  const task = row.task
+function taskLine(task: Task, depth: number, opts: OutlineOpts, withAssignees = true): string {
   const title = opts.titleOf?.(task) ?? task.title
-  const indent = '    '.repeat(row.depth)
+  const indent = indentOf(depth)
   const badges = opts
     .badgesOf(task)
     .map((b) => (b.href ? ` [${b.label}](${b.href})` : ` [${b.label}]`))
@@ -46,9 +45,64 @@ function lineOf(row: FlatTask, opts: OutlineOpts): string {
   const icon = getStatusConfig(opts.statuses, task.status)?.icon
   const symbol = icon ? `${icon} ` : ''
   const due = task.due ? ` _(${task.due})_` : ''
-  const display = opts.displayName ?? ((n: string): string => n)
-  const who = task.assignees.length ? ` — ${task.assignees.map(display).join(', ')}` : ''
+  // Dropped under an assignee heading: it has already said whose this is, and repeating
+  // it on every line beneath is noise.
+  const who = withAssignees && task.assignees.length ? ` — ${task.assignees.map(nameOf(opts)).join(', ')}` : ''
   return `${indent}- ${symbol}${title}${badges}${due}${who}`
+}
+
+const indentOf = (depth: number): string => '    '.repeat(depth)
+const nameOf = (opts: OutlineOpts): ((n: string) => string) => opts.displayName ?? ((n: string): string => n)
+
+/** Empty due dates sort after dated ones. */
+function byDue(a: Task, b: Task): number {
+  if (a.due === b.due) return 0
+  if (!a.due) return 1
+  if (!b.due) return -1
+  return a.due.localeCompare(b.due)
+}
+
+/**
+ * Tasks grouped under an assignee heading: `- @Name`, then their work indented beneath.
+ *
+ * The @-mention is the point — a pasted update pings the people in it. "Unassigned" is
+ * nobody, so it stays styled rather than mentioned and sorts last; milestones are markers
+ * rather than anyone's work, so they get their own group at the top.
+ *
+ * Shared by the per-project export and the all-projects one. They drifted apart while each
+ * formatted its own version of the same thing, which is what having one format is for.
+ */
+export function assigneeOutline(tasks: Task[], opts: OutlineOpts, baseDepth = 0): string[] {
+  const display = nameOf(opts)
+  const whoOf = (t: Task): string => (t.assignees.length ? t.assignees.map(display).join(', ') : 'Unassigned')
+
+  const milestones = tasks.filter((t) => t.type === 'milestone').sort(byDue)
+  const groups = new Map<string, Task[]>()
+  for (const task of tasks) {
+    if (task.type === 'milestone') continue
+    const key = whoOf(task)
+    const arr = groups.get(key)
+    if (arr) arr.push(task)
+    else groups.set(key, [task])
+  }
+  // Named assignees alphabetically; "Unassigned" last — a leftover, not a person.
+  const keys = [...groups.keys()].sort((a, b) => {
+    if ((a === 'Unassigned') !== (b === 'Unassigned')) return a === 'Unassigned' ? 1 : -1
+    return a.localeCompare(b)
+  })
+
+  const lines: string[] = []
+  const emit = (header: string, items: Task[]): void => {
+    lines.push(`${indentOf(baseDepth)}- ${header}`)
+    for (const task of items) lines.push(taskLine(task, baseDepth + 1, opts, false))
+  }
+  if (milestones.length) emit('*Milestones*', milestones)
+  for (const key of keys) {
+    const items = (groups.get(key) ?? []).sort(byDue)
+    const names = items[0].assignees.map(display)
+    emit(names.length ? names.map((n) => `@${n}`).join(', ') : `*${key}*`, items)
+  }
+  return lines
 }
 
 /**
@@ -131,5 +185,5 @@ export function collapseParents(rows: FlatTask[], isHeading?: (task: Task) => bo
 
 /** The rows as a Markdown outline, in the order given. */
 export function outlineMarkdown(rows: FlatTask[], opts: OutlineOpts): string {
-  return rows.map((row) => lineOf(row, opts)).join('\n')
+  return rows.map((row) => taskLine(row.task, row.depth, opts)).join('\n')
 }

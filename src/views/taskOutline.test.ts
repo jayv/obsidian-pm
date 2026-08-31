@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_STATUSES, makeTask } from '../types'
 import type { Task } from '../types'
 import { flattenTasks } from '../store/TaskTreeOps'
-import { collapseParents, outlineMarkdown, titlePaths } from './taskOutline'
+import { assigneeOutline, collapseParents, outlineMarkdown, titlePaths } from './taskOutline'
 
 const noBadges = (): { label: string; href?: string }[] => []
 const opts = (over: Partial<Parameters<typeof outlineMarkdown>[1]> = {}) => ({
@@ -195,5 +195,57 @@ describe('ancestor paths', () => {
     const flat = makeTask({ id: 't', title: 'Standalone', status: 'todo' })
     const paths = titlePaths(flattenTasks([makeTask({ id: 'h1', title: 'P', subtasks: [flat] })]), isHeading)
     expect(paths.get('t')).toBe('Standalone')
+  })
+})
+
+describe('assignee grouping', () => {
+  const t = (title: string, over: Partial<Task> = {}): Task => makeTask({ title, status: 'todo', ...over })
+
+  it('groups under an @-mention header, with the work indented beneath', () => {
+    // The mention is the point: a pasted update pings the people in it.
+    const lines = assigneeOutline([t('A', { assignees: ['Jo'] })], opts())
+    expect(lines[0]).toBe('- @Jo')
+    expect(lines[1].startsWith('    - ')).toBe(true)
+    expect(lines[1]).toContain('A')
+  })
+
+  it('drops the inline assignee suffix under a header that already names them', () => {
+    const lines = assigneeOutline([t('A', { assignees: ['Jo'] })], opts())
+    expect(lines[1]).not.toContain('—')
+  })
+
+  it('sorts named people alphabetically and puts Unassigned last', () => {
+    const lines = assigneeOutline([t('c'), t('b', { assignees: ['Sam'] }), t('a', { assignees: ['Ann'] })], opts())
+    expect(lines.filter((l) => l.startsWith('- '))).toEqual(['- @Ann', '- @Sam', '- *Unassigned*'])
+  })
+
+  it('gives milestones their own group, first — they are markers, not anyone’s work', () => {
+    const lines = assigneeOutline([t('Work', { assignees: ['Jo'] }), t('Cut', { type: 'milestone' })], opts())
+    expect(lines[0]).toBe('- *Milestones*')
+    expect(lines[1]).toContain('Cut')
+    expect(lines[2]).toBe('- @Jo')
+  })
+
+  it('orders each group by due date, undated last', () => {
+    const items = [
+      t('later', { assignees: ['Jo'], due: '2026-09-09' }),
+      t('undated', { assignees: ['Jo'] }),
+      t('sooner', { assignees: ['Jo'], due: '2026-09-01' })
+    ]
+    const lines = assigneeOutline(items, opts())
+    const titles = lines
+      .slice(1)
+      .map((l) => (l.includes('sooner') ? 'sooner' : l.includes('later') ? 'later' : 'undated'))
+    expect(titles).toEqual(['sooner', 'later', 'undated'])
+  })
+
+  it('nests under a base depth, for the all-projects export', () => {
+    const lines = assigneeOutline([t('A', { assignees: ['Jo'] })], opts(), 1)
+    expect(lines[0]).toBe('    - @Jo')
+    expect(lines[1].startsWith('        - ')).toBe(true)
+  })
+
+  it('mentions every assignee on a shared task', () => {
+    expect(assigneeOutline([t('A', { assignees: ['Jo', 'Sam'] })], opts())[0]).toBe('- @Jo, @Sam')
   })
 })

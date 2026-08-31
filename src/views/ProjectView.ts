@@ -10,7 +10,7 @@ import {
 } from 'obsidian'
 import type PMPlugin from '../main'
 import { Project, Task, ViewMode, FilterState, SavedView, makeDefaultFilter, makeId } from '../types'
-import { getStatusConfig, truncateTitle, safeAsync, isEditableTarget } from '../utils'
+import { truncateTitle, safeAsync, isEditableTarget } from '../utils'
 import type { SubView } from './SubView'
 import { TableView } from './table/TableView'
 import type { TableViewState } from './table/TableView'
@@ -19,12 +19,13 @@ import { KanbanView } from './KanbanView'
 import { openProjectModal, openTaskModal } from '../ui/ModalFactory'
 import { ViewSwitcher } from '../ui/primitives/ViewSwitcher'
 import { ProjectHeader, type HeaderUiState } from '../ui/composites/ProjectHeader'
-import { flattenTasks, type FlatTask } from '../store/TaskTreeOps'
+import { flattenTasks } from '../store/TaskTreeOps'
 import { cloneFilter, filterEquals, isFilterActive, matchesFilter } from '../store/TaskFilter'
 import { computeResourceConflicts } from './gantt/ResourceConflicts'
 import { renderTaskBadges } from '../ui/primitives/TaskBadges'
 import { projectRoster } from '../ui/roster'
 import { displayName } from '../ui/primitives/Avatar'
+import { assigneeOutline, titlePaths } from './taskOutline'
 
 export const PM_PROJECT_VIEW_TYPE = 'pm-project'
 
@@ -546,81 +547,27 @@ export class ProjectView extends ItemView {
     const project = this.project
     const statuses = this.plugin.settings.statuses
     const flat = flattenTasks(project.tasks)
-    const byId = new Map(flat.map((f) => [f.task.id, f]))
     const visible = flat.filter((f) => f.task.subtasks.length === 0 && matchesFilter(f.task, this.filter, statuses))
     if (!visible.length) {
       new Notice('No visible tasks to copy.')
       return
     }
 
-    // Empty due dates sort after dated ones.
-    const byDue = (a: Task, b: Task): number =>
-      a.due === b.due ? 0 : !a.due ? 1 : !b.due ? -1 : a.due.localeCompare(b.due)
-    const namesOf = (t: Task): string[] => t.assignees.map(displayName)
-    const whoOf = (t: Task): string => (t.assignees.length ? namesOf(t).join(', ') : 'Unassigned')
-    const fmtDue = (t: Task): string => (t.due ? ` _(${t.due})_` : '')
-    // Status symbol prefix so each line reads "<symbol> <task> <due>". Omitted (no leading
-    // space) when the status has no icon configured.
-    const fmtSym = (t: Task): string => {
-      const icon = getStatusConfig(statuses, t.status)?.icon
-      return icon ? `${icon} ` : ''
-    }
-    // Linked issue keys sit between the title and the due date, e.g. "Child [ENG-123] _(2026-08-20)_",
-    // as a Markdown link to the issue when the connector supplies a URL. Tasks with no link
-    // contribute nothing, not an empty pair of brackets.
-    const fmtKeys = (t: Task): string =>
-      this.plugin.connectors
-        .taskBadges(project, t)
-        .map((b) => (b.href ? ` [${b.label}](${b.href})` : ` [${b.label}]`))
-        .join('')
-    // Prefix a subtask with its ancestor chain: "Parent > Child > …".
-    const titlePath = (f: FlatTask): string => {
-      const parts = [f.task.title]
-      for (let pid = f.parentId; pid; ) {
-        const parent = byId.get(pid)
-        if (!parent) break
-        parts.unshift(parent.task.title)
-        pid = parent.parentId
+    // One implementation of the format, shared with the all-projects export — they had
+    // drifted apart while each grouped and formatted its own version of the same thing.
+    // Ancestor chains come from the whole tree, not just the visible rows: a leaf's
+    // parents are the context it loses by being listed on its own.
+    const paths = titlePaths(flat)
+    const lines = assigneeOutline(
+      visible.map((f) => f.task),
+      {
+        statuses,
+        displayName,
+        titleOf: (t: Task) => paths.get(t.id) ?? t.title,
+        badgesOf: (t: Task) => this.plugin.connectors.taskBadges(project, t)
       }
-      return parts.join(' > ')
-    }
+    )
 
-    // Group tasks by assignee into a nested list: assignee header, then its tasks.
-    const groups = new Map<string, FlatTask[]>()
-    for (const f of visible) {
-      if (f.task.type === 'milestone') continue
-      const key = whoOf(f.task)
-      const arr = groups.get(key)
-      if (arr) arr.push(f)
-      else groups.set(key, [f])
-    }
-    // Named assignees alphabetically; "Unassigned" grouped at the end.
-    const orderedKeys = [...groups.keys()].sort((a, b) => {
-      if ((a === 'Unassigned') !== (b === 'Unassigned')) return a === 'Unassigned' ? 1 : -1
-      return a.localeCompare(b)
-    })
-
-    // Assignee group header: @-mention each person so a pasted update pings them.
-    // "Unassigned" is nobody, so it stays styled rather than mentioned.
-    const headerOf = (key: string, items: FlatTask[]): string => {
-      const names = items.length ? namesOf(items[0].task) : []
-      return names.length ? `- ${names.map((n) => `@${n}`).join(', ')}` : `- *${key}*`
-    }
-    // "<symbol> <title path> [<issue key>] <due>" — one definition for both groupings.
-    const lineOf = (f: FlatTask): string => `    - ${fmtSym(f.task)}${titlePath(f)}${fmtKeys(f.task)}${fmtDue(f.task)}`
-
-    const lines: string[] = []
-    // Milestones first, nested under their own group header like the assignees.
-    const milestones = visible.filter((f) => f.task.type === 'milestone').sort((a, b) => byDue(a.task, b.task))
-    if (milestones.length) {
-      lines.push('- *Milestones*')
-      for (const f of milestones) lines.push(lineOf(f))
-    }
-    for (const key of orderedKeys) {
-      const items = (groups.get(key) ?? []).sort((a, b) => byDue(a.task, b.task))
-      lines.push(headerOf(key, items))
-      for (const f of items) lines.push(lineOf(f))
-    }
     await navigator.clipboard.writeText(lines.join('\n'))
     new Notice(`Copied ${lines.length} item${lines.length === 1 ? '' : 's'} as Markdown.`)
   }
