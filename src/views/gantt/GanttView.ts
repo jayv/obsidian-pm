@@ -526,6 +526,15 @@ export class GanttView implements SubView {
     this.scrollEl.scrollLeft = Math.max(0, center)
   }
 
+  /**
+   * The rows the chart is currently showing — filtered, promoted, collapse-aware, in
+   * display order. Exposed so an export renders exactly what is on screen instead of
+   * re-deriving "visible" and drifting from it.
+   */
+  visibleRows(): FlatTask[] {
+    return this.flatTasks
+  }
+
   private setAllCollapsed(collapsed: boolean): void {
     if (this.opts.onSetAllCollapsed) {
       void this.opts.onSetAllCollapsed(collapsed)

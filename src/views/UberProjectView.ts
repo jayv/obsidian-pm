@@ -18,6 +18,9 @@ import { PrimaryRow } from '../ui/composites/ProjectHeader/PrimaryRow'
 import { computeResourceConflicts } from './gantt/ResourceConflicts'
 import type { HeaderUiState } from '../ui/composites/ProjectHeader/ProjectHeader'
 import { GanttView } from './gantt/GanttView'
+import { outlineMarkdown } from './taskOutline'
+import { displayName } from '../ui/primitives/Avatar'
+import { safeAsync } from '../utils'
 
 export const PM_UBER_VIEW_TYPE = 'pm-uber-project'
 
@@ -257,7 +260,8 @@ export class UberProjectView extends ItemView {
       onToggleFilterRow: () => {
         this.headerUi.filterOpen = !this.headerUi.filterOpen
         this.render()
-      }
+      },
+      onCopyMarkdown: safeAsync(() => this.copyOutlineMarkdown())
     })
     this.primary.setConflicts(
       computeResourceConflicts(flattenTasks(full.tasks), this.plugin.settings.statuses).count,
@@ -283,6 +287,37 @@ export class UberProjectView extends ItemView {
         this.render()
       }
     })
+  }
+
+  /**
+   * The chart's tree as a Markdown outline: project headings with their tasks nested
+   * beneath, in the order and at the depth the chart is drawing them. Not the per-project
+   * export's assignee grouping — across every project the thing you came for is which
+   * project a task belongs to, and that is exactly what grouping by person throws away.
+   */
+  private async copyOutlineMarkdown(): Promise<void> {
+    const uber = this.uber
+    const rows = this.gantt?.visibleRows() ?? []
+    if (!uber || !rows.length) {
+      new Notice('No visible tasks to copy.')
+      return
+    }
+    const markdown = outlineMarkdown(rows, {
+      statuses: this.plugin.settings.statuses,
+      displayName,
+      isHeading: (task: Task) => uber.headings.has(task.id),
+      // A row's badge belongs to its owning project — the root issue for a project row,
+      // the task's own key otherwise. The uber project has no connector config itself.
+      badgesOf: (task: Task) => {
+        const owner = uber.ownerOf.get(task.id)
+        if (!owner) return []
+        return uber.headings.has(task.id)
+          ? this.plugin.connectors.projectBadges(owner)
+          : this.plugin.connectors.taskBadges(owner, task)
+      }
+    })
+    await navigator.clipboard.writeText(markdown)
+    new Notice(`Copied ${rows.length} row${rows.length === 1 ? '' : 's'} as Markdown.`)
   }
 
   private async toggleCollapsed(uber: UberProject, task: Task): Promise<void> {

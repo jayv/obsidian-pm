@@ -1,4 +1,4 @@
-import { ButtonComponent, Menu } from 'obsidian'
+import { ButtonComponent, ExtraButtonComponent, Menu } from 'obsidian'
 import type { Project, FilterState, SavedView, ViewMode } from '../../../types'
 import { Pill } from '../../primitives/Pill'
 import { countActiveFilters, isFilterActive } from '../../../store/TaskFilter'
@@ -20,6 +20,11 @@ export interface PrimaryRowProps {
   /** Gantt only: whether its controls bar (granularity / Today / expand) is shown. */
   ganttControlsVisible: boolean
   onToggleGanttControls: () => void
+  /**
+   * Copy the visible rows as Markdown. Optional: a project view puts this in its toolbar,
+   * but the all-projects view has no toolbar, so it lives beside the filter toggles there.
+   */
+  onCopyMarkdown?: () => void
 }
 
 export class PrimaryRow {
@@ -83,6 +88,7 @@ export class PrimaryRow {
     this.renderSaveViewAction(this.volatileEl)
     this.renderFilterToggle(this.volatileEl)
     if (this.props.viewMode === 'gantt') this.renderGanttControlsToggle(this.volatileEl)
+    if (this.props.onCopyMarkdown) this.renderCopyMarkdown(this.volatileEl)
   }
 
   /** Keep the toggle's highlight in sync after the controls bar is shown/hidden. */
@@ -216,6 +222,14 @@ export class PrimaryRow {
         this.props.onToggleFilterRow()
       })
     pill.el.addClass('pm-project-header-filter-toggle')
+  }
+
+  /** Copy the visible rows as a Markdown outline (only where the host asks for it). */
+  private renderCopyMarkdown(parent: HTMLElement): void {
+    new ExtraButtonComponent(parent)
+      .setIcon('clipboard-list')
+      .setTooltip('Copy visible tasks as Markdown')
+      .onClick(() => this.props.onCopyMarkdown?.())
   }
 
   /** Gantt only: show/hide the chart's controls bar (granularity, Today, expand/collapse). */
