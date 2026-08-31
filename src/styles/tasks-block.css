@@ -36,15 +36,22 @@
   flex-direction: column;
 }
 
-/* Project heading: the project's own colour, so a glance tells you whose work it is. */
+/* Project heading: a tinted band in the project's own colour, so the groups separate at a
+   glance instead of relying on whitespace. --pm-group-color is set per row by the
+   renderer; the mix keeps it a wash rather than a block of colour, which stays readable
+   against either theme and whatever colour the project happens to use. */
 .pm-tasks-block-group {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 10px 0 2px;
+  margin: 12px -6px 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  border-left: 3px solid var(--pm-group-color, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--pm-group-color, var(--text-muted)) 14%, transparent);
   font-size: var(--font-ui-smaller);
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--text-normal);
 }
 .pm-tasks-block-group:first-child {
   margin-top: 0;
@@ -96,6 +103,11 @@
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* Assignees sit at the end of the row, after the date, and never shrink. */
+.pm-tasks-block-row .pm-avatar-stack {
+  flex-shrink: 0;
 }
 
 /* A misconfigured block explains itself rather than rendering blank. */

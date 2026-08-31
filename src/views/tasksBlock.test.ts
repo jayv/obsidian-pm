@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_STATUSES, makeProject, makeTask } from '../types'
 import type { FilterState, Project, SavedView } from '../types'
 import {
+  blockRoster,
   findSavedView,
   groupByProject,
   parseTasksBlock,
@@ -216,6 +217,30 @@ describe('pm-tasks block — selection', () => {
     const ps = [project('Alpha', [archived])]
     expect(selectBlockTasks(ps, filter({ assignees: ['Jo'] }), DEFAULT_STATUSES)).toHaveLength(0)
     expect(selectBlockTasks(ps, filter({ assignees: ['Jo'], showArchived: true }), DEFAULT_STATUSES)).toHaveLength(1)
+  })
+
+  it('leaves milestones out — a marker on a timeline is not something you do', () => {
+    // In the chart a milestone is a diamond, so it reads as a marker. Dropped into a list
+    // of tasks it looks exactly like one, which is what made it confusing.
+    const milestone = makeTask({ title: 'Launch', type: 'milestone', due: '2026-09-01', assignees: ['Jo'] })
+    const task = makeTask({ title: 'Real work', due: '2026-09-02', assignees: ['Jo'] })
+    const rows = selectBlockTasks([project('Alpha', [milestone, task])], filter(), DEFAULT_STATUSES)
+    expect(rows.map((r) => r.task.title)).toEqual(['Real work'])
+  })
+
+  it('does not keep a parent alive on the strength of a milestone child', () => {
+    const milestone = makeTask({ title: 'Launch', type: 'milestone', due: '2026-09-01' })
+    const container = makeTask({ title: 'Container', subtasks: [milestone] })
+    expect(selectBlockTasks([project('Alpha', [container])], filter(), DEFAULT_STATUSES)).toHaveLength(0)
+  })
+
+  it('gives one person the same initials whichever project their row came from', () => {
+    // Two rosters would happily disagree with each other inside a single list.
+    const a = project('Alpha', [makeTask({ title: 'x', assignees: ['Jo Voordeckers'] })])
+    const b = project('Beta', [makeTask({ title: 'y', assignees: ['Jo Voordeckers', 'Jo Vance'] })])
+    const roster = blockRoster([a, b], [])
+    expect(roster.get('Jo Voordeckers')).toBeTruthy()
+    expect(roster.get('Jo Voordeckers')).not.toBe(roster.get('Jo Vance'))
   })
 
   it('groups rows under their project, in the order the projects came in', () => {

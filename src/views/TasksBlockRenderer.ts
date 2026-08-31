@@ -10,7 +10,8 @@ import type PMPlugin from '../main'
 import type { Project, Task } from '../types'
 import { openTaskModal } from '../ui/ModalFactory'
 import { renderTaskBadges } from '../ui/primitives/TaskBadges'
-import { groupByProject, parseTasksBlock, resolveBlock, selectBlockTasks } from './tasksBlock'
+import { blockRoster, groupByProject, parseTasksBlock, resolveBlock, selectBlockTasks } from './tasksBlock'
+import { AvatarStack } from '../ui/primitives/AvatarStack'
 
 export class TasksBlockRenderer extends MarkdownRenderChild {
   private timer: number | null = null
@@ -65,6 +66,9 @@ export class TasksBlockRenderer extends MarkdownRenderChild {
     }
 
     const rows = selectBlockTasks(resolved.projects, resolved.filter, this.plugin.settings.statuses, spec.limit)
+    // One roster over every project on show, so a person's initials don't change between
+    // rows depending on which project the row came from.
+    const roster = blockRoster(resolved.projects, this.plugin.settings.globalTeamMembers)
 
     const head = el.createDiv('pm-tasks-block-head')
     head.createSpan({ text: resolved.title, cls: 'pm-tasks-block-title' })
@@ -78,20 +82,30 @@ export class TasksBlockRenderer extends MarkdownRenderChild {
     const list = el.createDiv('pm-tasks-block-list')
     // Grouping by project is noise when the block already names one.
     if (spec.group === 'none' || spec.project) {
-      for (const row of rows) this.renderRow(list, row.project, row.task, row.depth, !spec.project)
+      for (const row of rows) this.renderRow(list, row.project, row.task, row.depth, !spec.project, roster)
       return
     }
     for (const group of groupByProject(rows)) {
       const header = list.createDiv('pm-tasks-block-group')
+      // The band and its edge are drawn from this in CSS, so the tint stays a style
+      // decision rather than a colour string built here.
+      header.style.setProperty('--pm-group-color', group.project.color)
       header.createSpan({ cls: 'pm-tasks-block-group-dot' }).style.background = group.project.color
       header.createSpan({ text: group.project.title, cls: 'pm-tasks-block-group-name' })
       header.createSpan({ text: String(group.rows.length), cls: 'pm-tasks-block-count' })
-      for (const row of group.rows) this.renderRow(list, group.project, row.task, row.depth, false)
+      for (const row of group.rows) this.renderRow(list, group.project, row.task, row.depth, false, roster)
     }
   }
 
   /** One task. `withProject` names the project inline, for the ungrouped layout. */
-  private renderRow(parent: HTMLElement, project: Project, task: Task, depth: number, withProject: boolean): void {
+  private renderRow(
+    parent: HTMLElement,
+    project: Project,
+    task: Task,
+    depth: number,
+    withProject: boolean,
+    roster: Map<string, string>
+  ): void {
     const row = parent.createDiv('pm-tasks-block-row')
     // Indent under a listed parent, so a kept container reads as the heading it is.
     if (depth) row.style.paddingLeft = `${4 + depth * 14}px`
@@ -105,6 +119,10 @@ export class TasksBlockRenderer extends MarkdownRenderChild {
 
     renderTaskBadges(row, this.plugin.connectors.taskBadges(project, task))
     if (task.due) row.createSpan({ text: task.due, cls: 'pm-tasks-block-due' })
+    // Who it belongs to, in the same initials every other view uses for them.
+    if (task.assignees.length) {
+      new AvatarStack(row).setRoster(roster).setNames(task.assignees).setMax(3).setSize('sm')
+    }
 
     row.addEventListener('click', () => {
       openTaskModal(this.plugin, project, {

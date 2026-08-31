@@ -11,6 +11,8 @@
  */
 import { UBER_FILTER_KEY, type FilterState, type Project, type SavedView, type StatusConfig, type Task } from '../types'
 import { matchesFilter } from '../store/TaskFilter'
+import { collectAllAssignees } from '../store/TaskTreeOps'
+import { initialsRoster } from '../ui/primitives/Avatar'
 
 export interface TasksBlockSpec {
   /**
@@ -179,7 +181,7 @@ interface KeptNode {
 }
 
 /**
- * Keep the tasks the filter accepts, minus container rows.
+ * Keep the tasks the filter accepts, minus container rows and milestones.
  *
  * A task that has sub-tasks is only worth a row when some of that work is on the list
  * too: on its own it is a heading, and a panel of headings is not a list of what to do.
@@ -188,12 +190,16 @@ interface KeptNode {
  *
  * A surviving task whose parent was dropped is lifted rather than lost: it matched, and
  * the reason its parent isn't shown has nothing to do with it.
+ *
+ * Milestones are dropped outright. A milestone is a marker on a timeline, not something
+ * you do, and it arrives in a list of tasks looking exactly like one — the chart draws it
+ * as a diamond, which is what made it obvious there and not here.
  */
 function keep(tasks: Task[], filter: FilterState, statuses: StatusConfig[]): KeptNode[] {
   const out: KeptNode[] = []
   for (const task of tasks) {
     const children = keep(task.subtasks, filter, statuses)
-    const matches = matchesFilter(task, filter, statuses)
+    const matches = task.type !== 'milestone' && matchesFilter(task, filter, statuses)
     if (!task.subtasks.length) {
       if (matches) out.push({ task, children: [] })
     } else if (matches && children.length) {
@@ -241,6 +247,20 @@ export function selectBlockTasks(
     flattenKept(keep(project.tasks, filter, statuses), project, 0, rows)
   }
   return limit > 0 ? rows.slice(0, limit) : rows
+}
+
+/**
+ * One initials roster over every project the panel draws from, rather than one per
+ * project. A person's initials have to be the same in every row they appear in — two
+ * rosters would happily give the same person "JV" under one project and "JoV" under the
+ * next, in the same list.
+ */
+export function blockRoster(projects: Project[], globalTeamMembers: string[]): Map<string, string> {
+  const names = new Set<string>(globalTeamMembers)
+  for (const project of projects) {
+    for (const name of collectAllAssignees(project.tasks, project.teamMembers)) names.add(name)
+  }
+  return initialsRoster(names)
 }
 
 /** Rows grouped under their project, preserving the order projects were loaded in. */
