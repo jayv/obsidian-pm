@@ -22,6 +22,8 @@ export interface OutlineOpts {
   isHeading?: (task: Task) => boolean
   /** Display form of an assignee name (initials roster, alias, …). */
   displayName?: (name: string) => string
+  /** Row title, e.g. the "Parent > Child" path from {@link titlePaths}. */
+  titleOf?: (task: Task) => string
 }
 
 /**
@@ -33,19 +35,47 @@ export interface OutlineOpts {
  */
 function lineOf(row: FlatTask, opts: OutlineOpts): string {
   const task = row.task
+  const title = opts.titleOf?.(task) ?? task.title
   const indent = '    '.repeat(row.depth)
   const badges = opts
     .badgesOf(task)
     .map((b) => (b.href ? ` [${b.label}](${b.href})` : ` [${b.label}]`))
     .join('')
-  if (opts.isHeading?.(task)) return `${indent}- **${task.title}**${badges}`
+  if (opts.isHeading?.(task)) return `${indent}- **${title}**${badges}`
 
   const icon = getStatusConfig(opts.statuses, task.status)?.icon
   const symbol = icon ? `${icon} ` : ''
   const due = task.due ? ` _(${task.due})_` : ''
   const display = opts.displayName ?? ((n: string): string => n)
   const who = task.assignees.length ? ` — ${task.assignees.map(display).join(', ')}` : ''
-  return `${indent}- ${symbol}${task.title}${badges}${due}${who}`
+  return `${indent}- ${symbol}${title}${badges}${due}${who}`
+}
+
+/**
+ * "Parent > Child" for every row, from the ancestor chain as it stands BEFORE any parents
+ * are collapsed away — the removed names are exactly the context a leaf would otherwise
+ * lose. Project rows are not part of the path: the row above already names the project.
+ *
+ * Matches the per-project export, which prefixes an ancestor chain for the same reason.
+ */
+export function titlePaths(rows: FlatTask[], isHeading?: (task: Task) => boolean): Map<string, string> {
+  const byId = new Map(rows.map((r) => [r.task.id, r]))
+  const paths = new Map<string, string>()
+  for (const row of rows) {
+    if (isHeading?.(row.task)) {
+      paths.set(row.task.id, row.task.title)
+      continue
+    }
+    const parts = [row.task.title]
+    for (let pid = row.parentId; pid; ) {
+      const parent = byId.get(pid)
+      if (!parent || isHeading?.(parent.task)) break
+      parts.unshift(parent.task.title)
+      pid = parent.parentId
+    }
+    paths.set(row.task.id, parts.join(' > '))
+  }
+  return paths
 }
 
 /**
@@ -62,7 +92,19 @@ function lineOf(row: FlatTask, opts: OutlineOpts): string {
  * Depth is recomputed from the rows that survived, so nothing is left indented under a
  * parent that isn't there any more.
  */
-export function collapseParents(rows: FlatTask[], isHeading?: (task: Task) => boolean): FlatTask[] {
+export interface CollapsedOutline {
+  rows: FlatTask[]
+  /**
+   * "Parent > Child" per surviving row, taken before the collapse — so it still carries
+   * the names of the parents that were just removed. Returned together with the rows
+   * rather than left to the caller: computing it from the collapsed set instead would
+   * silently produce bare titles, which is the whole thing the path exists to prevent.
+   */
+  paths: Map<string, string>
+}
+
+export function collapseParents(rows: FlatTask[], isHeading?: (task: Task) => boolean): CollapsedOutline {
+  const paths = titlePaths(rows, isHeading)
   const present = new Set(rows.map((r) => r.task.id))
   const hasDescendantHere = (task: Task): boolean =>
     task.subtasks.some((sub) => present.has(sub.id) || hasDescendantHere(sub))
@@ -84,7 +126,7 @@ export function collapseParents(rows: FlatTask[], isHeading?: (task: Task) => bo
     }
     return depth
   }
-  return withRows.map((row) => ({ ...row, depth: depthOf(row) }))
+  return { rows: withRows.map((row) => ({ ...row, depth: depthOf(row) })), paths }
 }
 
 /** The rows as a Markdown outline, in the order given. */

@@ -105,6 +105,15 @@
   white-space: nowrap;
 }
 
+/* A project name opens its tab, so it reads as a link. */
+.pm-tasks-block-link {
+  cursor: pointer;
+}
+.pm-tasks-block-link:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+
 /* Assignees sit at the end of the row, after the date, and never shrink. */
 .pm-tasks-block-row .pm-avatar-stack {
   flex-shrink: 0;

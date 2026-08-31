@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_STATUSES, makeTask } from '../types'
 import type { Task } from '../types'
 import { flattenTasks } from '../store/TaskTreeOps'
-import { collapseParents, outlineMarkdown } from './taskOutline'
+import { collapseParents, outlineMarkdown, titlePaths } from './taskOutline'
 
 const noBadges = (): { label: string; href?: string }[] => []
 const opts = (over: Partial<Parameters<typeof outlineMarkdown>[1]> = {}) => ({
@@ -98,13 +98,13 @@ describe('collapsing redundant parents', () => {
   it('drops a parent whose sub-tasks are also on the list', () => {
     const child = makeTask({ id: 'c', title: 'Child' })
     const parent = makeTask({ id: 'p', title: 'Parent', subtasks: [child] })
-    const rows = collapseParents(flattenTasks([parent]))
+    const { rows } = collapseParents(flattenTasks([parent]))
     expect(rows.map((r) => r.task.title)).toEqual(['Child'])
   })
 
   it('keeps a task that has no sub-tasks — it was never a parent', () => {
     const leaf = makeTask({ id: 'l', title: 'Leaf' })
-    expect(collapseParents(flattenTasks([leaf])).map((r) => r.task.title)).toEqual(['Leaf'])
+    expect(collapseParents(flattenTasks([leaf])).rows.map((r) => r.task.title)).toEqual(['Leaf'])
   })
 
   it('keeps a parent whose sub-tasks are NOT on the list', () => {
@@ -113,14 +113,14 @@ describe('collapsing redundant parents', () => {
     const child = makeTask({ id: 'c', title: 'Child' })
     const parent = makeTask({ id: 'p', title: 'Parent', subtasks: [child] })
     const collapsedInChart = flattenTasks([parent]).filter((r) => r.task.id === 'p')
-    expect(collapseParents(collapsedInChart).map((r) => r.task.title)).toEqual(['Parent'])
+    expect(collapseParents(collapsedInChart).rows.map((r) => r.task.title)).toEqual(['Parent'])
   })
 
   it('re-seats survivors so nothing is indented under a parent that is gone', () => {
     const grandchild = makeTask({ id: 'g', title: 'Grandchild' })
     const child = makeTask({ id: 'c', title: 'Child', subtasks: [grandchild] })
     const parent = makeTask({ id: 'p', title: 'Parent', subtasks: [child] })
-    const rows = collapseParents(flattenTasks([heading('h1', 'Project', [parent])]), isHeading)
+    const { rows } = collapseParents(flattenTasks([heading('h1', 'Project', [parent])]), isHeading)
     // Only the project row and the leaf survive; the leaf sits directly under it.
     expect(rows.map((r) => [r.task.title, r.depth])).toEqual([
       ['Project', 0],
@@ -130,12 +130,12 @@ describe('collapsing redundant parents', () => {
 
   it('keeps the project row it is grouping under', () => {
     const leaf = makeTask({ id: 'l', title: 'Leaf' })
-    const rows = collapseParents(flattenTasks([heading('h1', 'Project', [leaf])]), isHeading)
+    const { rows } = collapseParents(flattenTasks([heading('h1', 'Project', [leaf])]), isHeading)
     expect(rows.map((r) => r.task.title)).toEqual(['Project', 'Leaf'])
   })
 
   it('drops a project row with nothing left under it', () => {
-    const rows = collapseParents(flattenTasks([heading('h1', 'Empty', [])]), isHeading)
+    const { rows } = collapseParents(flattenTasks([heading('h1', 'Empty', [])]), isHeading)
     expect(rows).toEqual([])
   })
 
@@ -143,12 +143,57 @@ describe('collapsing redundant parents', () => {
     const a = makeTask({ id: 'a', title: 'Leaf A', status: 'todo' })
     const b = makeTask({ id: 'b', title: 'Leaf B', status: 'todo' })
     const container = makeTask({ id: 'p', title: 'Container', status: 'todo', subtasks: [a, b] })
-    const rows = collapseParents(flattenTasks([heading('h1', 'Athlon', [container])]), isHeading)
+    const { rows } = collapseParents(flattenTasks([heading('h1', 'Athlon', [container])]), isHeading)
     const lines = outlineMarkdown(rows, opts({ isHeading })).split('\n')
     expect(lines[0]).toBe('- **Athlon**')
     expect(lines).toHaveLength(3)
     expect(lines[1]).toContain('Leaf A')
     expect(lines[1].startsWith('    - ')).toBe(true)
     expect(lines.join(' ')).not.toContain('Container')
+  })
+})
+
+describe('ancestor paths', () => {
+  const isHeading = (t: Task): boolean => t.id.startsWith('h')
+  const grandchild = makeTask({ id: 'g', title: 'Grandchild', status: 'todo' })
+  const child = makeTask({ id: 'c', title: 'Child', status: 'todo', subtasks: [grandchild] })
+  const parent = makeTask({ id: 'p', title: 'Parent', status: 'todo', subtasks: [child] })
+  const project = makeTask({ id: 'h1', title: 'Athlon', subtasks: [parent] })
+
+  it('prefixes the ancestor chain, like the per-project export', () => {
+    const paths = titlePaths(flattenTasks([project]), isHeading)
+    expect(paths.get('g')).toBe('Parent > Child > Grandchild')
+    expect(paths.get('c')).toBe('Parent > Child')
+    expect(paths.get('p')).toBe('Parent')
+  })
+
+  it('stops at the project row — that row already names the project', () => {
+    const paths = titlePaths(flattenTasks([project]), isHeading)
+    expect(paths.get('g')).not.toContain('Athlon')
+    expect(paths.get('h1')).toBe('Athlon')
+  })
+
+  it('returns the paths with the rows, so they cannot be taken from the collapsed set', () => {
+    // Computing them afterwards is the one way to get bare titles back, so the API hands
+    // both over together and never exposes the collapsed rows on their own.
+    const { rows, paths } = collapseParents(flattenTasks([project]), isHeading)
+    expect(rows.map((r) => r.task.id)).toEqual(['h1', 'g']) // 'p' and 'c' collapsed away
+    expect(paths.get('g')).toBe('Parent > Child > Grandchild') // yet their names survive
+  })
+
+  it('keeps the names of the parents the collapse removes', () => {
+    // The whole point: the chain is taken before collapseParents runs, so a leaf that
+    // survives on its own still says what it belongs to.
+    const { rows, paths } = collapseParents(flattenTasks([project]), isHeading)
+    const md = outlineMarkdown(rows, opts({ isHeading, titleOf: (t: Task) => paths.get(t.id) ?? t.title }))
+    expect(md.split('\n')).toHaveLength(2)
+    expect(md).toContain('- **Athlon**')
+    expect(md).toContain('Parent > Child > Grandchild')
+  })
+
+  it('leaves a top-level task as just its own title', () => {
+    const flat = makeTask({ id: 't', title: 'Standalone', status: 'todo' })
+    const paths = titlePaths(flattenTasks([makeTask({ id: 'h1', title: 'P', subtasks: [flat] })]), isHeading)
+    expect(paths.get('t')).toBe('Standalone')
   })
 })

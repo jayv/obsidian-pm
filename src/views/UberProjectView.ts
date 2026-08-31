@@ -298,8 +298,9 @@ export class UberProjectView extends ItemView {
   private async copyOutlineMarkdown(): Promise<void> {
     const uber = this.uber
     const isHeading = (task: Task): boolean => Boolean(uber?.headings.has(task.id))
-    // A parent whose sub-tasks are also on the list says the same thing twice.
-    const rows = collapseParents(this.gantt?.visibleRows() ?? [], isHeading)
+    // A parent whose sub-tasks are also on the list says the same thing twice, so it goes
+    // — and the paths come back with it, still carrying the removed parents' names.
+    const { rows, paths } = collapseParents(this.gantt?.visibleRows() ?? [], isHeading)
     if (!uber || !rows.length) {
       new Notice('No visible tasks to copy.')
       return
@@ -308,6 +309,7 @@ export class UberProjectView extends ItemView {
       statuses: this.plugin.settings.statuses,
       displayName,
       isHeading,
+      titleOf: (task: Task) => paths.get(task.id) ?? task.title,
       // A row's badge belongs to its owning project — the root issue for a project row,
       // the task's own key otherwise. The uber project has no connector config itself.
       badgesOf: (task: Task) => {

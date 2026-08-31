@@ -91,7 +91,8 @@ export class TasksBlockRenderer extends MarkdownRenderChild {
       // decision rather than a colour string built here.
       header.style.setProperty('--pm-group-color', group.project.color)
       header.createSpan({ cls: 'pm-tasks-block-group-dot' }).style.background = group.project.color
-      header.createSpan({ text: group.project.title, cls: 'pm-tasks-block-group-name' })
+      const name = header.createSpan({ text: group.project.title, cls: 'pm-tasks-block-group-name' })
+      this.linkToProject(name, group.project)
       header.createSpan({ text: String(group.rows.length), cls: 'pm-tasks-block-count' })
       for (const row of group.rows) this.renderRow(list, group.project, row.task, row.depth, false, roster)
     }
@@ -115,7 +116,7 @@ export class TasksBlockRenderer extends MarkdownRenderChild {
     if (status) setTooltip(dot, status.label)
 
     row.createSpan({ text: task.title || '(untitled)', cls: 'pm-tasks-block-name' })
-    if (withProject) row.createSpan({ text: project.title, cls: 'pm-tasks-block-project' })
+    if (withProject) this.linkToProject(row.createSpan({ text: project.title, cls: 'pm-tasks-block-project' }), project)
 
     renderTaskBadges(row, this.plugin.connectors.taskBadges(project, task))
     if (task.due) row.createSpan({ text: task.due, cls: 'pm-tasks-block-due' })
@@ -133,6 +134,19 @@ export class TasksBlockRenderer extends MarkdownRenderChild {
           await this.render()
         }
       })
+    })
+  }
+
+  /**
+   * Make a project's name open its tab in the plugin. The row's own click opens the task
+   * editor, so this stops the event: clicking the project name means the project.
+   */
+  private linkToProject(el: HTMLElement, project: Project): void {
+    el.addClass('pm-tasks-block-link')
+    setTooltip(el, `Open ${project.title}`)
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation()
+      void this.plugin.router.openProjectByPath(project.filePath)
     })
   }
 
