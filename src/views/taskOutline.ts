@@ -48,6 +48,45 @@ function lineOf(row: FlatTask, opts: OutlineOpts): string {
   return `${indent}- ${symbol}${task.title}${badges}${due}${who}`
 }
 
+/**
+ * Drop a parent row when its own sub-tasks are in the list too, and re-seat what's left.
+ *
+ * A parent and its children both appearing says the same thing twice — the parent is a
+ * heading, and the work is underneath it. So the parent goes and the sub-tasks stand on
+ * their own. A task with no sub-tasks was never a parent and is always kept.
+ *
+ * The test is "are its sub-tasks actually here", not "does it have any". A branch the
+ * chart has collapsed contributes only its parent row, and dropping that would export
+ * nothing at all for it — less than the chart shows, and silently.
+ *
+ * Depth is recomputed from the rows that survived, so nothing is left indented under a
+ * parent that isn't there any more.
+ */
+export function collapseParents(rows: FlatTask[], isHeading?: (task: Task) => boolean): FlatTask[] {
+  const present = new Set(rows.map((r) => r.task.id))
+  const hasDescendantHere = (task: Task): boolean =>
+    task.subtasks.some((sub) => present.has(sub.id) || hasDescendantHere(sub))
+
+  const kept = rows.filter((r) => isHeading?.(r.task) || !r.task.subtasks.length || !hasDescendantHere(r.task))
+  // A project row with nothing left under it is a bare title; drop it rather than export
+  // a heading for work that isn't there.
+  const withRows = kept.filter((r) => !isHeading?.(r.task) || hasDescendantHere(r.task))
+
+  const byId = new Map(rows.map((r) => [r.task.id, r]))
+  const keptIds = new Set(withRows.map((r) => r.task.id))
+  const depthOf = (row: FlatTask): number => {
+    let depth = 0
+    for (let pid = row.parentId; pid; ) {
+      const parent = byId.get(pid)
+      if (!parent) break
+      if (keptIds.has(pid)) depth++
+      pid = parent.parentId
+    }
+    return depth
+  }
+  return withRows.map((row) => ({ ...row, depth: depthOf(row) }))
+}
+
 /** The rows as a Markdown outline, in the order given. */
 export function outlineMarkdown(rows: FlatTask[], opts: OutlineOpts): string {
   return rows.map((row) => lineOf(row, opts)).join('\n')

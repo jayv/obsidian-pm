@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_STATUSES, makeTask } from '../types'
 import type { Task } from '../types'
 import { flattenTasks } from '../store/TaskTreeOps'
-import { outlineMarkdown } from './taskOutline'
+import { collapseParents, outlineMarkdown } from './taskOutline'
 
 const noBadges = (): { label: string; href?: string }[] => []
 const opts = (over: Partial<Parameters<typeof outlineMarkdown>[1]> = {}) => ({
@@ -88,5 +88,67 @@ describe('markdown outline', () => {
     const md = outlineMarkdown(flattenTasks([t]), opts({ displayName: (n: string) => n.split(' ')[0] }))
     expect(md).toContain('— Jo')
     expect(md).not.toContain('Voordeckers')
+  })
+})
+
+describe('collapsing redundant parents', () => {
+  const heading = (id: string, title: string, subtasks: Task[]): Task => makeTask({ id, title, subtasks })
+  const isHeading = (t: Task): boolean => t.id.startsWith('h')
+
+  it('drops a parent whose sub-tasks are also on the list', () => {
+    const child = makeTask({ id: 'c', title: 'Child' })
+    const parent = makeTask({ id: 'p', title: 'Parent', subtasks: [child] })
+    const rows = collapseParents(flattenTasks([parent]))
+    expect(rows.map((r) => r.task.title)).toEqual(['Child'])
+  })
+
+  it('keeps a task that has no sub-tasks — it was never a parent', () => {
+    const leaf = makeTask({ id: 'l', title: 'Leaf' })
+    expect(collapseParents(flattenTasks([leaf])).map((r) => r.task.title)).toEqual(['Leaf'])
+  })
+
+  it('keeps a parent whose sub-tasks are NOT on the list', () => {
+    // A branch the chart has collapsed contributes only its parent row. Dropping that
+    // would export nothing for it at all — less than the chart shows, and silently.
+    const child = makeTask({ id: 'c', title: 'Child' })
+    const parent = makeTask({ id: 'p', title: 'Parent', subtasks: [child] })
+    const collapsedInChart = flattenTasks([parent]).filter((r) => r.task.id === 'p')
+    expect(collapseParents(collapsedInChart).map((r) => r.task.title)).toEqual(['Parent'])
+  })
+
+  it('re-seats survivors so nothing is indented under a parent that is gone', () => {
+    const grandchild = makeTask({ id: 'g', title: 'Grandchild' })
+    const child = makeTask({ id: 'c', title: 'Child', subtasks: [grandchild] })
+    const parent = makeTask({ id: 'p', title: 'Parent', subtasks: [child] })
+    const rows = collapseParents(flattenTasks([heading('h1', 'Project', [parent])]), isHeading)
+    // Only the project row and the leaf survive; the leaf sits directly under it.
+    expect(rows.map((r) => [r.task.title, r.depth])).toEqual([
+      ['Project', 0],
+      ['Grandchild', 1]
+    ])
+  })
+
+  it('keeps the project row it is grouping under', () => {
+    const leaf = makeTask({ id: 'l', title: 'Leaf' })
+    const rows = collapseParents(flattenTasks([heading('h1', 'Project', [leaf])]), isHeading)
+    expect(rows.map((r) => r.task.title)).toEqual(['Project', 'Leaf'])
+  })
+
+  it('drops a project row with nothing left under it', () => {
+    const rows = collapseParents(flattenTasks([heading('h1', 'Empty', [])]), isHeading)
+    expect(rows).toEqual([])
+  })
+
+  it('produces an outline of project rows and leaves only', () => {
+    const a = makeTask({ id: 'a', title: 'Leaf A', status: 'todo' })
+    const b = makeTask({ id: 'b', title: 'Leaf B', status: 'todo' })
+    const container = makeTask({ id: 'p', title: 'Container', status: 'todo', subtasks: [a, b] })
+    const rows = collapseParents(flattenTasks([heading('h1', 'Athlon', [container])]), isHeading)
+    const lines = outlineMarkdown(rows, opts({ isHeading })).split('\n')
+    expect(lines[0]).toBe('- **Athlon**')
+    expect(lines).toHaveLength(3)
+    expect(lines[1]).toContain('Leaf A')
+    expect(lines[1].startsWith('    - ')).toBe(true)
+    expect(lines.join(' ')).not.toContain('Container')
   })
 })
