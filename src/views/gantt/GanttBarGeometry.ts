@@ -6,23 +6,19 @@
  * business needing.
  */
 /**
- * The summary bracket's geometry: a thick line with legs dropping at each end.
+ * The summary bracket's geometry: a band with legs dropping at each end.
  *
- * A project row is drawn heavier and doubled — thicker, longer legs, plus a second thin
- * line beneath. Two strokes read as a different KIND of row at a glance, where a merely
- * thicker single bar reads as the same row drawn bigger.
+ * A project row is drawn deeper than a parent task's and filled with a top-to-bottom fade
+ * rather than a flat colour (see the renderer). The depth is what the fade needs to read
+ * at all — at a task bracket's 4px there is nowhere for it to go — and the fade is what
+ * distinguishes the row, so the two go together.
+ *
+ * An earlier attempt drew a second thin line under the first instead. Brought close enough
+ * in weight to be legible, the pair just read as a box.
  */
-export function summaryBracket(
-  x: number,
-  y: number,
-  width: number,
-  isProject: boolean
-): { points: string; underline?: { x: number; y: number; width: number; height: number } } {
-  // The project bracket's two lines are closer in weight than they were: the thick one
-  // dropped and the thin one rose, because at 6px against 2px the second line read as an
-  // artefact of the first rather than a line of its own.
-  const thickness = isProject ? 5 : 4
-  const leg = isProject ? 12 : 9
+export function summaryBracket(x: number, y: number, width: number, isProject: boolean): { points: string } {
+  const thickness = isProject ? 10 : 4
+  const leg = isProject ? 14 : 9
   const legW = Math.min(isProject ? 8 : 6, width / 2)
   const points = [
     `${x},${y}`,
@@ -32,6 +28,19 @@ export function summaryBracket(
     `${x + legW},${y + thickness}`,
     `${x},${y + leg}`
   ].join(' ')
-  if (!isProject) return { points }
-  return { points, underline: { x, y: y + thickness + 3, width, height: 3 } }
+  return { points }
 }
+
+/**
+ * A stable element id for one colour's fade, so the gradient is defined once per colour
+ * and reused by every project row using it, rather than once per row.
+ */
+export function fadeGradientId(color: string): string {
+  return `pm-summary-fade-${color.replace(/[^a-zA-Z0-9]/g, '')}`
+}
+
+/** Top-to-bottom fade stops: the project's colour, falling away to nearly nothing. */
+export const FADE_STOPS = [
+  { offset: '0%', opacity: 1 },
+  { offset: '100%', opacity: 0.08 }
+] as const

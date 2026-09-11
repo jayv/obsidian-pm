@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { summaryBracket } from './GanttBarGeometry'
+import { FADE_STOPS, fadeGradientId, summaryBracket } from './GanttBarGeometry'
 
 /*
  * In the all-projects chart every project drew the same accent-blue summary bracket as an
  * ordinary parent task, so several projects read as one flat pile of nested summaries with
- * no way to see where a project began. A project row is now heavier and doubled — and the
- * two shapes have to stay distinguishable, not merely differently coloured, because the
- * colour alone is a project's own and can be anything.
+ * no way to see where a project began. A project row is now a deeper band filled with a
+ * top-to-bottom fade — the shapes have to stay distinguishable, not merely differently
+ * coloured, because the colour alone is a project's own and can be anything.
  */
 describe('summary bracket geometry', () => {
   const y = 100
@@ -29,23 +29,31 @@ describe('summary bracket geometry', () => {
     expect(yOf(project.points, 5) - y).toBeGreaterThan(yOf(task.points, 5) - y) // leg drop
   })
 
-  it('doubles a project bracket with a second line, and only a project one', () => {
-    expect(summaryBracket(10, y, 200, false).underline).toBeUndefined()
-    const { underline } = summaryBracket(10, y, 200, true)
-    expect(underline).toEqual({ x: 10, y: y + 8, width: 200, height: 3 })
+  it('gives the fade room to read — a task bracket is too thin for one', () => {
+    // 4px has nowhere for a gradient to go, which is why the project band is deeper.
+    const task = summaryBracket(0, y, 200, false)
+    const project = summaryBracket(0, y, 200, true)
+    const depth = (points: string): number => Number(points.split(' ')[4].split(',')[1]) - y
+    expect(depth(task.points)).toBe(4)
+    expect(depth(project.points)).toBeGreaterThanOrEqual(8)
   })
 
-  it('keeps the two lines close in weight, so the second reads as a line of its own', () => {
-    // At 6px against 2px the thin one looked like an artefact of the thick one.
-    const { points, underline } = summaryBracket(0, y, 200, true)
-    const thickness = Number(points.split(' ')[4].split(',')[1]) - y
-    expect(underline?.height).toBeGreaterThanOrEqual(thickness / 2)
+  it('fades from the colour to nearly nothing, top to bottom', () => {
+    expect(FADE_STOPS[0]).toEqual({ offset: '0%', opacity: 1 })
+    expect(FADE_STOPS[FADE_STOPS.length - 1].offset).toBe('100%')
+    expect(FADE_STOPS[FADE_STOPS.length - 1].opacity).toBeLessThan(0.2)
   })
 
-  it('keeps the underline clear of the bar above it', () => {
-    const { points, underline } = summaryBracket(0, y, 200, true)
-    const barBottom = yOf(points, 4)
-    expect(underline?.y).toBeGreaterThan(barBottom) // a visible gap, not a thicker bar
+  it('keys the gradient by colour, so one is defined per colour and not per row', () => {
+    expect(fadeGradientId('#0c69e4')).toBe(fadeGradientId('#0c69e4'))
+    expect(fadeGradientId('#0c69e4')).not.toBe(fadeGradientId('#8b72be'))
+  })
+
+  it('makes an id that is safe to select with, whatever the colour looks like', () => {
+    // Colours arrive as the user set them — '#abc', 'rgb(1, 2, 3)', a CSS variable.
+    for (const color of ['#0c69e4', 'rgb(12, 105, 228)', 'var(--interactive-accent)']) {
+      expect(fadeGradientId(color)).toMatch(/^pm-summary-fade-[a-zA-Z0-9]+$/)
+    }
   })
 
   it('never lets the legs meet in the middle of a narrow bar', () => {

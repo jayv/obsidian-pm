@@ -1,5 +1,5 @@
 import { Notice } from 'obsidian'
-import { summaryBracket } from './GanttBarGeometry'
+import { FADE_STOPS, fadeGradientId, summaryBracket } from './GanttBarGeometry'
 import { openRow } from './openRow'
 import type { Task } from '../../types'
 import {
@@ -114,19 +114,17 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   if (isSummary) {
     const projectColor = ctx.rowColorOf?.(task)
     const shape = summaryBracket(x, y, width, Boolean(projectColor))
-    const shapeColor = projectColor ?? color
+    // A project row fades from its colour at the top to almost nothing at the bottom. Two
+    // separate lines read as a box once the second was heavy enough to see at all; one
+    // band with a fade is the same "different kind of row" without the frame.
+    const fill = projectColor ? `url(#${ensureFadeGradient(ctx.svgEl, projectColor)})` : color
     barGroup.appendChild(
       svgEl('polygon', {
         points: shape.points,
-        fill: shapeColor,
+        fill,
         class: projectColor ? 'pm-gantt-summary-shape pm-gantt-summary-shape--project' : 'pm-gantt-summary-shape'
       })
     )
-    if (shape.underline) {
-      barGroup.appendChild(
-        svgEl('rect', { ...shape.underline, fill: shapeColor, opacity: 0.85, class: 'pm-gantt-summary-underline' })
-      )
-    }
   }
 
   // Completed portion — solid fill over the faint track so progress reads at a
@@ -747,6 +745,24 @@ function ensureConflictPattern(el: SVGSVGElement): void {
   })
   pattern.appendChild(svgEl('line', { x1: 0, y1: 0, x2: 0, y2: 7, class: 'pm-gantt-conflict-stripe' }))
   defs.appendChild(pattern)
+}
+
+/**
+ * Define (once per colour) a vertical fade from `color` to near-transparent, and return
+ * its id. Keyed by colour rather than by row: a chart of twenty rows across four projects
+ * needs four gradients, not twenty.
+ */
+function ensureFadeGradient(svg: SVGSVGElement, color: string): string {
+  const id = fadeGradientId(color)
+  const defs = getOrCreateDefs(svg)
+  if (defs.querySelector(`[id="${id}"]`)) return id
+  // objectBoundingBox units: 0,0 → 0,1 is top edge to bottom edge of whatever it fills.
+  const grad = svgEl('linearGradient', { id, x1: 0, y1: 0, x2: 0, y2: 1 })
+  for (const stop of FADE_STOPS) {
+    grad.appendChild(svgEl('stop', { offset: stop.offset, 'stop-color': color, 'stop-opacity': stop.opacity }))
+  }
+  defs.appendChild(grad)
+  return id
 }
 
 function getOrCreateDefs(el: SVGSVGElement): SVGDefsElement {
