@@ -46,11 +46,9 @@ export interface JiraProjectConfig {
   priorityMap: JiraValueMap[] // JIRA priority name → our priority (N→1, one outbound)
   assigneeMap: JiraAssignee[]
   ignoredKeys: string[]
-  dirtyQueue: string[]
   /** Local maps changed since last push to the epic config property. */
   mappingsDirty?: boolean
   syncIntervalMin?: number
-  lastSyncAt?: string
   lastSeenUpdated?: string
 }
 
@@ -233,11 +231,21 @@ export function ensureProjectCfg(project: Project): JiraProjectConfig {
       statusMap: [],
       priorityMap: [],
       assigneeMap: [],
-      ignoredKeys: [],
-      dirtyQueue: []
+      ignoredKeys: []
     }
     ext[JIRA_ID] = cfg
   }
+  // `dirtyQueue` was a per-machine list of tasks to push, written on every task change and
+  // never once read — the incremental sync works out what diverged by comparing each task
+  // against its shadow, which is the only answer that survives a vault shared between
+  // machines. Dropped here so it stops riding along in the project note, where it was one
+  // more line for two machines to disagree about.
+  Reflect.deleteProperty(cfg, 'dirtyQueue')
+  // `lastSyncAt` went the same way. It answered "has this machine synced recently" — a
+  // throttle for this process, not a fact about the project — yet sat in the project note,
+  // where every sync on every machine rewrote it and no two machines could agree.
+  Reflect.deleteProperty(cfg, 'lastSyncAt')
+
   // Reset legacy regex entries ({pattern, target}) that predate the string-match
   // model — they carry no `jira` field, so drop them. (Duplicates aren't silently
   // rewritten; they're surfaced by validateValueMap so the user can fix them.)

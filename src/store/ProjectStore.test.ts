@@ -43,15 +43,31 @@ async function addNamed(
 }
 
 describe('ProjectStore self-write tracking', () => {
-  it('marks the project file as self-written after save', async () => {
+  it('marks the project file as self-written when a save actually writes it', async () => {
     const { store, vault } = newStore()
     const project = await store.createProject('Self', 'Projects')
     expect(store.consumeSelfWrite(project.filePath)).toBe(true) // creates mark too (cache invalidation peeks them)
+    vault.resetCounts()
 
-    await store.updateTask(project, 'nope', {}) // no-op (id not found)
-    // Project file is rewritten on every saveProject, which marks it.
-    expect(store.consumeSelfWrite(project.filePath)).toBe(true)
+    project.description = 'changed'
+    await store.saveProject(project)
     expect(vault.modifyCount.get(project.filePath)).toBe(1)
+    expect(store.consumeSelfWrite(project.filePath)).toBe(true)
+  })
+
+  it('leaves the project note alone when the save would change nothing', async () => {
+    // Every sync ends in a save, and the note used to be stamped with `updatedAt` and
+    // rewritten regardless. On a vault shared between machines that produced a conflict in
+    // the project note every few minutes, over a change that was only the stamp.
+    const { store, vault } = newStore()
+    const project = await store.createProject('Quiet', 'Projects')
+    vault.resetCounts()
+    const before = project.updatedAt
+
+    await store.updateTask(project, 'nope', {}) // no-op (id not found), still saves
+
+    expect(vault.modifyCount.get(project.filePath) ?? 0).toBe(0)
+    expect(project.updatedAt).toBe(before)
   })
 
   it('marks task file paths as self-written when modified', async () => {
@@ -109,7 +125,7 @@ describe('ProjectStore dirty-set save efficiency', () => {
 
     expect(vault.modifyCount.get(expectDefined(a.filePath)) ?? 0).toBe(0)
     expect(vault.modifyCount.get(expectDefined(b.filePath)) ?? 0).toBe(0)
-    expect(vault.modifyCount.get(project.filePath)).toBe(1)
+    expect(vault.modifyCount.get(project.filePath) ?? 0).toBe(0) // nor the project note
   })
 
   it('rewrites only the updated task on a single-field update', async () => {

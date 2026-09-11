@@ -13,7 +13,6 @@ import {
   ignoreOnDelete,
   isLinkChecked,
   linkTask,
-  queueDirty,
   renameAssigneeMapping,
   unlinkTask
 } from './taskLink'
@@ -51,11 +50,6 @@ export class JiraConnector implements Connector {
   onProjectLoaded(project: Project): void {
     const cfg = projectCfg(project)
     if (cfg?.serverId) sharedAssignees(this.plugin, cfg)
-  }
-
-  onTaskChanged(project: Project, task: Task): void {
-    const cfg = projectCfg(project)
-    if (cfg) queueDirty(cfg, task)
   }
 
   /**
@@ -102,9 +96,24 @@ export class JiraConnector implements Connector {
     return { label: cfg.epicId, href: site ? `https://${site}/browse/${cfg.epicId}` : undefined }
   }
 
+  /**
+   * When this process last synced each project, by project path. In memory rather than in
+   * the project note: it throttles this machine's ticks and says nothing about the project
+   * — kept in the file, every sync on every machine rewrote a line the others disagreed
+   * with, which a shared vault can only offer you as a merge conflict.
+   */
+  private lastSyncAt = new Map<string, number>()
+
+  private markSynced(project: Project): void {
+    this.lastSyncAt.set(project.filePath, Date.now())
+  }
+
   async syncTick(project: Project): Promise<{ changed: boolean }> {
     const cfg = projectCfg(project)
-    if (!cfg?.enabled || !dueForSync(cfg, Date.now())) return { changed: false }
+    if (!cfg?.enabled || !dueForSync(cfg, Date.now(), this.lastSyncAt.get(project.filePath))) {
+      return { changed: false }
+    }
+    this.markSynced(project)
     // Periodic tick: incremental — only changes to tracked issues since the watermark,
     // no issue-type / epic-config metadata. Manual `syncNow` stays a full sync.
     return runSync(this.plugin, project, { full: false })
@@ -114,6 +123,7 @@ export class JiraConnector implements Connector {
     // A manual sync is many round-trips; show live progress so a slow instance doesn't
     // look frozen. The periodic tick stays silent.
     const progress = new SyncProgress()
+    this.markSynced(project) // a manual sync resets the throttle; a tick right after is noise
     try {
       const r = await runSync(this.plugin, project, {
         onProgress: (phase, done, total) => progress.update(phase, done, total)

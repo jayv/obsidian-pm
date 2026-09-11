@@ -32,8 +32,6 @@ describe('jira sync — two projects, one backend issue [both]', () => {
     const { plugin, projA, cfgA, ax, projB, cfgB, bx } = await twoProjects()
     ax.start = '2026-02-02'
     bx.start = '2026-03-03'
-    cfgA.dirtyQueue = [ax.id]
-    cfgB.dirtyQueue = [bx.id]
     rewind(cfgA)
     await runSync(plugin, projA) // A pushes its value to JIRA first
     rewind(cfgB)
@@ -52,7 +50,6 @@ describe('jira sync — two projects, one backend issue [both]', () => {
   it('if B re-syncs first it adopts A’s value, so a later B edit is a clean push (no conflict)', async () => {
     const { plugin, projA, cfgA, ax, projB, cfgB, bx } = await twoProjects()
     ax.start = '2026-02-02'
-    cfgA.dirtyQueue = [ax.id]
     rewind(cfgA)
     await runSync(plugin, projA) // JIRA = 02-02
 
@@ -63,7 +60,6 @@ describe('jira sync — two projects, one backend issue [both]', () => {
 
     const bAfter = must(findTask(projB.tasks, bx.id))
     bAfter.start = '2026-03-03' // now B edits from a baseline that already saw A's value
-    cfgB.dirtyQueue = [bx.id]
     rewind(cfgB)
     const rb = await runSync(plugin, projB)
     expect(rb.conflicts).toBe(0) // one-sided change → push, not a conflict

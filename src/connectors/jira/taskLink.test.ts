@@ -7,7 +7,6 @@ import {
   dueForSync,
   isLinkChecked,
   linkTask,
-  queueDirty,
   setOutbound,
   stripJira,
   unlinkTask,
@@ -71,40 +70,21 @@ describe('task link — opt in / opt out [Obsidian]', () => {
   })
 })
 
-describe('task link — dirty queue [Obsidian]', () => {
-  it('queues a synced task in an enabled project', () => {
-    const c = cfg()
-    const t = linked()
-    queueDirty(c, t)
-    expect(c.dirtyQueue).toEqual([t.id])
-  })
-  it('does not queue twice', () => {
-    const c = cfg()
-    const t = linked()
-    queueDirty(c, t)
-    queueDirty(c, t)
-    expect(c.dirtyQueue).toEqual([t.id])
-  })
-  it('ignores non-synced tasks and disabled projects', () => {
-    const c = cfg()
-    queueDirty(c, makeTask()) // not synced
-    expect(c.dirtyQueue ?? []).toEqual([])
-    const disabled = cfg({ enabled: false })
-    queueDirty(disabled, linked())
-    expect(disabled.dirtyQueue ?? []).toEqual([])
-  })
-})
-
 describe('task link — interval gate [Obsidian]', () => {
   it('is due when never synced', () => {
     expect(dueForSync(cfg(), 1_000_000)).toBe(true)
   })
-  it('respects the interval since lastSyncAt', () => {
-    const last = '2026-06-28T10:00:00.000Z'
-    const c = cfg({ lastSyncAt: last, syncIntervalMin: 5 })
-    const base = Date.parse(last)
-    expect(dueForSync(c, base + 4 * 60_000)).toBe(false) // 4 min < 5
-    expect(dueForSync(c, base + 5 * 60_000)).toBe(true) // 5 min ≥ 5
+  it('respects the interval since the last sync', () => {
+    const base = Date.parse('2026-06-28T10:00:00.000Z')
+    const c = cfg({ syncIntervalMin: 5 })
+    expect(dueForSync(c, base + 4 * 60_000, base)).toBe(false) // 4 min < 5
+    expect(dueForSync(c, base + 5 * 60_000, base)).toBe(true) // 5 min ≥ 5
+  })
+
+  it('is due when the caller has no record of a sync — a fresh process', () => {
+    // The time lives in memory now, so a restart means "sync on the first tick", which is
+    // what you want after being away rather than a throttle inherited from another machine.
+    expect(dueForSync(cfg({ syncIntervalMin: 5 }), Date.now())).toBe(true)
   })
 })
 

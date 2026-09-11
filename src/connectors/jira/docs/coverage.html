@@ -23,8 +23,8 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>249</strong> tests</span>
-    <span class="stat"><strong>62</strong> areas</span>
+    <span class="stat"><strong>247</strong> tests</span>
+    <span class="stat"><strong>61</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
 
@@ -397,14 +397,10 @@
 <tr><td>unlinkTask on a keyless task just removes the block (nothing to ignore)</td><td class="file">taskLink.test.ts</td></tr>
 <tr><td>unlinkTask does not duplicate an already-ignored key</td><td class="file">taskLink.test.ts</td></tr>
 
-    <tr class="group"><td colspan="2">task link — dirty queue <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">3</span></td></tr>
-    <tr><td>queues a synced task in an enabled project</td><td class="file">taskLink.test.ts</td></tr>
-<tr><td>does not queue twice</td><td class="file">taskLink.test.ts</td></tr>
-<tr><td>ignores non-synced tasks and disabled projects</td><td class="file">taskLink.test.ts</td></tr>
-
-    <tr class="group"><td colspan="2">task link — interval gate <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">2</span></td></tr>
+    <tr class="group"><td colspan="2">task link — interval gate <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">3</span></td></tr>
     <tr><td>is due when never synced</td><td class="file">taskLink.test.ts</td></tr>
-<tr><td>respects the interval since lastSyncAt</td><td class="file">taskLink.test.ts</td></tr>
+<tr><td>respects the interval since the last sync</td><td class="file">taskLink.test.ts</td></tr>
+<tr><td>is due when the caller has no record of a sync — a fresh process</td><td class="file">taskLink.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">task link — disconnect <span class="dir dir-Obsidian">Obsidian</span> <span class="muted">1</span></td></tr>
     <tr><td>stripJira removes the jira block, preserving other connectors</td><td class="file">taskLink.test.ts</td></tr>

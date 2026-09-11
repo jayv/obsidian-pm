@@ -46,18 +46,18 @@ export function ignoreOnDelete(cfg: JiraProjectConfig, task: Task): void {
   if (key && !cfg.ignoredKeys.includes(key)) cfg.ignoredKeys.push(key)
 }
 
-/** Whether the interval sync is due (now − lastSyncAt ≥ interval). */
-export function dueForSync(cfg: JiraProjectConfig, now: number): boolean {
+/**
+ * Whether the interval sync is due (now − last sync ≥ interval).
+ *
+ * `lastSince` is held in memory by the connector rather than in the project note: it is
+ * true of this process, not of the project, and writing it to a file two machines share
+ * meant every sync on either of them rewrote a line the other disagreed with. Nothing
+ * displays it, and losing it on restart just means the first tick syncs — which is what
+ * you want after being away anyway.
+ */
+export function dueForSync(cfg: JiraProjectConfig, now: number, lastSince = 0): boolean {
   const intervalMs = (cfg.syncIntervalMin ?? 5) * 60_000
-  const last = cfg.lastSyncAt ? Date.parse(cfg.lastSyncAt) : 0
-  return now - last >= intervalMs
-}
-
-/** Queue a changed task for the next outbound push — only synced tasks in enabled projects. */
-export function queueDirty(cfg: JiraProjectConfig, task: Task): void {
-  if (!cfg.enabled || !taskExt(task).sync) return
-  cfg.dirtyQueue = cfg.dirtyQueue ?? []
-  if (!cfg.dirtyQueue.includes(task.id)) cfg.dirtyQueue.push(task.id)
+  return now - lastSince >= intervalMs
 }
 
 /** Strip the whole jira block from a task ext (used by Disconnect); undefined if empty after. */

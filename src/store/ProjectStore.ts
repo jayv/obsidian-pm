@@ -651,7 +651,7 @@ export class ProjectStore {
     this.dirtyTasks.delete(project.filePath)
 
     try {
-      project.updatedAt = new Date().toISOString()
+      const stampedAt = project.updatedAt
 
       const taskFolder = this.projectTaskFolder(project)
       await this.ensureFolder(taskFolder)
@@ -660,15 +660,28 @@ export class ProjectStore {
 
       const file = this.app.vault.getAbstractFileByPath(project.filePath)
       if (file instanceof TFile) {
-        this.markSelfWrite(project.filePath)
         // Serialize the in-memory project as-is. Its description is always authoritative:
         // loadProject populates it from frontmatter/body on every load, and the project
         // modal clones from that loaded copy before editing. (A stale re-read of the disk
         // description here used to clobber edits made in the modal — the clone isn't in
         // `hydratedBodies`, so it looked "un-hydrated".)
-        await this.app.vault.process(file, () => serializeProject(project, this.getStatuses()))
+        //
+        // The stamp is applied only if the note would otherwise change. Every sync ends in
+        // a save, so stamping first meant each machine rewrote this line on its own
+        // schedule and a shared vault had a conflict in the project note every few
+        // minutes — over a change that was nothing but the stamp.
+        const unstamped = serializeProject(project, this.getStatuses())
+        const current = await this.app.vault.cachedRead(file)
+        if (unstamped !== current) {
+          project.updatedAt = new Date().toISOString()
+          this.markSelfWrite(project.filePath)
+          await this.app.vault.process(file, () => serializeProject(project, this.getStatuses()))
+        } else {
+          project.updatedAt = stampedAt
+        }
         this.hydratedBodies.add(project)
       } else {
+        project.updatedAt = new Date().toISOString()
         const content = serializeProject(project, this.getStatuses())
         this.markSelfWrite(project.filePath)
         try {

@@ -55,8 +55,6 @@ describe('jira sync — assignee conflicts [both]', () => {
 
     ax.assignees = ['Bob']
     bx.assignees = ['Carol']
-    cfgA.dirtyQueue = [ax.id]
-    cfgB.dirtyQueue = [bx.id]
     rewind(cfgA)
     await runSync(plugin, projA) // A pushes Bob to JIRA
     expect((await readMock(plugin)).getIssue(key)?.fields.assignee).toMatchObject({ accountId: 'mock:bob' })
@@ -81,7 +79,6 @@ describe('jira sync — assignee conflicts [both]', () => {
 
     // Reassign locally to a member with no JIRA-user mapping.
     t.assignees = ['Bob']
-    cfg.dirtyQueue = [t.id]
     rewind(cfg)
     const r = await runSync(plugin, project)
 
@@ -168,8 +165,6 @@ describe('jira sync — assignee conflicts [both]', () => {
     ax.assignees = ['Bob'] // A: assignee only
     bx.assignees = ['Carol'] // B: assignee + status
     bx.status = 'in-progress'
-    cfgA.dirtyQueue = [ax.id]
-    cfgB.dirtyQueue = [bx.id]
     rewind(cfgB)
     await runSync(plugin, projB) // B pushes Carol + in-progress
     rewind(cfgA)

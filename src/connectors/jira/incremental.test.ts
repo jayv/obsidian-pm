@@ -56,11 +56,10 @@ describe('jira sync — incremental tick [J→O]', () => {
 
   it('pushes a locally-dirty task even when its JIRA side is unchanged', async () => {
     const { plugin } = harness()
-    const { project, cfg, task, key } = await linked(plugin)
+    const { project, task, key } = await linked(plugin)
     // Local edit only — the JIRA issue keeps its `updated`, so the changed-subtree query
     // returns nothing; the dirty-key fetch (issuesByKeys) is the only way this syncs.
     task.title = 'Renamed locally'
-    cfg.dirtyQueue = [task.id]
     const r = await runSync(plugin, project, { full: false })
     expect(r.jiraUpdated).toBe(1)
     expect(mustIssue(await readMock(plugin), key).fields.summary).toBe('Renamed locally')

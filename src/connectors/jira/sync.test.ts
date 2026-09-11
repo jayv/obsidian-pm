@@ -445,12 +445,11 @@ describe('jira sync — outbound dirty push [O→J]', () => {
 
   it('pushes summary, due, priority and a status transition for a dirty task', async () => {
     const { plugin } = harness({ team: ['Alice'] })
-    const { project, cfg, task } = await exportOne(plugin)
+    const { project, task } = await exportOne(plugin)
     task.title = 'T renamed'
     task.due = '2026-08-08'
     task.priority = 'critical'
     task.status = 'in-progress'
-    cfg.dirtyQueue = [task.id]
     await runSync(plugin, project)
 
     const issue = mustIssue(await readMock(plugin), taskExt(task).key ?? '')
@@ -462,9 +461,8 @@ describe('jira sync — outbound dirty push [O→J]', () => {
 
   it('updates the milestone property on push', async () => {
     const { plugin } = harness()
-    const { project, cfg, task } = await exportOne(plugin)
+    const { project, task } = await exportOne(plugin)
     task.type = 'milestone'
-    cfg.dirtyQueue = [task.id]
     await runSync(plugin, project)
     const mock = await readMock(plugin)
     expect((mock.getProperty(taskExt(task).key ?? '', ISSUE_PROP) as JiraIssueProps).milestone).toBe(true)
@@ -472,26 +470,23 @@ describe('jira sync — outbound dirty push [O→J]', () => {
 
   it('pushes an assignee change and a later unassign', async () => {
     const { plugin } = harness({ team: ['Alice'] })
-    const { project, cfg, task } = await exportOne(plugin)
+    const { project, task } = await exportOne(plugin)
     const key = taskExt(task).key ?? ''
     task.assignees = ['Alice']
-    cfg.dirtyQueue = [task.id]
     await runSync(plugin, project)
     expect((mustIssue(await readMock(plugin), key).fields.assignee as { accountId: string }).accountId).toBe(
       'mock:alice'
     )
 
     task.assignees = []
-    cfg.dirtyQueue = [task.id]
     await runSync(plugin, project)
     expect(mustIssue(await readMock(plugin), key).fields.assignee).toBeNull()
   })
 
   it('pushes a start-date change to the discovered custom field', async () => {
     const { plugin } = harness()
-    const { project, cfg, task } = await exportOne(plugin)
+    const { project, task } = await exportOne(plugin)
     task.start = '2026-05-05'
-    cfg.dirtyQueue = [task.id]
     await runSync(plugin, project)
     const mock = await readMock(plugin)
     expect(mustIssue(mock, taskExt(task).key ?? '').fields[mock.startFieldId]).toBe('2026-05-05')
@@ -499,12 +494,10 @@ describe('jira sync — outbound dirty push [O→J]', () => {
 
   it('clears the milestone flag when toggled off', async () => {
     const { plugin } = harness()
-    const { project, cfg, task } = await exportOne(plugin)
+    const { project, task } = await exportOne(plugin)
     task.type = 'milestone'
-    cfg.dirtyQueue = [task.id]
     await runSync(plugin, project)
     task.type = 'task'
-    cfg.dirtyQueue = [task.id]
     await runSync(plugin, project)
     const mock = await readMock(plugin)
     expect((mock.getProperty(taskExt(task).key ?? '', ISSUE_PROP) as JiraIssueProps).milestone).toBe(false)
@@ -525,13 +518,11 @@ describe('jira sync — outbound dirty push [O→J]', () => {
 
     // Add A → blocked by B.
     a.dependencies = [b.id]
-    cfg.dirtyQueue = [a.id]
     await runSync(plugin, project)
     expect((await linksOf()).some((l) => l.inwardIssue?.key === bKey)).toBe(true)
 
     // Remove the dependency → link deleted.
     a.dependencies = []
-    cfg.dirtyQueue = [a.id]
     await runSync(plugin, project)
     expect((await linksOf()).some((l) => l.inwardIssue?.key === bKey)).toBe(false)
   })
@@ -594,7 +585,6 @@ describe('jira sync — inbound reconcile [J→O]', () => {
 
     // Local user moves it to done; JIRA can't represent that → limbo.
     t.status = 'done'
-    cfg.dirtyQueue = [t.id]
     // The dirty edit bumps `updated`; pin the watermark back to force re-examination.
     cfg.lastSeenUpdated = '2000-01-01T00:00:00.000+0000'
     await runSync(plugin, project)
@@ -1026,7 +1016,6 @@ describe('jira sync — a JIRA-only teammate (2nd client over real HTTP) [J→O]
     void jira
     cfg.statusMap = cfg.statusMap.map((e) => (e.target === 'done' ? { ...e, jira: 'Ghost' } : e))
     a.status = 'done'
-    cfg.dirtyQueue = [a.id]
     rewind(cfg)
     await runSync(plugin, project)
 
@@ -1046,7 +1035,6 @@ describe('jira sync — a JIRA-only teammate (2nd client over real HTTP) [J→O]
     expect(await jira.editIssue(aKey, { duedate: '2026-12-12' })).toBe(true)
     // We change only the status locally.
     a.status = 'in-progress'
-    cfg.dirtyQueue = [a.id]
     rewind(cfg)
     await runSync(plugin, project)
 
@@ -1066,7 +1054,6 @@ describe('jira sync — a JIRA-only teammate (2nd client over real HTTP) [J→O]
     const aKey = taskExt(a).key ?? ''
     expect(await jira.editIssue(aKey, { summary: 'Jira title' })).toBe(true)
     a.due = '2026-09-09'
-    cfg.dirtyQueue = [a.id]
     rewind(cfg)
     await runSync(plugin, project)
 
@@ -1101,7 +1088,6 @@ describe('jira sync — per-field conflict resolution [both]', () => {
     // Teammate moves start in JIRA; we move it locally to a different date.
     expect(await jira.editIssue(aKey, { [startField]: '2026-03-03' })).toBe(true)
     a.start = '2026-02-02'
-    cfg.dirtyQueue = [a.id]
     rewind(cfg)
     const r = await runSync(plugin, project)
     return { plugin, project, cfg, jira, a, aKey, startField, r }

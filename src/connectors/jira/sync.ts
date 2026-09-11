@@ -1442,9 +1442,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     if (tw.adopt.length) patch.updatedAt = new Date(issue.updated).toISOString()
     patches.push({ taskId: t.id, patch })
   }
-  cfg.dirtyQueue = []
   cfg.lastSeenUpdated = maxUpdated
-  cfg.lastSyncAt = new Date().toISOString()
 
   // Publish local mapping changes to the epic (status + priority only).
   await pushEpicConfig(client, cfg)
