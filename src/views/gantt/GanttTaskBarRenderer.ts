@@ -1,4 +1,5 @@
 import { Notice } from 'obsidian'
+import { summaryBracket } from './GanttBarGeometry'
 import type { Task } from '../../types'
 import { openTaskModal } from '../../ui/ModalFactory'
 import {
@@ -104,21 +105,28 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
   })
   barGroup.appendChild(rect)
 
-  // Summary bar: a 4px-thick line with downward slanted legs marking start/end.
+  // Summary bar: a thick line with downward slanted legs marking start/end.
+  //
+  // A project row (all-projects view) gets a heavier double bracket in the project's own
+  // colour. Every project otherwise drew the same accent-blue bracket as an ordinary
+  // parent task, so a chart of several projects read as one flat pile of nested summaries
+  // with no way to see where a project began.
   if (isSummary) {
-    const TH = 4 // bar thickness
-    const LEG = 9 // how far the end legs drop
-    const legW = Math.min(6, width / 2)
-    const top = y
-    const points = [
-      `${x},${top}`,
-      `${x + width},${top}`,
-      `${x + width},${top + LEG}`,
-      `${x + width - legW},${top + TH}`,
-      `${x + legW},${top + TH}`,
-      `${x},${top + LEG}`
-    ].join(' ')
-    barGroup.appendChild(svgEl('polygon', { points, fill: color, class: 'pm-gantt-summary-shape' }))
+    const projectColor = ctx.rowColorOf?.(task)
+    const shape = summaryBracket(x, y, width, Boolean(projectColor))
+    const shapeColor = projectColor ?? color
+    barGroup.appendChild(
+      svgEl('polygon', {
+        points: shape.points,
+        fill: shapeColor,
+        class: projectColor ? 'pm-gantt-summary-shape pm-gantt-summary-shape--project' : 'pm-gantt-summary-shape'
+      })
+    )
+    if (shape.underline) {
+      barGroup.appendChild(
+        svgEl('rect', { ...shape.underline, fill: shapeColor, opacity: 0.55, class: 'pm-gantt-summary-underline' })
+      )
+    }
   }
 
   // Completed portion — solid fill over the faint track so progress reads at a

@@ -500,6 +500,7 @@ export class GanttView implements SubView {
       roster: this.roster(),
       readOnly: this.opts.readOnly,
       ownerOf: this.opts.ownerOf,
+      rowColorOf: this.opts.rowColorOf,
       onOpenTask: this.opts.onOpenTask,
       flatTasks: this.flatTasks,
       drag: this.drag,

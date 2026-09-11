@@ -30,6 +30,8 @@ export interface RendererContext {
   readOnly?: boolean
   /** Which project owns a task — see GanttViewOptions.ownerOf. */
   ownerOf?: (task: Task) => Project
+  /** Row colour override — see LabelContext.rowColorOf. Set for a project row. */
+  rowColorOf?: (task: Task) => string | undefined
   /** First refusal on opening a row — see LabelContext.onOpenTask. */
   onOpenTask?: (task: Task) => boolean
   onRefresh: () => Promise<void>
