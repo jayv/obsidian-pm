@@ -18,6 +18,7 @@ import {
   statusObj
 } from './test-harness'
 import { stopMockServer } from './JiraMockServer'
+import { buildUberProject } from '../../store/UberProject'
 import { adfToMarkdown, markdownToAdf } from './adf'
 import { canonicalDescription } from './reconcile'
 import { CONFIG_PROP, ISSUE_PROP, taskExt, type JiraEpicConfig, type JiraIssueProps } from './types'
@@ -215,6 +216,40 @@ describe('jira sync — export (Obsidian → JIRA) [O→J]', () => {
     const blockerKey = taskExt(blocker).key ?? ''
     const links = mustIssue(mock, blockedKey).fields.issuelinks as { inwardIssue?: { key: string } }[]
     expect(links.some((l) => l.inwardIssue?.key === blockerKey)).toBe(true)
+  })
+})
+
+describe('jira sync — the all-projects view never syncs [both]', () => {
+  it('does nothing when handed the synthetic project, and writes nothing to Jira', async () => {
+    // End-to-end check that driving a sync at the cross-project view touches nothing.
+    //
+    // Note what this does and doesn't prove: the synthetic project is inert for two
+    // independent reasons — it carries no connector config, and its rows hang off heading
+    // rows that are themselves unsynced, which the create path refuses on its own. So this
+    // passes even if the config leaks through. The property that actually forbids a sync
+    // is pinned in UberProject.test.ts ("carries no connector config"); this is the
+    // belt-and-braces version that would catch a sync arriving by some other route.
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    await runSync(plugin, project) // a real sync first, so there is a mock to disturb
+    const before = Object.keys((await readMock(plugin)).data.issues).length
+
+    // A task that a working sync WOULD create in Jira, so "nothing happened" is a result
+    // rather than the absence of anything to do.
+    optIn(localTask(project, { title: 'would be created' }))
+
+    const uber = buildUberProject([project])
+    const r = await runSync(plugin, uber.project)
+
+    expect(r).toMatchObject({ changed: false, jiraCreated: 0, jiraUpdated: 0, conflicts: 0 })
+    expect(r.newIssues).toEqual([])
+    expect(Object.keys((await readMock(plugin)).data.issues).length).toBe(before)
+
+    // ...and the same sync against the real project does create it, so the difference is
+    // the synthetic project, not the setup.
+    const real = await runSync(plugin, project)
+    expect(real.jiraCreated).toBe(1)
   })
 })
 

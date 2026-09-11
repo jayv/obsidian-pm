@@ -109,3 +109,39 @@ describe('buildUberProject — narrowed to what a filter left', () => {
     expect(uber.ownerOf.get(copies[0].id)).toBe(source)
   })
 })
+
+/*
+ * The all-projects view is read-only and has no business syncing: a sync belongs to a real
+ * project, with a file to write and a connector config to sync against. Two properties
+ * keep the synthetic project out of every such path, and both are easy to undo by
+ * accident — copying `ext` across "so badges work", or giving it a path "so it can be
+ * saved" — so they are stated here rather than left implicit.
+ */
+describe('the synthetic project cannot be written or synced', () => {
+  const uber = (): ReturnType<typeof buildUberProject> => {
+    const source = projectWith('Alpha', 'Projects/Alpha.md', ['a1'])
+    // A real connector config on the source, so "the synthetic one has none" is a fact
+    // about the build and not about the fixture having nothing to copy.
+    source.ext = { jira: { enabled: true, serverId: 's1', epicId: 'DEMO-100' } }
+    return buildUberProject([source])
+  }
+
+  it('carries no connector config, so no connector is ever active for it', () => {
+    // `activeFor` and `isEnabled` both read the project's ext bag; with none, a sync can't
+    // even be built for it, let alone run.
+    expect(uber().project.ext).toBeUndefined()
+  })
+
+  it('has no file path, so saveProject refuses it', () => {
+    expect(uber().project.filePath).toBe('')
+  })
+
+  it('routes every row to a real project that does have a file', () => {
+    const { project, ownerOf } = uber()
+    for (const { task } of flattenTasks(project.tasks)) {
+      const owner = ownerOf.get(task.id)
+      expect(owner).toBeDefined()
+      expect(owner?.filePath).toBeTruthy()
+    }
+  })
+})

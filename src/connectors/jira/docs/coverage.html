@@ -23,8 +23,8 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>248</strong> tests</span>
-    <span class="stat"><strong>61</strong> areas</span>
+    <span class="stat"><strong>249</strong> tests</span>
+    <span class="stat"><strong>62</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
 
@@ -296,6 +296,9 @@
 <tr><td>uses the configured root issue type as the top (Initiative → Epic → Task → Sub-task)</td><td class="file">sync.test.ts</td></tr>
 <tr><td>writes the milestone flag to the issue property bag</td><td class="file">sync.test.ts</td></tr>
 <tr><td>writes a dependency as an "is blocked by" link</td><td class="file">sync.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira sync — the all-projects view never syncs <span class="dir dir-both">both</span> <span class="muted">1</span></td></tr>
+    <tr><td>does nothing when handed the synthetic project, and writes nothing to Jira</td><td class="file">sync.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">jira sync — import (JIRA → Obsidian) <span class="dir dir-JO">J→O</span> <span class="muted">7</span></td></tr>
     <tr><td>creates tasks for epic children + subtasks, nested</td><td class="file">sync.test.ts</td></tr>
