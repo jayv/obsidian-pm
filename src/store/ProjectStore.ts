@@ -602,7 +602,19 @@ export class ProjectStore {
     // A project with no file path hasn't been created yet (e.g. the new-project modal
     // before "Create project"). Writing it would call vault.create('') and corrupt
     // Obsidian's file index. The in-memory edits persist once a path is assigned.
-    if (!project.filePath) return
+    if (!project.filePath) {
+      // ...but a fileless project holding TASKS is the synthetic all-projects one, and a
+      // save aimed at it means a write meant for a real project was mis-routed. Returning
+      // quietly there drops the edit with nothing to show for it, so say so. Writes from
+      // that view are supposed to go through `ownerOf` to the project that owns the task.
+      if (project.tasks.length) {
+        console.warn(
+          `[PM] Refused to save "${project.title}": it has no file. An edit aimed at the ` +
+            `all-projects view instead of the project that owns the task would be lost here.`
+        )
+      }
+      return
+    }
     const key = project.filePath
     const prev = this.saveQueues.get(key) ?? Promise.resolve()
     const next = (async () => {

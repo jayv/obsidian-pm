@@ -343,12 +343,26 @@ export class UberProjectView extends ItemView {
     new Notice(`Copied ${rows.length} row${rows.length === 1 ? '' : 's'} as Markdown.`)
   }
 
+  /**
+   * Rebuild after an edit made from here, and re-render the project tabs.
+   *
+   * Every view shares one Project object per file (the store's cache), so an edit made
+   * here already IS the real project's — but a project tab suppresses its reload for any
+   * write the plugin made (it can't tell which view made it), so without this the tab sits
+   * there showing the old value until something else pokes it.
+   */
+  private async afterEdit(): Promise<void> {
+    await this.reload()
+    this.plugin.refreshProjectViews()
+  }
+
   private async toggleCollapsed(uber: UberProject, task: Task): Promise<void> {
     const owner = uber.headings.has(task.id) ? null : uber.ownerOf.get(task.id)
     if (owner) {
       // Tasks are shared by reference, so this flips the very object being rendered —
       // and persists against the right project file.
       await this.plugin.toggleTaskCollapsed(owner, task.id)
+      this.plugin.refreshProjectViews()
     } else {
       task.collapsed = !task.collapsed
       if (task.collapsed) this.collapsedHeadings.add(task.id)
@@ -394,7 +408,7 @@ export class UberProjectView extends ItemView {
     this.renderHeader(full.project, roster)
     this.bodyEl.empty()
     this.gantt?.destroy?.()
-    this.gantt = new GanttView(this.bodyEl, uber.project, this.plugin, () => this.reload(), makeDefaultFilter(), {
+    this.gantt = new GanttView(this.bodyEl, uber.project, this.plugin, () => this.afterEdit(), makeDefaultFilter(), {
       readOnly: true,
       roster,
       // A task's real home, so the editor writes to the right project file.

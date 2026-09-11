@@ -2,7 +2,7 @@ import type { App } from 'obsidian'
 import { TFile } from 'obsidian'
 import { describe, expect, it, vi } from 'vitest'
 import { makeFakeApp, type FakeVault } from '../../test/fakeVault'
-import { makeProject, makeTask, type StatusConfig, type Task } from '../types'
+import { DEFAULT_STATUSES, makeProject, makeTask, type StatusConfig, type Task } from '../types'
 import { ProjectStore } from './ProjectStore'
 import { buildTaskIndex, rebuildTaskIndex } from './TaskIndex'
 import { flattenTasks } from './TaskTreeOps'
@@ -1061,5 +1061,40 @@ describe('ProjectStore duplicate rows from disagreeing files', () => {
 
     expect(rows).toHaveLength(1)
     expect(rows[0].parentId).toBe(parent.id) // its own file still points here
+  })
+})
+
+/*
+ * The all-projects view is a synthetic Project with no file, holding the real projects'
+ * tasks by reference. Writes are meant to be delegated to the owning project; a save aimed
+ * at the synthetic one has nowhere to go, and returning quietly there drops the edit with
+ * nothing to show for it.
+ */
+describe('ProjectStore fileless project saves', () => {
+  it('says so when a save is aimed at a fileless project that holds tasks', async () => {
+    const { app } = makeFakeApp()
+    const store = new ProjectStore(app as unknown as App, () => DEFAULT_STATUSES)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const synthetic = makeProject('All projects', '')
+      synthetic.tasks = [makeTask({ title: 'Belongs to a real project' })]
+      await store.saveProject(synthetic)
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('no file'))
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('stays quiet for a project that simply has not been created yet', async () => {
+    // The new-project modal before "Create project": no path, no tasks, nothing wrong.
+    const { app } = makeFakeApp()
+    const store = new ProjectStore(app as unknown as App, () => DEFAULT_STATUSES)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await store.saveProject(makeProject('Unsaved', ''))
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
