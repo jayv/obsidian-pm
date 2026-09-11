@@ -319,3 +319,50 @@ describe('rollUpParentDates', () => {
     expect(rollUpParentDates([parent])).toEqual([])
   })
 })
+
+/*
+ * A vault shared between machines (git sync, Syncthing) has each of them deriving the same
+ * state from the same remote at different moments. Anything stamped with the local clock
+ * then differs per machine for identical content — a one-line merge conflict git cannot
+ * resolve, and a ping-pong once it is: the side that loses rewrites it on its next sync.
+ */
+describe('updateTaskInTree write churn', () => {
+  const taskAt = (over: Partial<Task> = {}): Task =>
+    makeTask({ id: 't', title: 'T', status: 'todo', updatedAt: '2026-01-01T00:00:00.000Z', ...over })
+
+  it('leaves updatedAt alone when the patch restates what the task already says', () => {
+    // Any Jira-side activity bumps an issue's `updated`, which got the task past the sync's
+    // skip guard and produced a patch — even when nothing about the task had changed.
+    const t = taskAt({ status: 'todo', assignees: ['Jo'] })
+    updateTaskInTree([t], 't', { status: 'todo', assignees: ['Jo'] })
+    expect(t.updatedAt).toBe('2026-01-01T00:00:00.000Z')
+  })
+
+  it('compares arrays and nested ext bags by value, not by reference', () => {
+    const t = taskAt({ ext: { jira: { key: 'ENG-1', shadow: { title: 'T' } } } })
+    updateTaskInTree([t], 't', { ext: { jira: { key: 'ENG-1', shadow: { title: 'T' } } } })
+    expect(t.updatedAt).toBe('2026-01-01T00:00:00.000Z')
+  })
+
+  it('still stamps a real change', () => {
+    const t = taskAt()
+    updateTaskInTree([t], 't', { status: 'done' })
+    expect(t.updatedAt).not.toBe('2026-01-01T00:00:00.000Z')
+    expect(t.status).toBe('done')
+  })
+
+  it("takes the patch's own updatedAt, so two machines adopting one change agree", () => {
+    const remote = '2026-05-05T12:00:00.000Z'
+    const a = taskAt()
+    const b = taskAt()
+    updateTaskInTree([a], 't', { status: 'done', updatedAt: remote })
+    updateTaskInTree([b], 't', { status: 'done', updatedAt: remote })
+    expect(a.updatedAt).toBe(remote)
+    expect(b.updatedAt).toBe(a.updatedAt) // byte-identical files, nothing for git to merge
+  })
+
+  it('still finds the task when the patch changes nothing', () => {
+    expect(updateTaskInTree([taskAt()], 't', { status: 'todo' })).toBe(true)
+    expect(updateTaskInTree([taskAt()], 'missing', { status: 'done' })).toBe(false)
+  })
+})

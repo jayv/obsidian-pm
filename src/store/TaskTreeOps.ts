@@ -37,11 +37,46 @@ export function findTask(tasks: Task[], id: string): Task | null {
   return null
 }
 
+/** Structural equality for the plain data a task field holds (scalars, arrays, ext bags). */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => sameValue(x, b[i]))
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const av = a as Record<string, unknown>
+    const bv = b as Record<string, unknown>
+    const ak = Object.keys(av)
+    if (ak.length !== Object.keys(bv).length) return false
+    return ak.every((k) => sameValue(av[k], bv[k]))
+  }
+  return false
+}
+
+/**
+ * Does this patch actually change the task? A patch that restates what the task already
+ * says is not an edit, and treating it as one costs more than a wasted write.
+ *
+ * `updatedAt` is a wall-clock stamp of when THIS machine wrote the file. A vault shared
+ * between machines (git sync, Syncthing) has each of them deriving the same state from the
+ * same remote at different moments — so a no-op rewrite gives two byte-different files
+ * that differ only in that stamp, which is a merge conflict git cannot resolve and a
+ * ping-pong once it is. Any Jira-side activity bumps an issue's `updated`, so this
+ * happened for every touched task on every sync, whether or not anything about it changed.
+ */
+export function changesTask(task: Task, patch: Partial<Task>): boolean {
+  return (Object.keys(patch) as (keyof Task)[]).some((key) => !sameValue(task[key], patch[key]))
+}
+
 /** Mutate task tree: update a task by id */
 export function updateTaskInTree(tasks: Task[], id: string, patch: Partial<Task>): boolean {
   for (const t of tasks) {
     if (t.id === id) {
-      Object.assign(t, patch, { updatedAt: new Date().toISOString() })
+      // A patch may carry its own `updatedAt` — when the change came from elsewhere, that
+      // source's timestamp describes it better than this machine's clock, and every vault
+      // deriving the change writes the same bytes for it. Otherwise it's a local edit and
+      // now() is exactly right.
+      if (changesTask(t, patch)) {
+        Object.assign(t, patch, { updatedAt: patch.updatedAt ?? new Date().toISOString() })
+      }
       return true
     }
     if (updateTaskInTree(t.subtasks, id, patch)) return true

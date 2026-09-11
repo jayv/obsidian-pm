@@ -1434,6 +1434,12 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       blockedBy: a('blockedBy') ? [...theirs.blockedBy] : [...mine.blockedBy]
     }
     patch.ext = withMergedShadow(t, merged, tw.adopt.includes('description') ? issue.descriptionStash : undefined)
+    // When we took Jira's values, date the task by JIRA's change, not by when this machine
+    // happened to run. Two vaults syncing the same issue then write byte-identical files;
+    // stamping locally gave them one differing line each, which a shared vault (git sync,
+    // Syncthing) can only present as a merge conflict — and whichever side loses rewrites
+    // it on its next sync, so it comes straight back.
+    if (tw.adopt.length) patch.updatedAt = new Date(issue.updated).toISOString()
     patches.push({ taskId: t.id, patch })
   }
   cfg.dirtyQueue = []
