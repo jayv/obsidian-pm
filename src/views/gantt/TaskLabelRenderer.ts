@@ -4,6 +4,7 @@ import type { Project, Task, TaskBadge } from '../../types'
 import { CollapseToggle } from '../../ui/primitives/CollapseToggle'
 import { AvatarStack } from '../../ui/primitives/AvatarStack'
 import { renderTaskBadges } from '../../ui/primitives/TaskBadges'
+import { openRow } from './openRow'
 import { openTaskModal } from '../../ui/ModalFactory'
 import { getStatusConfig, safeAsync } from '../../utils'
 import { ROW_HEIGHT } from './TimelineConfig'
@@ -126,8 +127,7 @@ export function renderTaskLabel(
   // Title
   const titleEl = el.createSpan({ text: task.title, cls: 'pm-gantt-label-title' })
   titleEl.addEventListener('click', () => {
-    if (ctx.onOpenTask?.(task)) return
-    openTaskModal(ctx.plugin, owner, { task, onSave: () => ctx.onRefresh() })
+    openRow(task, owner, ctx)
   })
 
   renderTaskBadges(el, ctx.badgesOf?.(task))

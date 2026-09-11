@@ -32,7 +32,14 @@ describe('summary bracket geometry', () => {
   it('doubles a project bracket with a second line, and only a project one', () => {
     expect(summaryBracket(10, y, 200, false).underline).toBeUndefined()
     const { underline } = summaryBracket(10, y, 200, true)
-    expect(underline).toEqual({ x: 10, y: y + 8, width: 200, height: 2 })
+    expect(underline).toEqual({ x: 10, y: y + 8, width: 200, height: 3 })
+  })
+
+  it('keeps the two lines close in weight, so the second reads as a line of its own', () => {
+    // At 6px against 2px the thin one looked like an artefact of the thick one.
+    const { points, underline } = summaryBracket(0, y, 200, true)
+    const thickness = Number(points.split(' ')[4].split(',')[1]) - y
+    expect(underline?.height).toBeGreaterThanOrEqual(thickness / 2)
   })
 
   it('keeps the underline clear of the bar above it', () => {

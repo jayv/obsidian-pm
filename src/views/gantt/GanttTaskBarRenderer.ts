@@ -1,7 +1,7 @@
 import { Notice } from 'obsidian'
 import { summaryBracket } from './GanttBarGeometry'
+import { openRow } from './openRow'
 import type { Task } from '../../types'
-import { openTaskModal } from '../../ui/ModalFactory'
 import {
   svgEl,
   getStatusConfig,
@@ -124,7 +124,7 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
     )
     if (shape.underline) {
       barGroup.appendChild(
-        svgEl('rect', { ...shape.underline, fill: shapeColor, opacity: 0.55, class: 'pm-gantt-summary-underline' })
+        svgEl('rect', { ...shape.underline, fill: shapeColor, opacity: 0.85, class: 'pm-gantt-summary-underline' })
       )
     }
   }
@@ -248,7 +248,7 @@ export function renderTaskBar(g: SVGGElement, task: Task, row: number, _depth: n
       ctx.drag.dragMoved = false
       return
     }
-    openTaskModal(ctx.plugin, ctx.ownerOf?.(task) ?? ctx.project, { task, onSave: () => ctx.onRefresh() })
+    openRow(task, ctx.ownerOf?.(task) ?? ctx.project, ctx)
   })
 
   // Everything below this point is a way to change the task. A read-only chart (the
@@ -359,6 +359,17 @@ function renderEmptyRowClickTarget(g: SVGGElement, task: Task, row: number, ctx:
     class: 'pm-gantt-empty-row-hit'
   })
 
+  // A read-only chart has no click-to-set-dates to offer, and offering it anyway aimed
+  // an update at whichever project the chart belongs to — for the all-projects view that
+  // is the synthetic one, which has no file to write. Keep the row clickable so a project
+  // with no dated work still opens, and stop there.
+  if (ctx.readOnly) {
+    hitArea.setAttribute('cursor', 'pointer')
+    hitArea.addEventListener('click', () => openRow(task, ctx.ownerOf?.(task) ?? ctx.project, ctx))
+    g.appendChild(hitArea)
+    return
+  }
+
   // Hover preview bar (hidden until mouseover)
   const previewY = rowY + BAR_PADDING
   const previewH = ROW_HEIGHT - BAR_PADDING * 2
@@ -449,7 +460,7 @@ function renderMilestoneDiamond(g: SVGGElement, task: Task, row: number, ctx: Re
   diamond.appendChild(tt)
 
   diamond.addEventListener('click', () => {
-    openTaskModal(ctx.plugin, ctx.ownerOf?.(task) ?? ctx.project, { task, onSave: () => ctx.onRefresh() })
+    openRow(task, ctx.ownerOf?.(task) ?? ctx.project, ctx)
   })
 }
 
