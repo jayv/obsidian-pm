@@ -23,8 +23,8 @@ import { adfToMarkdown, markdownToAdf } from './adf'
 import { canonicalDescription } from './reconcile'
 import { CONFIG_PROP, ISSUE_PROP, taskExt, type JiraEpicConfig, type JiraIssueProps } from './types'
 import {
-  exportTasks,
   exportableTasks,
+  exportTasks,
   fetchEpicStories,
   importStories,
   loadMappingValues,
@@ -32,7 +32,8 @@ import {
   resolveConflict,
   runSync,
   searchJiraUsers,
-  updateIgnoredKeys
+  updateIgnoredKeys,
+  watermarkOf
 } from './sync'
 import type { JiraClient } from './JiraClient'
 
@@ -586,7 +587,7 @@ describe('jira sync — inbound reconcile [J→O]', () => {
     // Local user moves it to done; JIRA can't represent that → limbo.
     t.status = 'done'
     // The dirty edit bumps `updated`; pin the watermark back to force re-examination.
-    cfg.lastSeenUpdated = '2000-01-01T00:00:00.000+0000'
+    rewind(project)
     await runSync(plugin, project)
 
     const after = must(findTask(project.tasks, t.id))
@@ -626,12 +627,12 @@ describe('jira sync — inbound reconcile [J→O]', () => {
 
   it('advances the watermark and skips unchanged issues', async () => {
     const { plugin } = harness()
-    const { project, cfg, key } = await importedTask(plugin)
-    const watermark = cfg.lastSeenUpdated
+    const { project, key } = await importedTask(plugin)
+    const watermark = watermarkOf(project)
     expect(watermark).toBeTruthy()
     const r = await runSync(plugin, project) // nothing changed
     expect(r.changed).toBe(false)
-    expect(cfg.lastSeenUpdated).toBe(watermark)
+    expect(watermarkOf(project)).toBe(watermark)
     void key
   })
 })
@@ -845,7 +846,7 @@ describe('jira sync — milestone & end-to-end [both]', () => {
     expect(await jira.editIssue(aKey, { assignee: { accountId: 'mock:carol', displayName: 'Carol' } })).toBe(true)
     expect(await jira.createLink(aKey, bKey)).toBe(true) // A blocked by B
 
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
 
     const after = must(findTask(project.tasks, a.id))
@@ -902,19 +903,19 @@ describe('jira sync — a JIRA-only teammate (2nd client over real HTTP) [J→O]
   }
 
   it('teammate transitions an issue → Obsidian adopts (JIRA wins)', async () => {
-    const { plugin, project, cfg, jira, a } = await withTeammate()
+    const { plugin, project, jira, a } = await withTeammate()
     expect(await jira.transitionTo(taskExt(a).key ?? '', 'In Progress')).toBe(true)
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
     expect(must(findTask(project.tasks, a.id)).status).toBe('in-progress')
   })
 
   it('teammate edits summary + priority → Obsidian adopts', async () => {
-    const { plugin, project, cfg, jira, a } = await withTeammate()
+    const { plugin, project, jira, a } = await withTeammate()
     expect(await jira.editIssue(taskExt(a).key ?? '', { summary: 'Renamed in Jira', priority: { name: 'Low' } })).toBe(
       true
     )
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
     const t = must(findTask(project.tasks, a.id))
     expect(t.title).toBe('Renamed in Jira')
@@ -922,51 +923,51 @@ describe('jira sync — a JIRA-only teammate (2nd client over real HTTP) [J→O]
   })
 
   it('teammate reassigns to a new user → Obsidian auto-creates the member', async () => {
-    const { plugin, project, cfg, jira, a } = await withTeammate()
+    const { plugin, project, jira, a } = await withTeammate()
     expect(
       await jira.editIssue(taskExt(a).key ?? '', { assignee: { accountId: 'mock:carol', displayName: 'Carol' } })
     ).toBe(true)
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
     expect(must(findTask(project.tasks, a.id)).assignees).toEqual(['Carol'])
     expect(project.teamMembers).toContain('Carol')
   })
 
   it('teammate creates and later removes a blocks link → Obsidian deps follow', async () => {
-    const { plugin, project, cfg, jira, a, b } = await withTeammate()
+    const { plugin, project, jira, a, b } = await withTeammate()
     const aKey = taskExt(a).key ?? ''
     const bKey = taskExt(b).key ?? ''
     expect(await jira.createLink(aKey, bKey)).toBe(true)
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
     expect(must(findTask(project.tasks, a.id)).dependencies).toEqual([b.id])
 
     const linkId = must((await jira.getIssue(aKey))?.blockLinks[0]?.id, 'link id')
     expect(await jira.deleteLink(linkId)).toBe(true)
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
     expect(must(findTask(project.tasks, a.id)).dependencies).toEqual([])
   })
 
   it('teammate unassigns an issue → Obsidian clears the assignee', async () => {
-    const { plugin, project, cfg, jira, a } = await withTeammate()
+    const { plugin, project, jira, a } = await withTeammate()
     const key = taskExt(a).key ?? ''
     expect(await jira.editIssue(key, { assignee: { accountId: 'mock:alice', displayName: 'Alice' } })).toBe(true)
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
     expect(must(findTask(project.tasks, a.id)).assignees).toEqual(['Alice'])
 
     expect(await jira.editIssue(key, { assignee: null })).toBe(true)
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
     expect(must(findTask(project.tasks, a.id)).assignees).toEqual([])
   })
 
   it('teammate edits due + start dates → Obsidian adopts both', async () => {
-    const { plugin, project, cfg, jira, a } = await withTeammate()
+    const { plugin, project, jira, a } = await withTeammate()
     const startField = (await readMock(plugin)).startFieldId
     expect(await jira.editIssue(taskExt(a).key ?? '', { duedate: '2026-10-10', [startField]: '2026-10-01' })).toBe(true)
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
     const t = must(findTask(project.tasks, a.id))
     expect(t.due).toBe('2026-10-10')
@@ -974,17 +975,17 @@ describe('jira sync — a JIRA-only teammate (2nd client over real HTTP) [J→O]
   })
 
   it('teammate flags an issue as a milestone via entity property → Obsidian sets type', async () => {
-    const { plugin, project, cfg, jira, a } = await withTeammate()
+    const { plugin, project, jira, a } = await withTeammate()
     expect(await jira.setProperty(taskExt(a).key ?? '', ISSUE_PROP, { milestone: true } satisfies JiraIssueProps)).toBe(
       true
     )
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
     expect(must(findTask(project.tasks, a.id)).type).toBe('milestone')
   })
 
   it('teammate creates a brand-new story+subtask → surfaced as new, then imported nested', async () => {
-    const { plugin, project, cfg, jira } = await withTeammate()
+    const { plugin, project, jira } = await withTeammate()
     const story = await jira.createIssue({
       project: { key: 'DEMO' },
       issuetype: { name: 'Story' },
@@ -999,7 +1000,7 @@ describe('jira sync — a JIRA-only teammate (2nd client over real HTTP) [J→O]
       parent: { key: sKey }
     })
 
-    rewind(cfg)
+    rewind(project)
     const r = await runSync(plugin, project)
     expect(r.newIssues.map((i) => i.summary)).toContain('Born in Jira')
 
@@ -1016,7 +1017,7 @@ describe('jira sync — a JIRA-only teammate (2nd client over real HTTP) [J→O]
     void jira
     cfg.statusMap = cfg.statusMap.map((e) => (e.target === 'done' ? { ...e, jira: 'Ghost' } : e))
     a.status = 'done'
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
 
     const issue = mustIssue(await readMock(plugin), taskExt(a).key ?? '')
@@ -1029,13 +1030,13 @@ describe('jira sync — a JIRA-only teammate (2nd client over real HTTP) [J→O]
   })
 
   it('a status-only local edit does NOT wipe a teammate-set due date (no data loss)', async () => {
-    const { plugin, project, cfg, jira, a } = await withTeammate()
+    const { plugin, project, jira, a } = await withTeammate()
     const aKey = taskExt(a).key ?? ''
     // Teammate sets a due date in JIRA that Obsidian has never seen.
     expect(await jira.editIssue(aKey, { duedate: '2026-12-12' })).toBe(true)
     // We change only the status locally.
     a.status = 'in-progress'
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
 
     // The teammate's due survived (we never sent an empty duedate)…
@@ -1050,11 +1051,11 @@ describe('jira sync — a JIRA-only teammate (2nd client over real HTTP) [J→O]
     // The teammate edits the summary in JIRA; we change only the due date locally.
     // The dirty push must send ONLY the due (changed vs shadow), leaving the
     // teammate's summary intact — no data loss.
-    const { plugin, project, cfg, jira, a } = await withTeammate()
+    const { plugin, project, jira, a } = await withTeammate()
     const aKey = taskExt(a).key ?? ''
     expect(await jira.editIssue(aKey, { summary: 'Jira title' })).toBe(true)
     a.due = '2026-09-09'
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
 
     const issue = mustIssue(await readMock(plugin), aKey)
@@ -1065,9 +1066,9 @@ describe('jira sync — a JIRA-only teammate (2nd client over real HTTP) [J→O]
 
   it('a teammate field edit with NO competing local change is adopted cleanly', async () => {
     // The non-clobber case: when we are not dirty, JIRA's field edits win inbound.
-    const { plugin, project, cfg, jira, a } = await withTeammate()
+    const { plugin, project, jira, a } = await withTeammate()
     expect(await jira.editIssue(taskExt(a).key ?? '', { summary: 'Clean from Jira' })).toBe(true)
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
     expect(must(findTask(project.tasks, a.id)).title).toBe('Clean from Jira')
   })
@@ -1088,7 +1089,7 @@ describe('jira sync — per-field conflict resolution [both]', () => {
     // Teammate moves start in JIRA; we move it locally to a different date.
     expect(await jira.editIssue(aKey, { [startField]: '2026-03-03' })).toBe(true)
     a.start = '2026-02-02'
-    rewind(cfg)
+    rewind(project)
     const r = await runSync(plugin, project)
     return { plugin, project, cfg, jira, a, aKey, startField, r }
   }
@@ -1114,14 +1115,14 @@ describe('jira sync — per-field conflict resolution [both]', () => {
   })
 
   it('resolve "keep mine" holds local, then the next sync pushes it to JIRA', async () => {
-    const { plugin, project, cfg, a, aKey } = await withStartConflict()
+    const { plugin, project, a, aKey } = await withStartConflict()
     const t = must(findTask(project.tasks, a.id))
     await resolveConflict(plugin, project, t, []) // keep all Obsidian
     const after = must(findTask(project.tasks, a.id))
     expect(after.start).toBe('2026-02-02') // local retained
     expect(taskExt(after).conflict).toBeUndefined()
 
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project)
     const startField = (await readMock(plugin)).startFieldId
     expect(mustIssue(await readMock(plugin), aKey).fields[startField]).toBe('2026-02-02') // pushed

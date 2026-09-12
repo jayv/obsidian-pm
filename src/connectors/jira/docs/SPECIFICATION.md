@@ -105,12 +105,25 @@ statusMap: JiraValueMap[]
 priorityMap: JiraValueMap[]
 assigneeMap: { jiraUser: string; name: string; jiraDisplay?: string }[] // legacy — migrated out on load
 ignoredKeys: string[]
-dirtyQueue: string[]
 mappingsDirty?: boolean
 syncIntervalMin?: number
-lastSyncAt?: string
-lastSeenUpdated?: string
 ```
+
+**Per-machine state is deliberately absent.** A vault is often replicated between machines
+(git sync, Syncthing), and anything written here that describes *this* machine puts a line
+in a shared file that no two machines can agree on — a merge conflict every few minutes,
+and a rewrite from the losing side afterwards. So:
+
+| dropped | was | lives |
+| --- | --- | --- |
+| `dirtyQueue` | tasks to push next | nowhere — it was never read (§8.2 works it out from the shadow) |
+| `lastSyncAt` | interval throttle | a `Map` on the connector |
+| `lastSeenUpdated` | incremental watermark | a `Map` in `sync.ts`, keyed by project path |
+
+All three are stripped from any config still carrying them, so they stop riding along in
+notes written by earlier versions. Losing a watermark costs only a wider query: without
+one the incremental JQL drops its time clause and returns the tracked subtree, and the
+per-task merge decides everything regardless.
 
 ### 3.4 `JiraTaskExt` (`task.ext.jira`)
 
@@ -606,7 +619,7 @@ Steps, in order:
    - Advance the shadow to the **merged baseline** (adopted fields take JIRA's value, the
      rest stay local) and clear `reconciled`/`conflict`. When the description was adopted,
      the issue's `descriptionStash` is stored with it, so its placeholders stay restorable.
-5. `cfg.dirtyQueue = []`; `lastSeenUpdated = maxUpdated`; `lastSyncAt = now`.
+5. `setWatermark(project, maxUpdated)` — in memory, not in the note (§3.3).
 6. `pushEpicConfig`: if `mappingsDirty`, `setProperty(epic, CONFIG_PROP, {maps})`,
    clear the flag.
 7. `applyExternalUpdates(project, patches)` (store-level, persists), **then** the queued
@@ -673,7 +686,9 @@ Return name (or null when the issue has no assignee).
 
 ### 8.6 `syncTick` / interval gate
 
-`dueForSync(cfg, now)` = `now - (lastSyncAt?Date.parse:0) >= (syncIntervalMin ?? 5)*60000`.
+`dueForSync(cfg, now, lastSince)` = `now - lastSince >= (syncIntervalMin ?? 5)*60000`, where
+`lastSince` comes from the connector's in-memory map. A restart therefore syncs on the
+first tick, which is what you want after being away.
 `onTaskChanged` → `queueDirty(cfg, task)`: only when `cfg.enabled` and
 `taskExt(task).sync`; append the id if absent.
 
@@ -762,7 +777,7 @@ imported (by key); `subs` = `subtasksOf(picked keys)` not already imported; buil
 task per issue via `issueToTask` (resolves+creates assignees, sets type/status/
 priority/start/due, `ext.jira = {key, sync:true, shadow}`); wire `dependencies` from
 `blockedBy` via the key→id map; nest subtasks under their parent (`isSubtask &&
-parentKey`); advance `lastSeenUpdated`; `store.importTasks` (persists). Returns
+parentKey`); advance the watermark; `store.importTasks` (persists). Returns
 `{created}`. Duplicate-title tasks get unique `<slug>-<id8>` file names.
 
 ### 9.3 Export (`exportTasks`, `exportableTasks`)
@@ -801,7 +816,7 @@ row per team member with a JIRA user-picker autocomplete); sync interval; and th
 map sets `mappingsDirty`. Load/import/export re-render the **whole** modal (via the host
 `onChange`) so newly created team members appear.
 
-Changing the **Epic key** clears `lastSeenUpdated`: a different root is a different
+Changing the **Epic key** calls `clearWatermark(project)`: a different root is a different
 subtree, and the old watermark would hide every issue there that hasn't changed since.
 
 - **Check access** (§5.2 `myPermissions`) — read-only; reports the authenticated account

@@ -49,7 +49,6 @@ export interface JiraProjectConfig {
   /** Local maps changed since last push to the epic config property. */
   mappingsDirty?: boolean
   syncIntervalMin?: number
-  lastSeenUpdated?: string
 }
 
 /**
@@ -245,6 +244,11 @@ export function ensureProjectCfg(project: Project): JiraProjectConfig {
   // throttle for this process, not a fact about the project — yet sat in the project note,
   // where every sync on every machine rewrote it and no two machines could agree.
   Reflect.deleteProperty(cfg, 'lastSyncAt')
+  // ...and `lastSeenUpdated`, the incremental watermark. Its value is Jira's clock, so it
+  // is machine-independent, but each machine advances it at its own moment — one more line
+  // for a shared vault to disagree about. It is only an optimisation (an empty watermark
+  // widens the query; the 3-way merge still decides everything), so it lives in memory.
+  Reflect.deleteProperty(cfg, 'lastSeenUpdated')
 
   // Reset legacy regex entries ({pattern, target}) that predate the string-match
   // model — they carry no `jira` field, so drop them. (Duplicates aren't silently

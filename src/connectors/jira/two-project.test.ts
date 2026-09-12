@@ -29,12 +29,12 @@ async function twoProjects() {
 
 describe('jira sync — two projects, one backend issue [both]', () => {
   it('both edit the same field from a shared baseline → sync A then B flags a conflict', async () => {
-    const { plugin, projA, cfgA, ax, projB, cfgB, bx } = await twoProjects()
+    const { plugin, projA, ax, projB, bx } = await twoProjects()
     ax.start = '2026-02-02'
     bx.start = '2026-03-03'
-    rewind(cfgA)
+    rewind(projA)
     await runSync(plugin, projA) // A pushes its value to JIRA first
-    rewind(cfgB)
+    rewind(projB)
     const rb = await runSync(plugin, projB)
     expect(rb.conflicts).toBe(1) // B diverged from the same baseline → conflict
     expect(taskExt(must(findTask(projB.tasks, bx.id))).reconciled).toBe(false)
@@ -48,19 +48,19 @@ describe('jira sync — two projects, one backend issue [both]', () => {
   })
 
   it('if B re-syncs first it adopts A’s value, so a later B edit is a clean push (no conflict)', async () => {
-    const { plugin, projA, cfgA, ax, projB, cfgB, bx } = await twoProjects()
+    const { plugin, projA, ax, projB, bx } = await twoProjects()
     ax.start = '2026-02-02'
-    rewind(cfgA)
+    rewind(projA)
     await runSync(plugin, projA) // JIRA = 02-02
 
-    rewind(cfgB)
+    rewind(projB)
     const adopt = await runSync(plugin, projB) // B has no local edit → adopts 02-02 as its new baseline
     expect(adopt.conflicts).toBe(0)
     expect(must(findTask(projB.tasks, bx.id)).start).toBe('2026-02-02')
 
     const bAfter = must(findTask(projB.tasks, bx.id))
     bAfter.start = '2026-03-03' // now B edits from a baseline that already saw A's value
-    rewind(cfgB)
+    rewind(projB)
     const rb = await runSync(plugin, projB)
     expect(rb.conflicts).toBe(0) // one-sided change → push, not a conflict
     expect(rb.jiraUpdated).toBe(1)

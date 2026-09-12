@@ -7,6 +7,7 @@ import { DEFAULT_PRIORITIES, DEFAULT_STATUSES, makeProject, makeTask } from '../
 import { addTaskToTree, deleteTaskFromTree, findTask, flattenTasks, updateTaskInTree } from '../../store/TaskTreeOps'
 import type { ProjectStore } from '../../store/ProjectStore'
 import { loadMock, saveMock, type JiraMockStore, type MockIssueRecord } from './JiraMock'
+import { resetWatermarks, setWatermark } from './sync'
 import { assigneeMapFor, ensureProjectCfg, ensureTaskExt, type JiraAssignee, type JiraProjectConfig } from './types'
 
 /** The exact ProjectStore surface the connector relies on. Binding the fake to this
@@ -115,6 +116,9 @@ export function harness(opts: { team?: string[]; adapter?: FakeAdapter } = {}): 
   plugin: PMPlugin
   adapter: FakeAdapter
 } {
+  // The watermark map is keyed by project path and tests reuse one path, so a leftover
+  // watermark would quietly narrow the next test's first sync.
+  resetWatermarks()
   const adapter = opts.adapter ?? new FakeAdapter()
   const plugin = {
     app: { vault: { adapter } },
@@ -225,8 +229,8 @@ export function readMock(plugin: PMPlugin): Promise<JiraMockStore> {
  * JIRA bumps `updated` on real changes; in a fast test those can land in the same
  * millisecond as the just-set watermark, so this avoids timing flakiness.
  */
-export function rewind(cfg: JiraProjectConfig): void {
-  cfg.lastSeenUpdated = '2000-01-01T00:00:00.000+0000'
+export function rewind(project: Project): void {
+  setWatermark(project, '2000-01-01T00:00:00.000+0000')
 }
 
 /** A JIRA status object the mock stores on an issue (for inbound-change simulation). */

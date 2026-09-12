@@ -6,7 +6,7 @@ import { flattenTasks } from '../../../store/TaskTreeOps'
 import { confirmDialog } from '../../../ui/ModalFactory'
 import { safeAsync } from '../../../utils'
 import { isLocalhost } from '../JiraMockServer'
-import { cleanJira, diagnoseAccess, loadMappingValues, searchJiraUsers } from '../sync'
+import { cleanJira, clearWatermark, diagnoseAccess, loadMappingValues, searchJiraUsers } from '../sync'
 import { addMemberFromJira, setOutbound, stripJira, upsertAssigneeMapping } from '../taskLink'
 import { JiraImportModal } from './JiraImportModal'
 import { JiraExportModal } from './JiraExportModal'
@@ -108,7 +108,7 @@ export function renderJiraProjectPanel(
     // Re-rooting points at a different subtree, so the watermark from the old one would
     // hide every issue there that hasn't changed since. Clear it: the next sync crawls
     // the new root in full.
-    cfg.lastSeenUpdated = ''
+    clearWatermark(project)
   })
 
   // Value maps. The button (re)loads JIRA values into them — useful after an

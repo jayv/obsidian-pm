@@ -462,11 +462,50 @@ statusMap: JiraValueMap[]
 priorityMap: JiraValueMap[]
 assigneeMap: { jiraUser: string; name: string; jiraDisplay?: string }[] // legacy — migrated out on load
 ignoredKeys: string[]
-dirtyQueue: string[]
 mappingsDirty?: boolean
-syncIntervalMin?: number
-lastSyncAt?: string
-lastSeenUpdated?: string</code></pre>
+syncIntervalMin?: number</code></pre>
+<p><strong>Per-machine state is deliberately absent.</strong> A vault is
+often replicated between machines (git sync, Syncthing), and anything
+written here that describes <em>this</em> machine puts a line in a
+shared file that no two machines can agree on — a merge conflict every
+few minutes, and a rewrite from the losing side afterwards. So:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>dropped</th>
+<th>was</th>
+<th>lives</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>dirtyQueue</code></td>
+<td>tasks to push next</td>
+<td>nowhere — it was never read (§8.2 works it out from the shadow)</td>
+</tr>
+<tr class="even">
+<td><code>lastSyncAt</code></td>
+<td>interval throttle</td>
+<td>a <code>Map</code> on the connector</td>
+</tr>
+<tr class="odd">
+<td><code>lastSeenUpdated</code></td>
+<td>incremental watermark</td>
+<td>a <code>Map</code> in <code>sync.ts</code>, keyed by project
+path</td>
+</tr>
+</tbody>
+</table>
+<p>All three are stripped from any config still carrying them, so they
+stop riding along in notes written by earlier versions. Losing a
+watermark costs only a wider query: without one the incremental JQL
+drops its time clause and returns the tracked subtree, and the per-task
+merge decides everything regardless.</p>
 <h3 id="jirataskext-task.ext.jira">3.4 <code>JiraTaskExt</code>
 (<code>task.ext.jira</code>)</h3>
 <pre><code>key?: string             // linked issue key; absent = unlinked
@@ -1125,9 +1164,8 @@ fields take JIRA’s value, the rest stay local) and clear
 adopted, the issue’s <code>descriptionStash</code> is stored with it, so
 its placeholders stay restorable.</li>
 </ul></li>
-<li><code>cfg.dirtyQueue = []</code>;
-<code>lastSeenUpdated = maxUpdated</code>;
-<code>lastSyncAt = now</code>.</li>
+<li><code>setWatermark(project, maxUpdated)</code> — in memory, not in
+the note (§3.3).</li>
 <li><code>pushEpicConfig</code>: if <code>mappingsDirty</code>,
 <code>setProperty(epic, CONFIG_PROP, {maps})</code>, clear the
 flag.</li>
@@ -1235,11 +1273,13 @@ pushed into every linked project’s member list. Return name (or null
 when the issue has no assignee).</p>
 <h3 id="synctick-interval-gate">8.6 <code>syncTick</code> / interval
 gate</h3>
-<p><code>dueForSync(cfg, now)</code> =
-<code>now - (lastSyncAt?Date.parse:0) &gt;= (syncIntervalMin ?? 5)*60000</code>.
-<code>onTaskChanged</code> → <code>queueDirty(cfg, task)</code>: only
-when <code>cfg.enabled</code> and <code>taskExt(task).sync</code>;
-append the id if absent.</p>
+<p><code>dueForSync(cfg, now, lastSince)</code> =
+<code>now - lastSince &gt;= (syncIntervalMin ?? 5)*60000</code>, where
+<code>lastSince</code> comes from the connector’s in-memory map. A
+restart therefore syncs on the first tick, which is what you want after
+being away. <code>onTaskChanged</code> →
+<code>queueDirty(cfg, task)</code>: only when <code>cfg.enabled</code>
+and <code>taskExt(task).sync</code>; append the id if absent.</p>
 <p><code>JiraConnector.syncTick</code> runs an
 <strong>incremental</strong>
 <code>runSync(plugin, project, {full:false})</code> when due;
@@ -1374,9 +1414,9 @@ imported; build a task per issue via <code>issueToTask</code>
 <code>ext.jira = {key, sync:true, shadow}</code>); wire
 <code>dependencies</code> from <code>blockedBy</code> via the key→id
 map; nest subtasks under their parent
-(<code>isSubtask &amp;&amp; parentKey</code>); advance
-<code>lastSeenUpdated</code>; <code>store.importTasks</code> (persists).
-Returns <code>{created}</code>. Duplicate-title tasks get unique
+(<code>isSubtask &amp;&amp; parentKey</code>); advance the watermark;
+<code>store.importTasks</code> (persists). Returns
+<code>{created}</code>. Duplicate-title tasks get unique
 <code>&lt;slug&gt;-&lt;id8&gt;</code> file names.</p>
 <h3 id="export-exporttasks-exportabletasks">9.3 Export
 (<code>exportTasks</code>, <code>exportableTasks</code>)</h3>
@@ -1418,10 +1458,10 @@ autocomplete); sync interval; and the <strong>Jira import / Jira export
 sets <code>mappingsDirty</code>. Load/import/export re-render the
 <strong>whole</strong> modal (via the host <code>onChange</code>) so
 newly created team members appear.</p>
-<p>Changing the <strong>Epic key</strong> clears
-<code>lastSeenUpdated</code>: a different root is a different subtree,
-and the old watermark would hide every issue there that hasn’t changed
-since.</p>
+<p>Changing the <strong>Epic key</strong> calls
+<code>clearWatermark(project)</code>: a different root is a different
+subtree, and the old watermark would hide every issue there that hasn’t
+changed since.</p>
 <ul>
 <li><strong>Check access</strong> (§5.2 <code>myPermissions</code>) —
 read-only; reports the authenticated account and which sync permissions

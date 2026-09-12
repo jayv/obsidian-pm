@@ -696,7 +696,11 @@ export async function importStories(
     parentId: (issue.parentKey && keyToId[issue.parentKey]) || null
   }))
 
-  cfg.lastSeenUpdated = picked.reduce((m, i) => (i.updated > m ? i.updated : m), cfg.lastSeenUpdated ?? '')
+  // Advance past what we just imported, so the next tick doesn't reconsider it.
+  setWatermark(
+    project,
+    picked.reduce((m, i) => (i.updated > m ? i.updated : m), watermarkOf(project))
+  )
   await plugin.store.importTasks(project, entries)
   return { created: entries.length }
 }
@@ -1006,6 +1010,40 @@ async function underRoot(client: JiraClient, key: string, rootKey: string): Prom
   return false
 }
 
+/**
+ * How far each project's incremental query has caught up, by project path — the newest
+ * `updated` we have seen on any of its issues.
+ *
+ * In memory rather than in the project note. The value itself is Jira's clock and so is
+ * the same everywhere, but each machine advances it when it happens to sync, which put a
+ * line in a shared file that no two machines could agree on. Losing it costs nothing but a
+ * wider query: without a watermark the incremental JQL drops its time clause and returns
+ * the tracked subtree, and what actually changes anything is the per-task merge.
+ */
+const watermarks = new Map<string, string>()
+
+export function watermarkOf(project: Project): string {
+  return watermarks.get(project.filePath) ?? ''
+}
+
+export function setWatermark(project: Project, value: string): void {
+  if (value) watermarks.set(project.filePath, value)
+}
+
+/**
+ * Forget where we had got to. Re-rooting a project points it at a different subtree, and a
+ * watermark from the old one would hide every issue in the new one that hasn't changed
+ * since.
+ */
+export function clearWatermark(project: Project): void {
+  watermarks.delete(project.filePath)
+}
+
+/** Test-only: the map is keyed by path, and tests reuse paths. */
+export function resetWatermarks(): void {
+  watermarks.clear()
+}
+
 // ── Sync cycle (all reads/writes over the HTTP client) ────────────────────────
 
 export interface SyncResult {
@@ -1141,7 +1179,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   //    (local vs the last-synced shadow vs JIRA). Disjoint changes merge: push the
   //    fields only we changed, adopt the fields only JIRA changed. A field both
   //    sides changed differently is a conflict — kept local and flagged for the UI.
-  const prev = cfg.lastSeenUpdated ?? ''
+  const prev = watermarkOf(project)
   const trackedKeys = [...byKey.keys()]
   // Full sync: crawl the whole subtree. Incremental: pull only the tracked subtree
   // changed since the watermark, plus the issues behind locally-dirty tasks (whose JIRA
@@ -1442,7 +1480,7 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
     if (tw.adopt.length) patch.updatedAt = new Date(issue.updated).toISOString()
     patches.push({ taskId: t.id, patch })
   }
-  cfg.lastSeenUpdated = maxUpdated
+  setWatermark(project, maxUpdated)
 
   // Publish local mapping changes to the epic (status + priority only).
   await pushEpicConfig(client, cfg)

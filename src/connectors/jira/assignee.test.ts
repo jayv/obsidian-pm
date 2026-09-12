@@ -55,10 +55,10 @@ describe('jira sync — assignee conflicts [both]', () => {
 
     ax.assignees = ['Bob']
     bx.assignees = ['Carol']
-    rewind(cfgA)
+    rewind(projA)
     await runSync(plugin, projA) // A pushes Bob to JIRA
     expect((await readMock(plugin)).getIssue(key)?.fields.assignee).toMatchObject({ accountId: 'mock:bob' })
-    rewind(cfgB)
+    rewind(projB)
     const rb = await runSync(plugin, projB)
 
     expect(rb.conflicts).toBe(1)
@@ -79,7 +79,7 @@ describe('jira sync — assignee conflicts [both]', () => {
 
     // Reassign locally to a member with no JIRA-user mapping.
     t.assignees = ['Bob']
-    rewind(cfg)
+    rewind(project)
     const r = await runSync(plugin, project)
 
     expect(r.conflicts).toBe(1) // not silently swallowed
@@ -110,7 +110,7 @@ describe('jira sync — assignee conflicts [both]', () => {
     expect((await readMock(plugin)).getIssue(key)?.fields.assignee ?? null).toBeNull()
 
     // A later (background) sync must keep Zoe on the task, surfaced as a conflict — never dropped.
-    rewind(cfg)
+    rewind(project)
     const r = await runSync(plugin, project)
     const after = must(findTask(project.tasks, t.id))
     expect(after.assignees).toEqual(['Zoe']) // the bug: this used to become []
@@ -127,13 +127,13 @@ describe('jira sync — assignee conflicts [both]', () => {
     const t = localTask(project, { title: 'T', assignees: ['Zoe'] })
     await exportTasks(plugin, project, [t.id])
     const key = taskExt(t).key ?? ''
-    rewind(cfg)
+    rewind(project)
     await runSync(plugin, project) // pending conflict (unmapped)
 
     // Map Zoe → a real Jira user, then sync: the assignee now pushes and the task settles.
     await mutateMock(plugin, (s) => s.registerUser('mock:zoe', 'Zoe'))
     cfg.assigneeMap = [{ name: 'Zoe', jiraUser: 'mock:zoe' }]
-    rewind(cfg)
+    rewind(project)
     const r = await runSync(plugin, project)
 
     expect((await readMock(plugin)).getIssue(key)?.fields.assignee).toMatchObject({ accountId: 'mock:zoe' })
@@ -165,9 +165,9 @@ describe('jira sync — assignee conflicts [both]', () => {
     ax.assignees = ['Bob'] // A: assignee only
     bx.assignees = ['Carol'] // B: assignee + status
     bx.status = 'in-progress'
-    rewind(cfgB)
+    rewind(projB)
     await runSync(plugin, projB) // B pushes Carol + in-progress
-    rewind(cfgA)
+    rewind(projA)
     const ra = await runSync(plugin, projA)
     expect(ra.conflicts).toBe(1)
 
