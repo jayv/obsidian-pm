@@ -47,10 +47,18 @@ export class FakeVault {
     return this.cachedRead(file)
   }
 
+  /** A write moves the file's mtime on, as a real vault's does — code that asks "has this
+   *  changed since I read it" is unreadable without it, and untestable. */
+  private touch(file: TFile): void {
+    file.stat = { ...file.stat, mtime: ++this.clock }
+  }
+  private clock = 0
+
   async modify(file: TFile, content: string): Promise<void> {
     const entry = this.files.get(file.path)
     if (!entry) throw new Error(`modify: ${file.path} does not exist`)
     entry.content = content
+    this.touch(entry.file)
     bump(this.modifyCount, file.path)
   }
 
@@ -59,6 +67,7 @@ export class FakeVault {
     if (!entry) throw new Error(`process: ${file.path} does not exist`)
     const next = fn(entry.content)
     entry.content = next
+    this.touch(entry.file)
     bump(this.modifyCount, file.path)
     return next
   }
@@ -68,6 +77,7 @@ export class FakeVault {
     if (this.files.has(n)) throw new Error(`create: ${n} already exists`)
     const parent = this.ensureFolderForPath(n)
     const file = makeFile(n, parent)
+    this.touch(file)
     this.files.set(n, { file, content })
     parent.children.push(file)
     bump(this.createCount, n)

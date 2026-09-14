@@ -161,6 +161,62 @@ describe('jira ↔ core store integration (real ProjectStore) [both]', () => {
     expect(await bodyOnDisk(app, must(findTask(otherView.tasks, t.id)).filePath)).toBe(both)
   })
 
+  /*
+   * ENG-14781, second loss: the note came back empty after a re-home, while the shadow and
+   * Jira both still had the text. The sync's refusal to push an empty description over a
+   * full one is what kept Jira intact, and the conflict it raised is how it surfaced.
+   *
+   * The write path recovers a body from disk unless the caller CLAIMED it, and the editor
+   * claims whatever it was shown. It was shown a stale body, because loadTaskBody
+   * short-circuited on "have we read this" rather than "is what we hold still current".
+   */
+  it('re-reads a body that changed on disk since it was last read', async () => {
+    const { plugin, store, app } = realPlugin()
+    const { project } = await connected(plugin, store)
+    const t = makeTask({ title: 'Investigate', description: 'first' })
+    await store.insertTask(project, t, null)
+    const path = must(must(findTask(project.tasks, t.id)).filePath, 'task file path')
+
+    const task = must(findTask(project.tasks, t.id))
+    await store.loadTaskBody(task) // now considered hydrated
+    expect(task.description).toBe('first')
+
+    // The file moves on underneath: a sync adopting a remote edit, a git pull, another
+    // view saving. Nothing tells this Task object about it.
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile)) throw new Error('missing task file')
+    const current = await app.vault.cachedRead(file)
+    await app.vault.modify(file, current.replace('first', 'first\n\nsecond'))
+
+    await store.loadTaskBody(task)
+    expect(task.description).toBe('first\n\nsecond')
+  })
+
+  it('does not let an editor save wipe a body it was never shown', async () => {
+    // The end-to-end shape of the incident: open a task whose body changed underneath,
+    // save it (the editor sends the whole task, so the description counts as authored),
+    // and the newer body must survive.
+    const { plugin, store, app } = realPlugin()
+    const { project } = await connected(plugin, store)
+    const t = makeTask({ title: 'Investigate', description: 'first' })
+    await store.insertTask(project, t, null)
+    const path = must(must(findTask(project.tasks, t.id)).filePath, 'task file path')
+
+    const task = must(findTask(project.tasks, t.id))
+    await store.loadTaskBody(task)
+
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile)) throw new Error('missing task file')
+    const current = await app.vault.cachedRead(file)
+    await app.vault.modify(file, current.replace('first', 'first\n\nsecond'))
+
+    // What openTaskModal does before showing the editor, then what saving it does.
+    await store.loadTaskBody(task)
+    await store.updateTask(project, task.id, { ...task, title: 'Investigate more' })
+
+    expect(await bodyOnDisk(app, must(findTask(project.tasks, t.id)).filePath)).toBe('first\n\nsecond')
+  })
+
   it('still writes a description the caller edited', async () => {
     // The other side of the rule: an authored body must reach disk, or every edit made in
     // the task modal would be read straight back off the file.
