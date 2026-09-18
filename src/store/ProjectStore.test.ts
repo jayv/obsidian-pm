@@ -1155,3 +1155,55 @@ describe('ProjectStore re-adopts children a parent stopped claiming', () => {
     expect(reloaded.tasks.map((t) => t.title).sort()).toEqual(['Epic'])
   })
 })
+
+/*
+ * Notes were found holding BOTH a flow list and the old block items:
+ *
+ *     subtaskIds: ["a", "b"]
+ *       - a
+ *       - b
+ *
+ * which is invalid YAML — the note stops parsing, so the task disappears from its project
+ * and the hierarchy is simply missing a branch. It came from handing Obsidian's
+ * frontmatter writer a bag with every key deleted and re-added. Task notes are written by
+ * our own serializer now, whatever the change; this asserts the property that was broken
+ * rather than the mechanism, since the mechanism lives outside the plugin.
+ */
+describe('ProjectStore writes frontmatter that parses', () => {
+  const frontmatterOf = async (app: App, path: string): Promise<string> => {
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile)) throw new Error(`no file at ${path}`)
+    const content = await app.vault.cachedRead(file)
+    return content.slice(0, content.indexOf('\n---', 3))
+  }
+
+  it('leaves one subtaskIds key after a frontmatter-only change', async () => {
+    const { store, app } = newStore()
+    const project = await store.createProject('Valid', 'Projects')
+    const parent = await addNamed(store, project, 'Parent')
+    const child = await addNamed(store, project, 'Child')
+    await store.moveTask(project, child.id, parent.id)
+    const path = expectDefined(parent.filePath)
+
+    // A frontmatter-only update (no title, no description): the old fast path.
+    await store.updateTask(project, parent.id, { status: 'in-progress' })
+
+    const head = await frontmatterOf(app, path)
+    expect(head.match(/^subtaskIds:/gm)?.length).toBe(1)
+    expect(head).not.toMatch(/^\s+- \w/m) // no orphaned block items left behind
+    expect(head).toContain(child.id)
+  })
+
+  it('keeps the body through a frontmatter-only change', async () => {
+    const { store, app } = newStore()
+    const project = await store.createProject('Body', 'Projects')
+    const task = await addNamed(store, project, 'Task')
+    await store.updateTask(project, task.id, { description: 'kept' })
+
+    await store.updateTask(project, task.id, { status: 'in-progress' })
+
+    const file = app.vault.getAbstractFileByPath(expectDefined(task.filePath))
+    if (!(file instanceof TFile)) throw new Error('missing note')
+    expect(await app.vault.cachedRead(file)).toContain('kept')
+  })
+})
