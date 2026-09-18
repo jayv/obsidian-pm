@@ -306,6 +306,91 @@ describe('jira parent hierarchy [J→O]', () => {
  * active set: it keeps the Jira key (so the task is never mistaken for a new local one and
  * recreated as a duplicate) while stopping every read and write for it.
  */
+/*
+ * A live incident, and three of these fixes in one chain. A task with two subtasks was
+ * moved under another task in Obsidian; the push needed a level change, so pushEdit
+ * detached the child issue, failed to finish, and left it parentless. The sync then read
+ * `parent: null` as "hangs off the root", adopted a move to top level and cleared the local
+ * parent; the next full sync couldn't find the issue in the crawl and archived the task.
+ *
+ * Every step was defensible on its own. Together they lost a subtree from the board and
+ * left Jira holding an orphan.
+ */
+describe('jira orphaned issues are repaired, not archived [both]', () => {
+  it('puts an issue back where it was when a level change fails', async () => {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    await runSync(plugin, project)
+    await mutateMock(plugin, (s) => {
+      must(s.getIssue(EPIC)).fields.issuetype = { name: 'Initiative', subtask: false }
+    })
+
+    const epicTask = localTask(project, { title: 'Epic A' })
+    const child = localTask(project, { title: 'Child' }, epicTask.id)
+    await exportTasks(plugin, project, [epicTask.id, child.id])
+    const childKey = must(taskExt(child).key)
+    const originalParent = await parentKeyOf(plugin, childKey)
+    expect(originalParent).toBe(taskExt(epicTask).key)
+
+    // A site that refuses the type change — a scheme without the type, a workflow that
+    // won't allow it. The walk detaches BEFORE converting, so a naive implementation
+    // leaves the issue parentless: in nobody's subtree, invisible to the next crawl.
+    await mutateMock(plugin, (s) => s.setRejectTypeChange(true))
+
+    const moved = must(findTask(project.tasks, child.id))
+    deleteTaskFromTree(project.tasks, child.id)
+    addTaskToTree(project.tasks, moved, null)
+    await runSync(plugin, project)
+
+    expect(await parentKeyOf(plugin, childKey)).toBe(originalParent) // not orphaned
+  })
+
+  it('reconciles a parentless issue instead of archiving the task', async () => {
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    await runSync(plugin, project)
+    const parent = localTask(project, { title: 'Parent' })
+    const child = localTask(project, { title: 'Child' }, parent.id)
+    await exportTasks(plugin, project, [parent.id, child.id])
+    const childKey = must(taskExt(child).key)
+
+    // However it got there, the issue has no parent — so the crawl can't see it.
+    await mutateMock(plugin, (s) => {
+      Reflect.deleteProperty(must(s.getIssue(childKey)).fields, 'parent')
+    })
+
+    const r = await runSync(plugin, project)
+
+    expect(r.archived).toBe(0) // the old behaviour archived it
+    expect(must(findTask(project.tasks, child.id)).archived).toBeFalsy()
+    // The local tree is the surviving statement of where it belongs, so it is pushed back.
+    expect(await parentKeyOf(plugin, childKey)).toBe(taskExt(parent).key)
+  })
+
+  it('leaves the local parent alone when Jira reports none', async () => {
+    // Reading a missing parent as "the root" adopted a move to top level and wiped the
+    // task's parentId, which is what took the subtasks off the board.
+    const { plugin } = harness()
+    const { project, cfg } = connect(plugin)
+    setDefaultMaps(cfg)
+    await runSync(plugin, project)
+    const parent = localTask(project, { title: 'Parent' })
+    const child = localTask(project, { title: 'Child' }, parent.id)
+    await exportTasks(plugin, project, [parent.id, child.id])
+    const childKey = must(taskExt(child).key)
+
+    await mutateMock(plugin, (s) => {
+      Reflect.deleteProperty(must(s.getIssue(childKey)).fields, 'parent')
+      must(s.getIssue(childKey)).fields.updated = FUTURE
+    })
+    await runSync(plugin, project)
+
+    expect(localParentIdOf(project, child.id)).toBe(parent.id)
+  })
+})
+
 describe('jira parent moved out of scope → archive [J→O]', () => {
   /** A synced child under a synced parent, plus a second root issue outside the epic. */
   const setup = async (

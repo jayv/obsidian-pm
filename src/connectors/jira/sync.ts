@@ -339,17 +339,33 @@ async function childTypeFor(
  * So detach, convert, re-attach. Every step leaves the issue in a state Jira accepts: an
  * Epic with no parent, then a Task with no parent, then a Task under its Epic.
  *
- * A partly-applied move is safe. The next sync still sees the parent diverged and picks up
- * where this left off, so a failure halfway never needs manual repair.
+ * A failure part-way through is NOT safe, which this used to claim. The first step takes
+ * the issue out of the root's subtree, and an issue that is in nobody's subtree isn't a
+ * move waiting to be retried — the next sync can't find it at all. That is how a task
+ * ended up archived locally while its issue sat parentless in Jira. So the walk puts the
+ * issue back where it was if it can't finish.
  */
 async function pushEdit(client: JiraClient, key: string, fields: Record<string, unknown>): Promise<boolean> {
   if (await client.editIssue(key, fields)) return true
   const { issuetype, ...rest } = fields
   if (!issuetype || !rest.parent) return false
+
+  // Where it was, so a failure can be undone. Without this the issue is left orphaned.
+  const before = await client.getIssue(key)
+  const wasParent = before?.parentKey
+  const wasType = before?.issueType
+
   console.warn(`[PM] Jira: ${key} — retrying the level change as detach → convert → re-attach.`)
   if (!(await client.editIssue(key, { parent: null }))) return false
-  if (!(await client.editIssue(key, { issuetype }))) return false
-  return client.editIssue(key, rest)
+  if (await client.editIssue(key, { issuetype })) {
+    if (await client.editIssue(key, rest)) return true
+  }
+
+  // Roll back, type first: the parent it had is only legal for the type it had.
+  console.warn(`[PM] Jira: ${key} — the move failed; putting it back under ${wasParent ?? 'no parent'}.`)
+  if (wasType) await client.editIssue(key, { issuetype: { name: wasType } })
+  if (wasParent) await client.editIssue(key, { parent: { key: wasParent } })
+  return false
 }
 
 /** The native priority reference to write: prefer the persisted id, fall back to the name. */
@@ -1188,6 +1204,14 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
   let all: JiraIssue[]
   if (full) {
     all = await epicDescendants(client, cfg.epicId)
+    // An issue can be missing from the crawl and still be perfectly alive: anything
+    // parentless is in nobody's subtree, and our own failed move can leave it that way.
+    // Ask for the tracked keys the crawl didn't return before concluding they are gone —
+    // reconciled normally, a parentless issue gets its parent pushed back, which is the
+    // repair. Without this the task was archived and the issue left orphaned.
+    const seen = new Set(all.map((i) => i.key))
+    const unseen = trackedKeys.filter((k) => !seen.has(k))
+    if (unseen.length) all = [...all, ...(await client.issuesByKeys(unseen))]
   } else {
     const changed = await client.changedInSubtree(trackedKeys, cfg.epicId, prev)
     const have = new Set(changed.map((i) => i.key))
@@ -1291,8 +1315,19 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       mine.description = issue.description
     }
 
+    // Jira holds no parent for this issue at all. Nobody chooses that state — it is what a
+    // half-finished move leaves behind (see pushEdit) — and while it lasts the issue is in
+    // nobody's subtree, so a crawl can't find it. Our tree is the surviving statement of
+    // where it belongs, so push that back rather than reading it as "moved to the top" or
+    // waiting for someone to notice. Not expressible as a merge: both sides read equal by
+    // the time we're comparing, precisely so the bad adopt can't happen.
+    const orphaned = !issue.parentKey && Boolean(mine.parent)
+    if (orphaned) {
+      console.warn(`[PM] Jira: ${ext.key} has no parent — restoring ${mine.parent} from the local tree.`)
+    }
+
     // Nothing changed on either side and no open conflict → skip (no HTTP).
-    if (!localDiverged && issue.updated <= prev && ext.reconciled !== false) continue
+    if (!localDiverged && issue.updated <= prev && ext.reconciled !== false && !orphaned) continue
 
     // `theirs` from the issue (resolveAssignee may auto-create a mapped member).
     const assigneeName = resolveAssignee(plugin, project, issue)
@@ -1305,10 +1340,15 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       due: issue.due ?? '',
       assignees: assigneeName ? [assigneeName] : [],
       milestone: issue.milestone,
-      // Every issue here was fetched from inside the root's subtree, so a missing `parent`
-      // means it hangs off the root by the legacy "Epic Link" rather than "it has no
-      // parent" — read it as the root, or that would look like a move to top level.
-      parent: issue.parentKey ?? cfg.epicId,
+      // A missing `parent` is NOT "hangs off the root". Jira sets `parent` for everything
+      // in the current hierarchy, so an empty one means the issue is orphaned — which our
+      // own half-finished move can cause (see pushEdit). Reading it as the root adopted a
+      // move to top level and cleared the task's parent locally, and the issue then fell
+      // out of the crawl and the task was archived. Treat it as unknown instead: equal to
+      // ours, so the merge leaves the field alone and the push puts the parent back.
+      // (It also covers an issue attached by the legacy "Epic Link", which reports no
+      // `parent` while genuinely sitting under the root.)
+      parent: issue.parentKey ?? mine.parent,
       blockedBy: [...issue.blockedBy]
     }
     // A shadow written before `parent` was a synced field has no parent baseline, so the
@@ -1364,9 +1404,10 @@ export async function runSync(plugin: PMPlugin, project: Project, opts: SyncOpti
       if (p) fields.priority = priorityRef(p)
       else held.push(`priority "${t.priority}" (no Jira value mapped with "→ Jira")`)
     }
-    if (tw.push.includes('parent') && parentUnsynced) {
+    const pushParent = tw.push.includes('parent') || orphaned
+    if (pushParent && parentUnsynced) {
       held.push("parent (the parent task isn't synced to Jira yet)")
-    } else if (tw.push.includes('parent') && desiredParent) {
+    } else if (pushParent && desiredParent) {
       // Depth decides the Jira type, so a move across levels is a type change too: a task
       // that was top-level got created as the root's child type, and Jira rejects an issue
       // whose parent isn't exactly one level above it. Send the type with the parent so

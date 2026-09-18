@@ -23,8 +23,8 @@
   <h1>JIRA connector — coverage</h1>
   <p class="sub">Generated from the test files (one section per <code>describe</code>, one row per <code>it</code>). All sync tests run end-to-end through the real JiraClient against the in-process local server over HTTP.</p>
   <p>
-    <span class="stat"><strong>249</strong> tests</span>
-    <span class="stat"><strong>61</strong> areas</span>
+    <span class="stat"><strong>252</strong> tests</span>
+    <span class="stat"><strong>62</strong> areas</span>
     <span class="stat"><span class="dir dir-OJ">O→J</span> <span class="dir dir-JO">J→O</span> <span class="dir dir-both">both</span> <span class="dir dir-Obsidian">Obsidian</span> <span class="dir dir-HTTP">HTTP</span> <span class="dir dir-unit">unit</span></span>
   </p>
 
@@ -259,6 +259,11 @@
 <tr><td>adopts a move up to the root as a top-level task</td><td class="file">parent.test.ts</td></tr>
 <tr><td>conflicts when both sides moved the task to different parents</td><td class="file">parent.test.ts</td></tr>
 <tr><td>holds the move when the new Jira parent is not a task in the project</td><td class="file">parent.test.ts</td></tr>
+
+    <tr class="group"><td colspan="2">jira orphaned issues are repaired, not archived <span class="dir dir-both">both</span> <span class="muted">3</span></td></tr>
+    <tr><td>puts an issue back where it was when a level change fails</td><td class="file">parent.test.ts</td></tr>
+<tr><td>reconciles a parentless issue instead of archiving the task</td><td class="file">parent.test.ts</td></tr>
+<tr><td>leaves the local parent alone when Jira reports none</td><td class="file">parent.test.ts</td></tr>
 
     <tr class="group"><td colspan="2">jira parent moved out of scope → archive <span class="dir dir-JO">J→O</span> <span class="muted">7</span></td></tr>
     <tr><td>archives the task, keeping its Jira key</td><td class="file">parent.test.ts</td></tr>

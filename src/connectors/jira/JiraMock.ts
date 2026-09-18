@@ -41,6 +41,8 @@ export interface MockMeta {
   envelope?: 'values' | 'named'
   /** When set, the next write is refused with Jira's XSRF 403 (then cleared). */
   xsrfOnce?: boolean
+  /** Refuse any edit that changes the issue type, as a site with a restricted scheme does. */
+  rejectTypeChange?: boolean
   users: JiraUser[]
   seq: number
   /** Monotonic counter for minting issue-link ids. */
@@ -115,6 +117,15 @@ export class JiraMockStore {
   /** Refuse the next write once with Jira's XSRF 403. */
   armXsrfFailure(): void {
     this.data.meta.xsrfOnce = true
+  }
+  /**
+   * Refuse type changes, which real sites do — a scheme without the target type, a
+   * workflow that won't allow the transition. It matters because the cross-level move
+   * walk detaches BEFORE converting: a refusal here used to leave the issue parentless,
+   * out of every subtree, and the next sync archived the local task instead of retrying.
+   */
+  setRejectTypeChange(on: boolean): void {
+    this.data.meta.rejectTypeChange = on
   }
 
   /**
@@ -199,6 +210,7 @@ export class JiraMockStore {
   editIssue(key: string, fields: Record<string, unknown>): MockIssueRecord | null {
     const rec = this.data.issues[key]
     if (!rec) return null
+    if (this.data.meta.rejectTypeChange && fields.issuetype) return null
     Object.assign(rec.fields, this.normalizeFields(fields))
     rec.fields.updated = this.now()
     return rec
