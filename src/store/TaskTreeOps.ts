@@ -52,6 +52,27 @@ function sameValue(a: unknown, b: unknown): boolean {
 }
 
 /**
+ * Fields a patch may never carry. `subtasks` is the tree's shape, not one of the task's
+ * values, and changing shape is what insertTask/moveTask/deleteTask are for.
+ *
+ * Callers hand over whole task objects — the editor clones the task it was given, and in
+ * the gantt that task is a FILTERED copy whose `subtasks` hold only the children that
+ * passed the filter. Assigning that over the real list silently disowns the rest: their
+ * notes still name this parent, so they survive on disk and the loader re-adopts them, but
+ * they vanish from every view until something reloads, and the parent's own note goes out
+ * with a short list. `id` is here for the same reason — a patch that renames a task's
+ * identity is a bug, never an intent.
+ */
+const STRUCTURAL: (keyof Task)[] = ['subtasks', 'id']
+
+function withoutStructure(patch: Partial<Task>): Partial<Task> {
+  if (!STRUCTURAL.some((k) => k in patch)) return patch
+  const out = { ...patch }
+  for (const key of STRUCTURAL) Reflect.deleteProperty(out, key)
+  return out
+}
+
+/**
  * Does this patch actually change the task? A patch that restates what the task already
  * says is not an edit, and treating it as one costs more than a wasted write.
  *
@@ -63,7 +84,8 @@ function sameValue(a: unknown, b: unknown): boolean {
  * happened for every touched task on every sync, whether or not anything about it changed.
  */
 export function changesTask(task: Task, patch: Partial<Task>): boolean {
-  return (Object.keys(patch) as (keyof Task)[]).some((key) => !sameValue(task[key], patch[key]))
+  const fields = withoutStructure(patch)
+  return (Object.keys(fields) as (keyof Task)[]).some((key) => !sameValue(task[key], fields[key]))
 }
 
 /** Mutate task tree: update a task by id */
@@ -75,7 +97,7 @@ export function updateTaskInTree(tasks: Task[], id: string, patch: Partial<Task>
       // deriving the change writes the same bytes for it. Otherwise it's a local edit and
       // now() is exactly right.
       if (changesTask(t, patch)) {
-        Object.assign(t, patch, { updatedAt: patch.updatedAt ?? new Date().toISOString() })
+        Object.assign(t, withoutStructure(patch), { updatedAt: patch.updatedAt ?? new Date().toISOString() })
       }
       return true
     }

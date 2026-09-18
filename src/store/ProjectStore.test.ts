@@ -1114,3 +1114,44 @@ describe('ProjectStore fileless project saves', () => {
     }
   })
 })
+
+/*
+ * The shape a vault was actually found in: a parent whose own `subtaskIds` had been
+ * emptied, nested under another task, with both children's notes still naming it. While
+ * the parent was top-level the children were rescued at load; once it became a subtask
+ * they disappeared from every view.
+ *
+ * Nothing was lost on disk, so a load has to put the family back together — and then
+ * write the repaired list out, so the next load doesn't depend on the rescue.
+ */
+describe('ProjectStore re-adopts children a parent stopped claiming', () => {
+  it('attaches children that name a parent whose own list is empty', async () => {
+    const { store, app, vault } = newStore()
+    const project = await store.createProject('Rehome', 'Projects')
+    const grandparent = await addNamed(store, project, 'Epic')
+    const parent = await addNamed(store, project, 'Parent')
+    const one = await addNamed(store, project, 'One')
+    const two = await addNamed(store, project, 'Two')
+    await store.moveTask(project, parent.id, grandparent.id)
+    await store.moveTask(project, one.id, parent.id)
+    await store.moveTask(project, two.id, parent.id)
+
+    // Empty the parent's claim on disk, as the editor's whole-task patch used to.
+    const file = app.vault.getAbstractFileByPath(expectDefined(parent.filePath))
+    if (!(file instanceof TFile)) throw new Error('missing parent note')
+    const content = await app.vault.cachedRead(file)
+    await app.vault.modify(file, content.replace(/subtaskIds:.*\n/, 'subtaskIds: []\n'))
+    vault.resetCounts()
+
+    const projectFile = app.vault.getAbstractFileByPath(project.filePath)
+    if (!(projectFile instanceof TFile)) throw new Error('missing project note')
+    const fresh = new ProjectStore(app, () => DEFAULT_STATUSES)
+    const reloaded = expectDefined(await fresh.loadProject(projectFile))
+
+    const epic = expectDefined(reloaded.tasks.find((t) => t.title === 'Epic'))
+    const rebuilt = expectDefined(epic.subtasks.find((t) => t.title === 'Parent'))
+    expect(rebuilt.subtasks.map((t) => t.title).sort()).toEqual(['One', 'Two'])
+    // ...and they are not ALSO loose at the top level, which would double every row.
+    expect(reloaded.tasks.map((t) => t.title).sort()).toEqual(['Epic'])
+  })
+})

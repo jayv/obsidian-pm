@@ -366,3 +366,57 @@ describe('updateTaskInTree write churn', () => {
     expect(updateTaskInTree([taskAt()], 'missing', { status: 'done' })).toBe(false)
   })
 })
+
+/*
+ * A task with two subtasks vanished from every view after being moved under another task.
+ * Its children's notes still named it, so nothing was lost on disk — but the parent's own
+ * child list had been emptied, and once the parent stopped being top-level there was
+ * nothing left holding them in the tree.
+ *
+ * The editor hands the store a whole task as the patch, and in the gantt the task it was
+ * given is a FILTERED copy: its `subtasks` are only the children that passed the filter.
+ */
+describe('updateTaskInTree never restructures the tree', () => {
+  const withKids = (): Task =>
+    makeTask({
+      id: 'p',
+      title: 'Parent',
+      subtasks: [makeTask({ id: 'c1', title: 'One' }), makeTask({ id: 'c2', title: 'Two' })]
+    })
+
+  it('ignores an empty subtasks list in a patch', () => {
+    const t = withKids()
+    updateTaskInTree([t], 'p', { title: 'Renamed', subtasks: [] })
+    expect(t.title).toBe('Renamed')
+    expect(t.subtasks.map((s) => s.id)).toEqual(['c1', 'c2'])
+  })
+
+  it('ignores a partial subtasks list — the shape a filtered view would hand over', () => {
+    const t = withKids()
+    updateTaskInTree([t], 'p', { subtasks: [makeTask({ id: 'c1', title: 'One' })] })
+    expect(t.subtasks.map((s) => s.id)).toEqual(['c1', 'c2'])
+  })
+
+  it('does not swap the children for equal-looking copies', () => {
+    // The editor deep-clones, so a patch's children are different objects with the same
+    // ids. Taking them would leave the task index pointing at objects not in the tree.
+    const t = withKids()
+    const original = t.subtasks[0]
+    updateTaskInTree([t], 'p', { subtasks: JSON.parse(JSON.stringify(t.subtasks)) as Task[] })
+    expect(t.subtasks[0]).toBe(original)
+  })
+
+  it('will not let a patch change a task id', () => {
+    const t = withKids()
+    updateTaskInTree([t], 'p', { id: 'something-else', title: 'Renamed' })
+    expect(t.id).toBe('p')
+    expect(t.title).toBe('Renamed')
+  })
+
+  it('a patch carrying only structure is not a change at all', () => {
+    const t = makeTask({ id: 'p', title: 'P', updatedAt: '2026-01-01T00:00:00.000Z', subtasks: [] })
+    updateTaskInTree([t], 'p', { subtasks: [makeTask({ id: 'x' })] })
+    expect(t.updatedAt).toBe('2026-01-01T00:00:00.000Z')
+    expect(t.subtasks).toEqual([])
+  })
+})
