@@ -6,7 +6,7 @@ import { safeAsync } from '../../utils'
 import type { SubView } from '../SubView'
 import { renderTable, refreshTableBody, handleTableKeyDown, ROW_HEIGHT_ESTIMATE } from './TableRenderer'
 import type { SortKey, SortDir, TableState } from './TableRenderer'
-import { updateSelectAllCheckbox } from './TableRow'
+import { updateSelectAllCheckbox, updateSelectedRow } from './TableRow'
 import { renderBulkActionBar } from './BulkActionBar'
 import type { BulkAction } from './BulkActionBar'
 
@@ -99,6 +99,12 @@ export class TableView implements SubView {
   refresh(): void {
     this.doRefreshTable()
     this.updateBulkBar()
+  }
+
+  /** Highlight one row and scroll it into view, as a click on it would. */
+  selectTask(taskId: string): void {
+    this.state.selectedTaskId = taskId
+    updateSelectedRow(this.state)
   }
 
   /** Rows the table just rendered (all filter matches when filtering; else collapse-aware). */

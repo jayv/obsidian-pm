@@ -150,6 +150,24 @@
     0 0 10px 2px color-mix(in srgb, var(--interactive-accent) 55%, transparent);
 }
 
+/* -- Reveal flash (api.openTask on a Gantt row / Kanban card) ---------------- */
+.pm-reveal-flash {
+  animation: pm-reveal-flash 1.8s ease-out;
+}
+@keyframes pm-reveal-flash {
+  0%,
+  60% {
+    box-shadow:
+      inset 3px 0 0 var(--pm-accent),
+      0 0 0 2px color-mix(in srgb, var(--pm-accent) 60%, transparent);
+    background: color-mix(in srgb, var(--pm-accent) 14%, transparent);
+  }
+  100% {
+    box-shadow: none;
+    background: transparent;
+  }
+}
+
 /* -- Selected Row ----------------------------------------------------------- */
 .pm-table-row--selected {
   background: color-mix(in srgb, var(--pm-accent) 10%, transparent);

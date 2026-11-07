@@ -2,7 +2,7 @@ import { TFile } from 'obsidian'
 import type PMPlugin from '../main'
 import { PM_DASHBOARD_VIEW_TYPE } from './DashboardView'
 import { PM_UBER_VIEW_TYPE } from './UberProjectView'
-import { PM_PROJECT_VIEW_TYPE } from './ProjectView'
+import { PM_PROJECT_VIEW_TYPE, ProjectView } from './ProjectView'
 
 export class PMViewRouter {
   constructor(private plugin: PMPlugin) {}
@@ -52,6 +52,15 @@ export class PMViewRouter {
     const leaf = ws.getLeaf('tab')
     await leaf.setViewState({ type: PM_PROJECT_VIEW_TYPE, state: { filePath: file.path } })
     await ws.revealLeaf(leaf)
+  }
+
+  /** openProject, then the ProjectView now showing it (null if the leaf isn't one yet). */
+  async openProjectView(file: TFile): Promise<ProjectView | null> {
+    await this.openProject(file)
+    const leaf = this.plugin.app.workspace
+      .getLeavesOfType(PM_PROJECT_VIEW_TYPE)
+      .find((l) => (l.getViewState().state as { filePath?: string } | undefined)?.filePath === file.path)
+    return leaf?.view instanceof ProjectView ? leaf.view : null
   }
 
   async openProjectByPath(path: string): Promise<void> {

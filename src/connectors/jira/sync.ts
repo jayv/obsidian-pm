@@ -663,6 +663,41 @@ async function epicDescendants(client: JiraClient, epicKey: string): Promise<Jir
   return out
 }
 
+/** One issue by key from the project's server, or null when unknown. Throws on transport failure. */
+export async function fetchIssue(plugin: PMPlugin, project: Project, key: string): Promise<JiraIssue | null> {
+  const r = await ready(plugin, project)
+  if (!r) return null
+  if (r.cfg.epicId) await r.client.startFieldId(r.cfg.epicId)
+  return r.client.getIssue(key)
+}
+
+/**
+ * Whether `issue` sits inside the project's mapped root subtree, walking its parents up.
+ * An issue outside it would be archived as out-of-scope by the next sync, so importing
+ * one is refused before it starts.
+ */
+export async function issueUnderRoot(plugin: PMPlugin, project: Project, issue: JiraIssue): Promise<boolean> {
+  const r = await ready(plugin, project)
+  if (!r || !r.cfg.epicId) return false
+  const seen = new Set<string>()
+  let parent = issue.parentKey
+  while (parent && !seen.has(parent)) {
+    if (parent === r.cfg.epicId) return true
+    seen.add(parent)
+    const up = await r.client.getIssue(parent)
+    parent = up?.parentKey ?? null
+  }
+  return false
+}
+
+/** The issue type a new child of `parentKey` would get, or null when Jira has no level below it. */
+export async function jiraChildTypeFor(plugin: PMPlugin, project: Project, parentKey: string): Promise<string | null> {
+  const r = await ready(plugin, project)
+  if (!r) return null
+  const plan = await buildTypePlan(r.client, r.cfg)
+  return (await childTypeFor(r.client, plan, parentKey))?.typeName ?? null
+}
+
 export async function fetchEpicStories(plugin: PMPlugin, project: Project): Promise<JiraIssue[]> {
   const r = await ready(plugin, project)
   if (!r || !r.cfg.epicId) return []

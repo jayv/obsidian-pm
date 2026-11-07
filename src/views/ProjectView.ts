@@ -20,6 +20,7 @@ import { openProjectModal, openTaskModal } from '../ui/ModalFactory'
 import { ViewSwitcher } from '../ui/primitives/ViewSwitcher'
 import { ProjectHeader, type HeaderUiState } from '../ui/composites/ProjectHeader'
 import { flattenTasks } from '../store/TaskTreeOps'
+import { findParentId, findTaskById } from '../store/TaskIndex'
 import { cloneFilter, filterEquals, isFilterActive, matchesFilter } from '../store/TaskFilter'
 import { computeResourceConflicts } from './gantt/ResourceConflicts'
 import { renderTaskBadges } from '../ui/primitives/TaskBadges'
@@ -599,6 +600,41 @@ export class ProjectView extends ItemView {
 
   isMaximized(): boolean {
     return this.maximized
+  }
+
+  /**
+   * Bring one task into view: expand its collapsed ancestors, switch to `view` if asked,
+   * then highlight and scroll to its row/bar/card. False when the task isn't rendered
+   * (unknown id, or hidden by the active filter) — the project itself stays open.
+   */
+  async revealTask(taskId: string, view?: ViewMode): Promise<boolean> {
+    const project = this.project
+    if (!project || !findTaskById(project, taskId)) return false
+    let expanded = false
+    for (let pid = findParentId(project, taskId); pid; pid = findParentId(project, pid)) {
+      const ancestor = findTaskById(project, pid)
+      if (ancestor?.collapsed) {
+        ancestor.collapsed = false
+        expanded = true
+      }
+    }
+    if (expanded) await this.plugin.persistCollapsedState(project)
+    if (view && view !== this.currentView) this.setView(view)
+    else if (expanded && this.subview) {
+      if (this.subview.refresh) this.subview.refresh()
+      else this.subview.render()
+    }
+
+    if (this.subview instanceof TableView) {
+      this.subview.selectTask(taskId)
+      return this.bodyEl.querySelector(`tr[data-task-id="${taskId}"]`) !== null
+    }
+    const el = this.bodyEl.querySelector(`[data-task-id="${taskId}"]`)
+    if (!el) return false
+    el.scrollIntoView({ block: 'center', inline: 'nearest' })
+    el.classList.add('pm-reveal-flash')
+    window.setTimeout(() => el.classList.remove('pm-reveal-flash'), 1800)
+    return true
   }
 
   /** Switch the active sub-view (table/gantt/kanban). Used by the view hotkeys. */

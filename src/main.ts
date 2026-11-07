@@ -14,6 +14,7 @@ import { migrateProjects } from './migration'
 import { ConnectorRegistry } from './connectors/registry'
 import { CONNECTORS } from './connectors'
 import { safeAsync } from './utils'
+import { PluginApi } from './api'
 
 export default class PMPlugin extends Plugin {
   settings: PMSettings = { ...DEFAULT_SETTINGS }
@@ -24,6 +25,8 @@ export default class PMPlugin extends Plugin {
   redoStack: Array<{ undo: () => Promise<void>; redo: () => Promise<void> }> = []
   /** Registered integration connectors (JIRA, …). */
   connectors = new ConnectorRegistry()
+  /** Public surface for other plugins: `app.plugins.plugins['project-manager'].api`. */
+  api: PluginApi = new PluginApi(this)
 
   pushUndo(entry: { undo: () => Promise<void>; redo: () => Promise<void> }): void {
     this.undoStack.push(entry)
@@ -55,10 +58,16 @@ export default class PMPlugin extends Plugin {
     // first real use. Wire the generic store hooks at the registry dispatch.
     this.connectors.init(this)
     for (const d of CONNECTORS) this.connectors.register(d)
-    this.store.onTaskChanged = (project, task) => this.connectors.taskChanged(project, task)
+    this.store.onTaskChanged = (project, task) => {
+      this.connectors.taskChanged(project, task)
+      this.api.noteTaskChanged(project, task)
+    }
     this.store.onTaskDeleted = (project, task) => this.connectors.taskDeleted(project, task)
     this.store.onProjectLoaded = (project) => void this.connectors.projectLoaded(project)
-    this.store.onProjectSaved = (project) => void this.connectors.projectSaved(project)
+    this.store.onProjectSaved = (project) => {
+      void this.connectors.projectSaved(project)
+      this.api.noteProjectSaved(project)
+    }
     this.store.onAssigneeRenamed = (project, from, to) => this.connectors.assigneeRenamed(project, from, to)
     this.store.isConnectorKey = (key) => this.connectors.ownsKey(key)
     this.notifier = new Notifier(this)
@@ -88,6 +97,24 @@ export default class PMPlugin extends Plugin {
     // Periodic connector sync: tick each minute, let each connector decide which
     // of its enabled projects are due (interval lives in project.ext.<id>).
     this.registerInterval(window.setInterval(() => void this.connectorTick(), 60_000))
+
+    // obsidian://project-manager?task=<ref>[&where=both|project|modal][&view=table|gantt|kanban]
+    // or ?project=<path>[&view=…] — for links and buttons that can't call `api` directly.
+    this.registerObsidianProtocolHandler('project-manager', (params) => {
+      const view = (['table', 'gantt', 'kanban'] as const).find((v) => v === params.view)
+      void safeAsync(async () => {
+        if (params.task) {
+          const where = (['both', 'project', 'modal'] as const).find((w) => w === params.where)
+          if (!(await this.api.openTask(params.task, { where, view }))) {
+            this.showNotice(`No task found for "${params.task}"`)
+          }
+        } else if (params.project) {
+          if (!(await this.api.openProject(params.project, { view }))) {
+            this.showNotice(`No project found at "${params.project}"`)
+          }
+        }
+      })()
+    })
 
     this.addCommand({
       id: 'open-projects',
