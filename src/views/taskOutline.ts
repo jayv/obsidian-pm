@@ -10,9 +10,12 @@
  * construction. Re-deriving "visible" here would be a second implementation of filtering,
  * promotion and collapse, free to drift from the chart it claims to match.
  */
-import type { FlatTask } from '../store/TaskTreeOps'
-import type { StatusConfig, Task } from '../types'
-import { getStatusConfig } from '../utils'
+import { Temporal, parsePlainDate, today } from '../dates'
+import { applyTaskFilterPromote, matchesFilter } from '../store/TaskFilter'
+import { flattenTasks, type FlatTask } from '../store/TaskTreeOps'
+import { buildUberProject, type UberProject } from '../store/UberProject'
+import type { FilterState, Project, StatusConfig, Task } from '../types'
+import { getStatusConfig, isTerminalStatus } from '../utils'
 
 export interface OutlineOpts {
   statuses: StatusConfig[]
@@ -24,6 +27,13 @@ export interface OutlineOpts {
   displayName?: (name: string) => string
   /** Row title, e.g. the "Parent > Child" path from {@link titlePaths}. */
   titleOf?: (task: Task) => string
+  /**
+   * Ids of tasks that are carried over from an earlier week (see {@link uberRows}). They
+   * are listed under their project in their own group, after the assignee groups, with
+   * the assignee on the line — the question they pose is "who still owes this", not
+   * "what is X doing this week".
+   */
+  carried?: Set<string>
 }
 
 /**
@@ -103,6 +113,124 @@ export function assigneeOutline(tasks: Task[], opts: OutlineOpts, baseDepth = 0)
     emit(names.length ? names.map((n) => `@${n}`).join(', ') : `*${key}*`, items)
   }
   return lines
+}
+
+/**
+ * The all-projects shape: a project heading, then that project's rows grouped by
+ * assignee beneath it. `rows` are the (already collapsed) rows in display order, project
+ * headings included — the same loop the timeline's copy button runs, so an export made
+ * without the view open cannot drift from the one made with it.
+ */
+export function projectOutline(rows: FlatTask[], opts: OutlineOpts): string[] {
+  const lines: string[] = []
+  let tasks: Task[] = []
+  let carried: Task[] = []
+  const flush = (): void => {
+    if (tasks.length) lines.push(...assigneeOutline(tasks, opts, 1))
+    if (carried.length) {
+      lines.push(`${indentOf(1)}- *Carried over*`)
+      for (const task of carried.sort(byDue)) lines.push(taskLine(task, 2, opts))
+    }
+    tasks = []
+    carried = []
+  }
+  for (const row of rows) {
+    if (opts.isHeading?.(row.task)) {
+      flush()
+      lines.push(outlineMarkdown([{ ...row, depth: 0 }], opts))
+    } else if (opts.carried?.has(row.task.id)) {
+      carried.push(row.task)
+    } else {
+      tasks.push(row.task)
+    }
+  }
+  flush()
+  return lines
+}
+
+export interface UberRows {
+  uber: UberProject
+  /** Collapsed rows with their paths, ready for {@link projectOutline}. */
+  rows: FlatTask[]
+  paths: Map<string, string>
+  /** Ids of the carried-over rows; empty when none were asked for. */
+  carried: Set<string>
+  /** The Mon–Sun window the filter's weeks span, or null when it has no week filter. */
+  week: { from: string; to: string } | null
+}
+
+/** Monday of the current week plus `offset` weeks. */
+function weekStart(offset: number): Temporal.PlainDate {
+  const now = today()
+  return now.subtract({ days: now.dayOfWeek - 1 }).add({ days: offset * 7 })
+}
+
+/**
+ * Unfinished work whose span ended in the `weeks` weeks before the filter's window, so it
+ * no longer overlaps it and the week filter would hide it. Everything else about the
+ * filter still applies (assignee, tags, text, statuses) — a "my work" view carries over
+ * only my work. A terminal status is never carried: done is done.
+ */
+function carriedOver(tasks: Task[], filter: FilterState, statuses: StatusConfig[], weeks: number): Task[] {
+  if (weeks <= 0) return []
+  const offsets = filter.activeWeeks.length ? filter.activeWeeks : [0]
+  const windowStart = weekStart(Math.min(...offsets))
+  const from = windowStart.subtract({ days: weeks * 7 })
+  const dateless: FilterState = { ...filter, activeWeeks: [], dueDateFilter: 'any' }
+  const out: Task[] = []
+  for (const { task } of flattenTasks(tasks)) {
+    if (isTerminalStatus(task.status, statuses)) continue
+    if (!matchesFilter(task, dateless, statuses)) continue
+    const end = parsePlainDate(task.due) ?? parsePlainDate(task.start)
+    if (!end) continue
+    if (Temporal.PlainDate.compare(end, from) < 0 || Temporal.PlainDate.compare(end, windowStart) >= 0) continue
+    // A parent is its sub-tasks' heading; the sub-tasks carry themselves.
+    if (task.subtasks.length) continue
+    out.push(task)
+  }
+  return out
+}
+
+/**
+ * What the all-projects timeline would show for `filter`, without a view: each project's
+ * tree filtered with promotion, the survivors assembled under project headings, parents
+ * collapsed away. Branch collapse is UI state and is ignored — an export from the API
+ * has no screen to mirror, so it lists everything the filter lets through.
+ */
+export function uberRows(
+  sources: Project[],
+  filter: FilterState,
+  statuses: StatusConfig[],
+  carryOverWeeks = 0
+): UberRows {
+  const shown = new Map<Project, Task[]>()
+  const carried = new Set<string>()
+  for (const source of sources) {
+    const tasks = applyTaskFilterPromote(source.tasks, filter, statuses)
+    const present = new Set(flattenTasks(tasks).map((f) => f.task.id))
+    // Carried rows join the project as top-level leaves: the heading is still the
+    // project's, and the "Parent > Child" path is kept by titlePaths over the real tree.
+    for (const task of carriedOver(source.tasks, filter, statuses, carryOverWeeks)) {
+      if (present.has(task.id)) continue
+      carried.add(task.id)
+      tasks.push({ ...task, subtasks: [] })
+    }
+    if (tasks.length) shown.set(source, tasks)
+  }
+  const uber = buildUberProject([...shown.keys()], (source) => shown.get(source) ?? [])
+  const isHeading = (task: Task): boolean => uber.headings.has(task.id)
+  const { rows, paths } = collapseParents(flattenTasks(uber.project.tasks), isHeading)
+  // A carried row's path comes from its home tree, where its parents still are.
+  for (const source of shown.keys()) {
+    for (const [id, path] of titlePaths(flattenTasks(source.tasks))) if (carried.has(id)) paths.set(id, path)
+  }
+  let week: UberRows['week'] = null
+  if (filter.activeWeeks.length) {
+    const from = weekStart(Math.min(...filter.activeWeeks))
+    const to = weekStart(Math.max(...filter.activeWeeks)).add({ days: 6 })
+    week = { from: from.toString(), to: to.toString() }
+  }
+  return { uber, rows, paths, carried, week }
 }
 
 /**

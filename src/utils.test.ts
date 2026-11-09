@@ -48,7 +48,7 @@ describe('priorityRank', () => {
 describe('virtual filter keys', () => {
   it('recognises the all-projects key as virtual, and real paths as not', () => {
     expect(isVirtualFilterKey(UBER_FILTER_KEY)).toBe(true)
-    expect(isVirtualFilterKey('Projects/Athlon.md')).toBe(false)
+    expect(isVirtualFilterKey('Projects/Alpha.md')).toBe(false)
   })
 
   it('survives the stale-filter prune, while a deleted project does not', () => {

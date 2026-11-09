@@ -106,6 +106,7 @@ interface TaskPatch {
 |---|---|---|
 | `listProjects()` | `ProjectSnapshot[]` | alphabetical |
 | `listTasks(projectPath?)` | `TaskSnapshot[]` | flattened, parents before children; all projects when omitted |
+| `exportOutline(opts?)` | text + counts | see **Export** |
 | `getTask(ref)` | `TaskSnapshot \| null` | |
 
 ### Write
@@ -179,6 +180,42 @@ Protocol handler, for links and buttons that cannot call the API:
 `obsidian://project-manager?task=<ref>[&where=modal|project|both][&view=…]` and
 `obsidian://project-manager?project=<path>`. Values URL-encoded.
 
+### Export
+
+```ts
+exportOutline(opts?: {
+  view?: string            // a saved view of the all-projects timeline; default "This week's plan"
+  projectPath?: string     // only this project; default all
+  carryOverWeeks?: number  // default 2; 0 disables
+}): Promise<{
+  text: string                                 // Markdown
+  rows: number                                 // task rows, headings excluded
+  carried: number                              // of those, carried over
+  week: { from: string; to: string } | null    // the view's Mon–Sun window
+  view: string | null                          // the saved view used; null = built-in default
+}>
+```
+
+The all-projects timeline's "copy as Markdown", without the view open: project heading,
+then that project's tasks grouped by assignee (`@Name`), each row with status icon,
+"Parent > Child" title, Jira key link and due date. Milestones first, "Unassigned" last.
+The text is what the copy button would put on the clipboard for that view, and it pastes
+into Slack as is.
+
+- **View.** Named views are looked up case-insensitively among the all-projects timeline's
+  saved views (settings, not a project file); unknown → `not-found`. With no `view`, the
+  saved view named "This week's plan" is used if it exists, else the same filter built in:
+  statuses todo, in-progress, review; span overlapping this week. Define the week in the
+  UI as a saved view and pass its name rather than passing dates: one definition of "this
+  week" for the screen and the export.
+- **Carried over.** Open tasks (non-terminal status, and within the view's other filters)
+  whose span ended in the `carryOverWeeks` weeks before the view's window, so the week
+  filter hides them, are listed per project in a trailing `*Carried over*` group with the
+  assignee on the line. These are the "carry into this week or drop" decisions before a
+  planning meeting. Parents are not carried; their sub-tasks carry themselves.
+- Branch collapse is UI state and ignored: everything the filter admits is listed.
+- Nothing is posted anywhere; the caller does that.
+
 ### Change notifications
 
 ```ts
@@ -208,11 +245,13 @@ What obsidian-assistant implements against this:
    speaks labels.
 4. Dashboard card click: `openTask(ref)` (default `'both'`).
 5. Surface `PMApiError.code` to brain verbatim, with the message, so it can decide
-   (e.g. `conflict` → tell Jo to resolve in the merge editor).
+   (e.g. `conflict` → ask the user to resolve it in the merge editor).
 6. Subscribe with `onChange` once per plugin load to refresh cards.
 
 ## Testing
 
 `src/api.test.ts` drives the API over the real store on an in-memory vault, with the
 Jira paths running against the plugin's in-process Jira mock. For a live round trip use
-a project with Jira off (e.g. `Projects/API Sandbox`) so nothing reaches a real instance.
+a throwaway project bound to a Jira server whose site is `localhost`: the plugin then
+serves its in-process mock and nothing reaches a real instance. Delete the project, the
+server entry and `jira-mock.json` in the plugin folder afterwards.

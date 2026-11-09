@@ -5,9 +5,19 @@ import { projectCfg, taskExt } from './connectors/jira/types'
 import type PMPlugin from './main'
 import { findParentId, findTaskById } from './store/TaskIndex'
 import { flattenTasks } from './store/TaskTreeOps'
-import type { Project, Task, TaskPriority, ViewMode } from './types'
+import {
+  UBER_FILTER_KEY,
+  makeDefaultFilter,
+  type FilterState,
+  type Project,
+  type Task,
+  type TaskPriority,
+  type ViewMode
+} from './types'
 import { openTaskModal } from './ui/ModalFactory'
+import { displayName } from './ui/primitives/Avatar'
 import type { ProjectView } from './views/ProjectView'
+import { projectOutline, uberRows } from './views/taskOutline'
 
 /**
  * Public API for other plugins. Reach it as
@@ -93,6 +103,43 @@ export interface SyncSummary {
   conflicts: number
   /** Issue keys under the root that are not local tasks yet — offered, not imported. */
   newIssues: string[]
+}
+
+/**
+ * The saved view `exportOutline` uses when none is named: every task, across all
+ * projects, whose span overlaps this week and is still open. When no saved
+ * view of that name exists the same filter is built here, so the export works on a fresh
+ * install — and matches what the saved view shows once it does exist.
+ */
+export const DEFAULT_EXPORT_VIEW = "This week's plan"
+
+export function defaultExportFilter(): FilterState {
+  return { ...makeDefaultFilter(), statuses: ['todo', 'in-progress', 'review'], activeWeeks: [0] }
+}
+
+export interface ExportOutlineOpts {
+  /** Name of a saved view of the all-projects timeline. Default: {@link DEFAULT_EXPORT_VIEW}. */
+  view?: string
+  /** Only this project; default all. */
+  projectPath?: string
+  /**
+   * Also list unfinished tasks whose span ended in the N weeks before the view's window,
+   * as a "Carried over" group per project. Default 2; 0 disables.
+   */
+  carryOverWeeks?: number
+}
+
+export interface ExportOutlineResult {
+  /** Markdown, exactly what the timeline's copy button puts on the clipboard. */
+  text: string
+  /** Task rows in the text, project headings excluded. */
+  rows: number
+  /** Of those, carried over from an earlier week. */
+  carried: number
+  /** The Mon–Sun window the view covers, or null when it has no week filter. */
+  week: { from: string; to: string } | null
+  /** The saved view that was used, or null when the built-in default filter was. */
+  view: string | null
 }
 
 export interface ChangeEvent {
@@ -297,6 +344,52 @@ export class PluginApi {
     const view = await this.openProjectTab(project)
     if (view && opts.view) view.setView(opts.view)
     return true
+  }
+
+  // ─── export ────────────────────────────────────────────────────────────────
+
+  /**
+   * The all-projects outline as Markdown — the same grouping the timeline's copy button
+   * produces (project → assignee → task), for a saved view of that timeline, so the text
+   * is what the user sees there. Pastes into Slack as is. Nothing is posted anywhere.
+   */
+  async exportOutline(opts: ExportOutlineOpts = {}): Promise<ExportOutlineResult> {
+    const weeks = opts.carryOverWeeks ?? 2
+    if (!Number.isInteger(weeks) || weeks < 0) throw new PMApiError('invalid', 'carryOverWeeks must be an integer ≥ 0')
+
+    const saved = this.plugin.settings.projectFilters?.[UBER_FILTER_KEY]?.savedViews ?? []
+    const wantedName = opts.view ?? DEFAULT_EXPORT_VIEW
+    const view = saved.find((v) => v.name.localeCompare(wantedName, undefined, { sensitivity: 'accent' }) === 0)
+    if (opts.view !== undefined && !view) {
+      throw new PMApiError('not-found', `no saved view "${opts.view}" in the all-projects timeline`)
+    }
+    const filter: FilterState = view ? { ...makeDefaultFilter(), ...view.filter } : defaultExportFilter()
+
+    let sources = await this.projects()
+    if (opts.projectPath !== undefined) {
+      const one = await this.project(opts.projectPath)
+      if (!one) throw new PMApiError('not-found', `no project at "${opts.projectPath}"`)
+      sources = [one]
+    }
+
+    const statuses = this.plugin.settings.statuses
+    const { uber, rows, paths, carried, week } = uberRows(sources, filter, statuses, weeks)
+    const lines = projectOutline(rows, {
+      statuses,
+      displayName,
+      carried,
+      isHeading: (task) => uber.headings.has(task.id),
+      titleOf: (task) => paths.get(task.id) ?? task.title,
+      badgesOf: (task) => {
+        const owner = uber.ownerOf.get(task.id)
+        if (!owner) return []
+        return uber.headings.has(task.id)
+          ? this.plugin.connectors.projectBadges(owner)
+          : this.plugin.connectors.taskBadges(owner, task)
+      }
+    })
+    const taskRows = rows.filter((r) => !uber.headings.has(r.task.id)).length
+    return { text: lines.join('\n'), rows: taskRows, carried: carried.size, week, view: view?.name ?? null }
   }
 
   // ─── events ────────────────────────────────────────────────────────────────

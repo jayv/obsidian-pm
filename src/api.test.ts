@@ -7,7 +7,17 @@ import { FakeAdapter, mutateMock, setDefaultMaps } from './connectors/jira/test-
 import { ensureProjectCfg, ensureTaskExt, taskExt } from './connectors/jira/types'
 import type PMPlugin from './main'
 import { ProjectStore } from './store/ProjectStore'
-import { DEFAULT_PRIORITIES, DEFAULT_STATUSES, makeTask, type Project } from './types'
+import {
+  DEFAULT_PRIORITIES,
+  DEFAULT_STATUSES,
+  UBER_FILTER_KEY,
+  makeDefaultFilter,
+  makeTask,
+  type FilterState,
+  type Project,
+  type SavedView
+} from './types'
+import { today } from './dates'
 import { openTaskModal } from './ui/ModalFactory'
 
 vi.mock('./ui/ModalFactory', () => ({ openTaskModal: vi.fn<() => void>() }))
@@ -35,7 +45,8 @@ function realPlugin(): Ctx {
     priorities: DEFAULT_PRIORITIES,
     globalTeamMembers: [],
     connectors: { jira: { servers: [{ id: 's1', name: 'Mock', site: 'localhost', email: 'x' }] } },
-    connectorSecrets: {}
+    connectorSecrets: {},
+    projectFilters: {} as Record<string, { filter: FilterState; activeSavedViewId: null; savedViews: SavedView[] }>
   }
   const store = new ProjectStore(app as unknown as App, () => settings.statuses)
   const plugin = {
@@ -43,6 +54,7 @@ function realPlugin(): Ctx {
     manifest: { dir: 'plugins/pm' },
     settings,
     store,
+    connectors: { projectBadges: () => [], taskBadges: () => [] },
     refreshProjectViews: refresh,
     saveSettings: () => Promise.resolve(),
     router: { openProjectView: opened }
@@ -119,11 +131,11 @@ describe('PluginApi', () => {
     const after = await api.updateTask(child.id, {
       status: 'in-progress',
       due: '2026-12-01',
-      assignees: [' Jo ', ''],
+      assignees: [' Ann ', ''],
       progress: 40
     })
 
-    expect(after).toMatchObject({ status: 'in-progress', due: '2026-12-01', assignees: ['Jo'], progress: 40 })
+    expect(after).toMatchObject({ status: 'in-progress', due: '2026-12-01', assignees: ['Ann'], progress: 40 })
     expect(refreshed()).toBeGreaterThan(0)
     const file = plugin.app.vault.getAbstractFileByPath(child.filePath ?? '')
     const raw = await plugin.app.vault.read(file as never)
@@ -364,5 +376,90 @@ describe('PluginApi', () => {
     expect(r.newIssues).toHaveLength(1)
     expect(r.conflicts).toBe(0)
     expect(await code(ctx.api.syncProject('Projects/Alpha'))).toBe('not-found')
+  })
+
+  describe('exportOutline', () => {
+    const monday = today().subtract({ days: today().dayOfWeek - 1 })
+    const d = (days: number): string => monday.add({ days }).toString()
+
+    async function planned() {
+      const ctx = realPlugin()
+      const alpha = await ctx.store.createProject('Alpha', 'Projects')
+      const beta = await ctx.store.createProject('Beta', 'Projects')
+      const parent = makeTask({ title: 'Epic work', start: d(0), due: d(4) })
+      await ctx.store.insertTask(alpha, parent)
+      await ctx.store.insertTask(
+        alpha,
+        makeTask({ title: 'This week', status: 'in-progress', start: d(1), due: d(3), assignees: ['Alice'] }),
+        parent.id
+      )
+      await ctx.store.insertTask(alpha, makeTask({ title: 'Done already', status: 'done', start: d(0), due: d(2) }))
+      await ctx.store.insertTask(alpha, makeTask({ title: 'Slipped', status: 'todo', due: d(-3), assignees: ['Sam'] }))
+      await ctx.store.insertTask(alpha, makeTask({ title: 'Ancient', status: 'todo', due: d(-20) }))
+      await ctx.store.insertTask(beta, makeTask({ title: 'Next week only', status: 'todo', start: d(7), due: d(9) }))
+      return { ...ctx, alpha, beta }
+    }
+
+    it('defaults to this week, open statuses, grouped project → assignee → task', async () => {
+      const { api } = await planned()
+      const out = await api.exportOutline()
+      expect(out.view).toBeNull()
+      expect(out.week).toEqual({ from: d(0), to: d(6) })
+      const lines = out.text.split('\n')
+      expect(lines[0]).toBe('- **Alpha**')
+      expect(lines[1]).toBe('    - @Alice')
+      expect(lines[2]).toContain('Epic work > This week')
+      expect(lines[2]).toContain(`_(${d(3)})_`)
+      expect(out.text).not.toContain('Done already')
+      expect(out.text).not.toContain('Beta')
+      expect(out.rows).toBe(2)
+    })
+
+    it('carries over unfinished work from the previous weeks, in its own group', async () => {
+      const { api } = await planned()
+      const out = await api.exportOutline()
+      const lines = out.text.split('\n')
+      const idx = lines.indexOf('    - *Carried over*')
+      expect(idx).toBeGreaterThan(0)
+      expect(lines[idx + 1]).toContain('Slipped')
+      expect(lines[idx + 1]).toContain('— Sam')
+      expect(out.text).not.toContain('Ancient')
+      expect(out.carried).toBe(1)
+      const none = await api.exportOutline({ carryOverWeeks: 0 })
+      expect(none.text).not.toContain('Carried over')
+      expect(none.carried).toBe(0)
+    })
+
+    it('uses a saved view of the all-projects timeline by name, case-insensitively', async () => {
+      const ctx = await planned()
+      ctx.plugin.settings.projectFilters[UBER_FILTER_KEY] = {
+        filter: makeDefaultFilter(),
+        activeSavedViewId: null,
+        savedViews: [
+          {
+            id: 'v1',
+            name: 'Next week',
+            filter: { ...makeDefaultFilter(), activeWeeks: [1] },
+            sortKey: '',
+            sortDir: 'asc'
+          }
+        ]
+      }
+      const out = await ctx.api.exportOutline({ view: 'next week', carryOverWeeks: 0 })
+      expect(out.view).toBe('Next week')
+      expect(out.week).toEqual({ from: d(7), to: d(13) })
+      expect(out.text).toContain('Next week only')
+      expect(out.text).not.toContain('Alpha')
+      expect(await code(ctx.api.exportOutline({ view: 'Nope' }))).toBe('not-found')
+    })
+
+    it('narrows to one project, and rejects an unknown one', async () => {
+      const { api } = await planned()
+      const out = await api.exportOutline({ projectPath: 'Projects/Beta', view: undefined, carryOverWeeks: 0 })
+      expect(out.text).toBe('')
+      expect(out.rows).toBe(0)
+      expect(await code(api.exportOutline({ projectPath: 'Projects/Gamma' }))).toBe('not-found')
+      expect(await code(api.exportOutline({ carryOverWeeks: -1 }))).toBe('invalid')
+    })
   })
 })

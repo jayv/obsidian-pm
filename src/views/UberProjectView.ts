@@ -18,7 +18,7 @@ import { PrimaryRow } from '../ui/composites/ProjectHeader/PrimaryRow'
 import { computeResourceConflicts } from './gantt/ResourceConflicts'
 import type { HeaderUiState } from '../ui/composites/ProjectHeader/ProjectHeader'
 import { GanttView } from './gantt/GanttView'
-import { assigneeOutline, collapseParents, outlineMarkdown } from './taskOutline'
+import { collapseParents, projectOutline } from './taskOutline'
 import { displayName } from '../ui/primitives/Avatar'
 import { safeAsync } from '../utils'
 
@@ -323,21 +323,7 @@ export class UberProjectView extends ItemView {
 
     // Project, then assignee, then the work — the per-project export's grouping, nested
     // under the project rows this view exists to show.
-    const lines: string[] = []
-    let tasks: Task[] = []
-    const flush = (): void => {
-      if (tasks.length) lines.push(...assigneeOutline(tasks, opts, 1))
-      tasks = []
-    }
-    for (const row of rows) {
-      if (isHeading(row.task)) {
-        flush()
-        lines.push(outlineMarkdown([{ ...row, depth: 0 }], opts))
-      } else {
-        tasks.push(row.task)
-      }
-    }
-    flush()
+    const lines = projectOutline(rows, opts)
 
     await navigator.clipboard.writeText(lines.join('\n'))
     new Notice(`Copied ${rows.length} row${rows.length === 1 ? '' : 's'} as Markdown.`)
